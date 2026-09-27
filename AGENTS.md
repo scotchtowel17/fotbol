@@ -1,0 +1,40 @@
+# Guide for coding agents
+
+fotbol is a zero-build browser app that teaches soccer positioning. The learner takes a role, watches play unfold, drags themselves to where they should be, and is scored and told *why*.
+
+Read these first:
+1. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): module contracts, data shapes, the coordinate frame. **Binding.**
+2. [docs/RESEARCH.md](docs/RESEARCH.md): the research the design is based on. Section 5 covers the scoring model and section 8 the principle catalogue, whose IDs are used everywhere. Section 9 has the MVP spec and roadmap.
+3. [docs/ROADMAP.md](docs/ROADMAP.md): what is done, what is next, known issues.
+
+## Commands
+
+```bash
+npm test            # node --test on tests/**/*.test.js (Node >= 20, no dependencies)
+npm run check       # validate every scenario and print the engine's answer at the freeze frame
+npm run serve       # python3 -m http.server 8080  → http://localhost:8080
+```
+
+`tests.html` runs the same test files in a browser.
+
+## Hard rules
+
+- **No build step, no dependencies in `package.json`.** Third-party code is vendored under `vendor/<name>/`, with its LICENSE file and an entry in `THIRD_PARTY.md`. Only permissive licences are allowed (MIT, ISC, BSD, Apache-2.0, Unlicense, CC0).
+- **`js/engine/` is pure.** No DOM, no `fetch`, no `localStorage`, no `Date.now()` inside scoring. The UI passes data in.
+- **One coordinate frame.** Metres on a 105 x 68 pitch. x = 0 is our goal line and "us" always attacks +x. y = 0 is our left touchline. Never mix screen coordinates into the engine.
+- **Every tunable number** lives in a `*_DEFAULTS` or `PARAMS` object, tagged `[D]` (default guess), `[S]` (sourced) or `[M]` (measured).
+- **Every rule maps to principle IDs** from `data/principles.json`. Feedback text is second person, one sentence, in football language ("drop deeper", "tuck in", "get goal-side"), never screen directions.
+- **Copyright:** never paste text from coaching books, sites or PDFs. Paraphrase, and link out in `learnMore`.
+- **Privacy:** no analytics, accounts or third-party requests. Progress stays in `localStorage`.
+- Keep `docs/ARCHITECTURE.md` in sync when you change a contract, and `docs/ROADMAP.md` when you finish or discover work.
+
+## Where things live
+
+| Want to... | Look at |
+|---|---|
+| Change where players stand by default | `data/formations/helios-433.json`, `js/engine/formation.js`, `js/engine/scene.js` |
+| Change how a position is judged | `js/engine/rules/*.js`, `js/engine/score.js` |
+| Change feedback wording | the `text` block of each rule, `js/engine/explain.js` |
+| Add or fix a scenario | `data/scenarios/*.json` (then `npm run check`) |
+| Change the curriculum | `data/curriculum.json`, `data/principles.json` |
+| Change the look | `css/app.css` (tokens at the top), `js/ui/board.js` |
