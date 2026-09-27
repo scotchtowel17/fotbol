@@ -325,6 +325,40 @@ export function createBoard(container, { orientation = 'auto' } = {}) → Board
 
 Board rules: SVG `viewBox` in metres (with a 3 m margin), a vertical layout when the container is portrait and narrower than 600 px (`orientation: 'auto'`), pointer events for mouse and touch (with `touch-action: none` on the pitch only), keyboard nudging (arrows 0.5 m, Shift 2 m) on the focused draggable token, finger-offset while dragging on touch so the finger doesn't hide the token, a colour-blind-safe palette (our team and theirs must differ in lightness as well as hue), and `prefers-reduced-motion` respected.
 
+### 5.9 App shell and mode contract
+
+`js/main.js` builds an `app` object once, then routes `#/<mode>[/<arg>...]` to `js/ui/modes/<mode>.js` via dynamic `import()`. A missing mode module shows a friendly "coming soon" card instead of crashing.
+
+```js
+// every js/ui/modes/<mode>.js
+export async function mount(root, app, params /* string[] from the hash */) → (void | () => void /* unmount */)
+
+// app
+{
+  data: {
+    principles: { list: Principle[], byId: {[id]: Principle} },   // data/principles.json
+    curriculum,                                                   // data/curriculum.json
+    tutorial,                                                     // data/tutorial.json
+    resources,                                                    // data/resources.json
+    formations: { us: Formation, them: Formation },               // both from helios-433 in v1
+    scenarios: { index: ScenarioMeta[], load(id) → Promise<Scenario> },
+  },
+  store,          // js/store.js
+  settings,       // { wording: 'standard'|'kid', theme: 'auto'|'light'|'dark', reducedMotion: boolean } (persisted)
+  setSettings(patch),
+  navigate(hash),
+  createBoard,    // js/ui/board.js
+}
+```
+
+`js/store.js`:
+```js
+export function get(key, fallback)          // JSON from localStorage, try/catch, fallback on any error
+export function set(key, value)             // try/catch; returns false on failure
+export function exportAll() → object        // everything under the 'fotbol:' prefix
+export function importAll(obj)              // validates the prefix, then writes
+```
+
 ## 6. Adding things
 
 - **A new rule:** add `js/engine/rules/<id>.js` with the contract above, register it in `rules/index.js`, reference its principle IDs, and add tests in `tests/rules.test.js` (a passing spot, a failing spot, and not-applicable).
