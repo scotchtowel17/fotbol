@@ -63,7 +63,8 @@ Chapters of nodes; each node is a **set** of 5 reps about one to three related p
 - **Node stars:** after a set, `setStars = average rep stars` → node stars = max(previous, 3 if ≥ 2.5, 2 if ≥ 1.8, 1 if ≥ 1, else 0).
 - **Unlocks:** a node opens when the previous node has ≥ 1 star; chapter "Pass it right" also opens after chapter 1's first node (kids love passing). Match day unlocks when chapter 1's Big Match has ≥ 1 star.
 - **Next up:** the first unlocked node with < 3 stars, in order.
-- Player profile (store key `'player'`): `{ group: 'DEF'|'MID'|'WING'|'STRIKER', role (default per group: DEF→LB, MID→LCM, WING→LW, STRIKER→ST), onboarded: bool, road: { [nodeId]: { stars, plays } }, weekDays: { week: 'YYYY-Www', days: [..] } }`.
+- Player profile (store key `'player'`): `{ group: 'DEF'|'MID'|'WING'|'STRIKER', role (default per group: DEF→LB, MID→LCM, WING→LW, STRIKER→ST), onboarded: bool, road: { [nodeId]: { stars, plays } } }`.
+- "Days played this week" is derived from the rewards state's training days: `weekDaysPlayed(rewardsState, today)` in `js/rewards.js` (Monday-start week, counts only up within the week). No separate storage.
 
 ## 4. Screens
 
@@ -163,7 +164,7 @@ isUnlocked(road, profile, nodeId) → boolean
 buildSet(node, { road, profile, index, rewards, skills, seed, formations }) → Promise<rep[]>
 //   rep = { kind: 'spot', scenario, mirrored: boolean } | { kind: 'pass', drill }   (5 reps; deterministic for a seed)
 recordSet(app, nodeId, repStars /* number[] */) → { before, after }   // node stars, per §3
-setStarsFor(repStars) → 0..3      weekDaysPlayed(profile, today) → number
+setStarsFor(repStars) → 0..3
 
 // js/ui/player/reveal.js (play): the Player-mode reveal, shared by play and pass
 createPlayerReveal(container, { app }) → {
@@ -176,6 +177,18 @@ showFullTime(root, app, { node, reps: [{ stars, title }], xpBefore, xpAfter, gai
                           nodeStars: { before, after }, onHome, onAgain }) → cleanup()
 ```
 
-- Every `js/ui/player/*.js` module exports a `STRINGS` object holding all of its visible text (functions allowed for templates), so `tests/copy.test.js` can check it.
+- Every `js/ui/player/*.js` module exports a `STRINGS` object holding all of its visible text (functions allowed for templates), so `tests/copy.test.js` can check it. **Player modules must not touch `document`/`window` at import time** (only inside functions), so Node can import them.
+- `data/principles.json` is edited by two areas (engine adds PA1–PA15; copy+rewards may fix `summary.kid`/`kidName` wording). Both use **targeted text edits only** (the Edit tool on specific lines), never a script that re-serialises the whole file, and re-read before each edit.
+
+```js
+// js/ui/board.js additions (play owns board.js; pass codes against these)
+createBoard(container, { orientation, labels: 'role' | 'number' /* Player mode: unique shirt numbers per §5 */ })
+board.setSpotlight(ids /* string[] | null */)          // everything else dimmed to 40 %; null = all normal
+board.enableTargets({ ids, onTap(id), onPreview(id | null) }) / board.disableTargets()
+//   big (≥ 44 px) numbered tap targets on those tokens; first tap previews (calls onPreview), second tap on the same one confirms (onTap)
+board.showHintHand({ from, to }) → Promise              // the worked-example ghost hand; resolves when done; instant under reduced motion
+board.setAid({ kind: 'glow', target } | null)          // warm/cold ring on YOU that brightens as YOU nears `target`
+// markers already exist (arrow, segment, ring, label); pass uses them for lanes, blocker rings and ★ ✓ ! ✗ option labels
+```
 - Player modules award rewards through `award(app, event)` in `js/ui/rewards-store.js` and read stars with `starsForScore` (§6.3).
 - `play` and `pass` both end a set by calling `recordSet`, then `showFullTime`.
