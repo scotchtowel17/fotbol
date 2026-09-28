@@ -1,13 +1,16 @@
 // '#/progress': your level, module and principle stars, per-role ability, recent reps, a learning
-// curve, streaks, live bests, and export / import / reset of progress (RESEARCH 7.4-7.6, 9.2 item 10).
+// curve, streaks, live bests, the way into the trophy room (#/trophies), and export / import / reset of
+// progress (RESEARCH 7.4-7.6, 9.2 item 10). An import or a reset covers the rewards too (refreshRewards).
 // Everything is read from this browser's storage (js/store.js via js/ui/session.js); nothing leaves it.
 
 import { el, svg, button, icon, linkButton, openModal, toast, announce, uid, toggleSwitch } from '../components.js';
-import { gradeColor, starRating } from '../reveal.js';
+import { gradeColor, starRating, principleLabel } from '../reveal.js';
 import { ROLE_INFO } from '../../engine/roles.js';
 import { gradeOf } from '../../engine/score.js';
 import * as S from '../session.js';
 import { flameIcon } from './drill.js';
+import { levelModel, rewardCopy } from '../celebrate.js';
+import { loadRewards, refreshRewards } from '../rewards-store.js';
 
 export const PROGRESS_DEFAULTS = Object.freeze({
   recent: 20, // [D] history rows shown
@@ -23,13 +26,15 @@ const COPY = {
     change: 'Change position',
     empty: 'No reps yet. Play a drill and your stars, level and history will show up here.',
     firstDrill: 'Play your first drill',
-    level: 'Level',
+    level: 'Skill level',
     levelOf: (n, max) => `Level ${n} of ${max}`,
     levelNext: 'Keep scoring well to reach the next level.',
+    trophies: 'Trophies',
+    trophyRoom: 'Trophy room',
     notStarted: 'Not started',
     reps: 'Drill reps',
-    streak: 'Days in a row',
-    bestStreak: (n) => `Best: ${n}`,
+    streak: 'Days this week',
+    bestStreak: (n) => `Best week: ${n}`,
     liveBest: 'Live best',
     liveNone: 'Not played yet',
     playLive: 'Play Live',
@@ -52,7 +57,7 @@ const COPY = {
     roleLine: (pct, n) => `${pct}% expected on an average drill · ${n} ${n === 1 ? 'rep' : 'reps'}`,
     history: 'Recent reps',
     historyEmpty: 'Nothing here yet.',
-    live: 'Live', drillMode: 'Drill', assisted: 'assisted',
+    live: 'Live', drillMode: 'Drill', passMode: 'Passing', assisted: 'assisted',
     today: 'Today', yesterday: 'Yesterday',
     data: 'Your data',
     exportBtn: 'Export progress',
@@ -60,7 +65,7 @@ const COPY = {
     resetBtn: 'Reset progress',
     exported: 'Progress exported.',
     importTitle: 'Import this progress?',
-    importText: (reps, n) => `This file has ${reps} ${reps === 1 ? 'rep' : 'reps'} of history and practice on ${n} ${n === 1 ? 'principle' : 'principles'}. It replaces your stars, level, history, streaks, live bests, tutorial and Explore progress in this browser.`,
+    importText: (reps, n) => `This file has ${reps} ${reps === 1 ? 'rep' : 'reps'} of history and practice on ${n} ${n === 1 ? 'principle' : 'principles'}. It replaces your stars, level, history, days played, live bests, trophies, tutorial, Explore progress and Player mode road in this browser.`,
     importKeeps: 'Your settings and any scenario you are writing in Author stay as they are.',
     importSettings: 'Also use the settings in this file',
     importSettingsHint: 'Theme, wording and your position.',
@@ -68,7 +73,7 @@ const COPY = {
     imported: 'Progress imported.',
     importPartial: 'Imported, but this browser could not save it, so it lasts until you close the page.',
     resetTitle: 'Reset all progress?',
-    resetText: 'This deletes your stars, level, history, streaks and tutorial progress in this browser. Your settings stay. It cannot be undone, so export first if you want a copy.',
+    resetText: 'This deletes your stars, level, trophies, history, days played, tutorial progress and Player mode road (and position) in this browser. Your settings stay. It cannot be undone, so export first if you want a copy.',
     resetConfirm: 'Reset',
     resetDone: 'Progress reset.',
     cancel: 'Cancel',
@@ -82,13 +87,15 @@ const COPY = {
     change: 'Change position',
     empty: 'Nothing yet! Play a drill to start collecting stars.',
     firstDrill: 'Play a drill',
-    level: 'Level',
+    level: 'Skill level',
     levelOf: (n, max) => `Level ${n} of ${max}`,
     levelNext: 'Keep going to reach the next level!',
+    trophies: 'Trophies',
+    trophyRoom: 'Trophy room',
     notStarted: 'Not started',
     reps: 'Drills played',
-    streak: 'Days in a row',
-    bestStreak: (n) => `Best: ${n}`,
+    streak: 'Days this week',
+    bestStreak: (n) => `Best week: ${n}`,
     liveBest: 'Live best',
     liveNone: 'Not played yet',
     playLive: 'Play Live',
@@ -111,7 +118,7 @@ const COPY = {
     roleLine: (pct, n) => `${pct}% · ${n} ${n === 1 ? 'go' : 'goes'}`,
     history: 'Last goes',
     historyEmpty: 'Nothing here yet.',
-    live: 'Live', drillMode: 'Drill', assisted: 'helper on',
+    live: 'Live', drillMode: 'Drill', passMode: 'Passing', assisted: 'helper on',
     today: 'Today', yesterday: 'Yesterday',
     data: 'Save or move your progress',
     exportBtn: 'Save to a file',
@@ -119,7 +126,7 @@ const COPY = {
     resetBtn: 'Start again',
     exported: 'Saved.',
     importTitle: 'Load this progress?',
-    importText: (reps, n) => `This file has ${reps} ${reps === 1 ? 'go' : 'goes'} and practice on ${n} ${n === 1 ? 'idea' : 'ideas'}. It replaces your stars and scores in this browser.`,
+    importText: (reps, n) => `This file has ${reps} ${reps === 1 ? 'go' : 'goes'} and practice on ${n} ${n === 1 ? 'idea' : 'ideas'}. It replaces your stars, scores and trophies in this browser.`,
     importKeeps: 'Your settings stay the same.',
     importSettings: 'Also use the settings from the file',
     importSettingsHint: 'Colours, words and your position.',
@@ -127,7 +134,7 @@ const COPY = {
     imported: 'Loaded!',
     importPartial: 'Loaded, but this browser cannot keep it after you close the page.',
     resetTitle: 'Start again?',
-    resetText: 'This wipes your stars, level, history and tutorial in this browser. You cannot undo it.',
+    resetText: 'This wipes your stars, level, trophies, history, tutorial and road in this browser. You cannot undo it.',
     resetConfirm: 'Start again',
     resetDone: 'All clear.',
     cancel: 'Cancel',
@@ -142,7 +149,8 @@ export async function mount(root, app) {
   const C = () => COPY[wording()];
   const principles = app.data.principles?.byId ?? {};
   const index = app.data.scenarios?.index ?? [];
-  const pName = (id) => principles[id]?.name ?? principles[id]?.short ?? id;
+  // Standard wording names a principle in full; Kid wording uses its short kid name (reveal.js principleLabel).
+  const pName = (id) => (wording() === 'kid' ? principleLabel(principles[id], 'kid') : principles[id]?.name ?? principles[id]?.short) || id;
 
   function render() {
     const c = C();
@@ -155,7 +163,7 @@ export async function mount(root, app) {
     const level = S.levelFor(skills, wording());
     const drills = history.filter((h) => h.mode === 'drill');
     const mods = S.moduleProgress({ curriculum: app.data.curriculum, index, skills, role });
-    const days = S.currentDayStreak(streak, today);
+    const days = S.weekDays(streak, today); // days played this week (R35: it only fills up, and a new week starts at 0)
     const liveBest = live.best[role];
     const empty = !history.length && !skills.counts.global;
     const maxLevel = S.LEVELS.standard.length;
@@ -174,6 +182,7 @@ export async function mount(root, app) {
       statTile(c.streak, [flameIcon(22), String(days)], [c.bestStreak(streak.day.best)], 'pg-tile--streak'),
       statTile(c.liveBest, liveBest ? [el('span', { class: 'pg-badge', style: { '--grade': gradeColor(liveBest.grade) }, 'aria-hidden': 'true', text: liveBest.grade }), String(liveBest.score)] : [el('span', { class: 'pg-muted', text: c.liveNone })],
         [el('a', { href: liveBest?.seed ? S.liveHash(liveBest.seed, liveBest.length) : '#/live', text: c.playLive })]),
+      trophiesTile(),
     ]);
 
     root.replaceChildren(el('div', { class: 'page pg' }, [
@@ -194,6 +203,17 @@ export async function mount(root, app) {
       section(c.history, historyList(history, today)),
       section(c.data, dataControls()),
     ]));
+  }
+
+  /** The way into the trophy room (ARCHITECTURE §5.13): your rewards level and its rank icon. */
+  function trophiesTile() {
+    const c = C();
+    const m = levelModel(loadRewards(app));
+    return el('a', { class: 'pg-tile pg-tile--trophies', href: '#/trophies' }, [
+      el('p', { class: 'pg-tile-label', text: c.trophies }),
+      el('p', { class: 'pg-tile-value' }, [el('span', { 'aria-hidden': 'true', text: m.icon }), rewardCopy(wording()).lv(m.level)]),
+      el('p', { class: 'pg-tile-extra' }, [icon('trophy', { size: 16 }), ` ${c.trophyRoom}`]),
+    ]);
   }
 
   function section(title, body) {
@@ -294,13 +314,16 @@ export async function mount(root, app) {
     if (!rows.length) return [el('p', { class: 'pg-muted', text: c.historyEmpty })];
     return [el('ol', { class: 'pg-history' }, rows.map((h) => {
       const grade = h.grade ?? gradeOf(h.score);
-      const title = h.mode === 'live' ? `${c.live}${h.assisted ? ` (${c.assisted})` : ''}` : h.title ?? h.id ?? c.drillMode;
-      const href = h.mode === 'live' && h.seed ? S.liveHash(h.seed, h.length) : h.baseId ? `#/drill/s/${encodeURIComponent(h.baseId)}` : null;
+      const kind = h.mode === 'live' ? c.live : h.mode === 'pass' ? c.passMode : c.drillMode; // Player mode's "Who's open?" reps are passing
+      const title = h.mode === 'live' ? `${c.live}${h.assisted ? ` (${c.assisted})` : ''}` : h.title ?? h.id ?? kind;
+      // A generated drill (Player mode: baseId 'gen-...', every pass rep) has no page to go back to.
+      const authored = h.mode === 'drill' && h.baseId && !/^gen-/.test(h.baseId);
+      const href = h.mode === 'live' && h.seed ? S.liveHash(h.seed, h.length) : authored ? `#/drill/s/${encodeURIComponent(h.baseId)}` : null;
       return el('li', {}, [
         el('span', { class: 'pg-badge', style: { '--grade': gradeColor(grade) }, 'aria-hidden': 'true', text: grade }),
         el('span', { class: 'pg-h-main' }, [
           href ? el('a', { href, text: title }) : el('span', { text: title }),
-          el('span', { class: 'pg-muted pg-h-meta', text: [h.mode === 'live' ? c.live : c.drillMode, ROLE_INFO[h.role]?.label, when(h.t, today)].filter(Boolean).join(' · ') }),
+          el('span', { class: 'pg-muted pg-h-meta', text: [kind, ROLE_INFO[h.role]?.label, when(h.t, today)].filter(Boolean).join(' · ') }),
         ]),
         el('span', { class: 'pg-h-score' }, [el('span', { class: 'visually-hidden', text: `Grade ${grade}, ` }), String(h.score)]),
       ]);
@@ -363,6 +386,7 @@ export async function mount(root, app) {
           if (!alive) return;
           for (const k of S.IMPORT_KEYS) store.remove(k);
           const r = store.importAll(parsed.data);
+          refreshRewards(app); // the imported kit and level show at once (the header pill, the boards)
           if (useSettings && parsed.settings) app.setSettings(parsed.settings);
           toast(r.persisted ? c.imported : c.importPartial, { tone: r.persisted ? 'good' : 'info', timeout: 5000 });
           render();
@@ -392,6 +416,7 @@ export async function mount(root, app) {
           close('ok');
           if (!alive) return;
           for (const k of S.RESET_KEYS) store.remove(k);
+          refreshRewards(app); // back to the classic kit and level 1
           toast(c.resetDone, { tone: 'info' });
           render();
           announce(c.resetDone);

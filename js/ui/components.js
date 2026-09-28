@@ -75,6 +75,8 @@ const ICONS = {
   chevron: '<path d="m6 15 6-6 6 6"/>',
   code: '<path d="m9 7-5 5 5 5M15 7l5 5-5 5"/>',
   pitch: '<rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M12 5v14"/><circle cx="12" cy="12" r="2.5"/>',
+  trophy: '<path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8.5 20h7M10 17h4"/>',
+  lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
 };
 
 /** Inline SVG icon (decorative: aria-hidden). */

@@ -21,6 +21,7 @@ import { ROLE_INFO, FAMILY_LABEL, FAMILIES, playerId, parsePlayerId } from '../.
 import { MID_Y, clampToPitch } from '../../engine/pitch.js';
 import { dist } from '../../engine/geometry.js';
 import { orientationFor } from '../session.js';
+import { award, earnsRewards } from '../rewards-store.js';
 
 export const LEARN_DEFAULTS = Object.freeze({
   tapRadius: 4, // [D] metres: a tap this close to a player picks them (forgiving on touch)
@@ -33,14 +34,14 @@ export const TUTORIAL_KEY = 'tutorial';
 
 // ------------------------------------------------------------------ labels
 
-export const CATEGORY_ORDER = Object.freeze(['foundations', 'out_of_possession', 'in_possession', 'transition', 'team_shape', 'role', 'goalkeeper', 'set_piece']);
+export const CATEGORY_ORDER = Object.freeze(['foundations', 'out_of_possession', 'in_possession', 'passing', 'transition', 'team_shape', 'role', 'goalkeeper', 'set_piece']);
 const CATEGORY_LABEL = {
   standard: {
-    foundations: 'Foundations', in_possession: 'In possession', transition: 'Transitions', out_of_possession: 'Out of possession',
+    foundations: 'Foundations', in_possession: 'In possession', passing: 'Passing', transition: 'Transitions', out_of_possession: 'Out of possession',
     team_shape: 'Team shape', role: 'Role cards', goalkeeper: 'Goalkeeper', set_piece: 'Set pieces',
   },
   kid: {
-    foundations: 'The basics', in_possession: 'When we have the ball', transition: 'When the ball changes team', out_of_possession: 'When they have the ball',
+    foundations: 'The basics', in_possession: 'When we have the ball', passing: 'Where to pass', transition: 'When the ball changes team', out_of_possession: 'When they have the ball',
     team_shape: 'Team shape', role: 'Your position', goalkeeper: 'Goalkeeper', set_piece: 'Free kicks and corners',
   },
 };
@@ -116,6 +117,12 @@ const COPY = {
     practise: 'Practise this', tryExplore: 'Try it in Explore',
     practiseLater: 'Drills for this principle come in a later version.',
     practiseNoDrills: 'No drill is built around this one yet: you meet it in Explore, the tutorial and every drill\'s feedback.',
+    // passing principles (PA): practised in Player mode's passing game, not in Explore
+    playPass: 'Play it in Who\'s open?',
+    passNote: 'Who\'s open? is the passing game in Player mode: you have the ball, and you pick the pass.',
+    checksPass: 'The passing game rates every pass you could play, and this idea is one of the reasons it gives.',
+    passWhere: (title) => `Player mode: ${title}`,
+    passGame: 'Player mode: Who\'s open?',
     prev: 'Previous', nextP: 'Next',
     // resources
     resTitle: 'Reading list',
@@ -182,6 +189,11 @@ const COPY = {
     practise: 'Practise this', tryExplore: 'Try it in Explore',
     practiseLater: 'Drills for this come later.',
     practiseNoDrills: 'No drill for this one yet. Try it in Explore.',
+    playPass: 'Play Who\'s open?',
+    passNote: 'Who\'s open? is the passing game: you have the ball, you pick the pass.',
+    checksPass: 'Who\'s open? checks it on every pass.',
+    passWhere: (title) => `Player mode: ${title}`,
+    passGame: 'Player mode: Who\'s open?',
     prev: 'Previous', nextP: 'Next',
     resTitle: 'Reading list',
     resLead: 'Books, videos and websites to learn more. Start with the first three.',
@@ -571,10 +583,18 @@ function mountTutorial(root, app) {
     if (all && !progress.completed) {
       progress.completed = true;
       progress.completedAt = new Date().toISOString();
+      rewardCompletion();
     }
     const firstOpen = steps.findIndex((s) => !progress.done.includes(s.id));
     progress.step = Math.max(0, firstOpen);
     save();
+  }
+
+  /** Rewards (ARCHITECTURE §5.13): once per completion (the Graduate badge, and its XP only the first time ever); in
+   *  Player mode only (Coach mode earns nothing, so no celebration shows). */
+  function rewardCompletion() {
+    if (!earnsRewards(app)) return;
+    award(app, { type: 'tutorial-complete' });
   }
 
   // ---- panel
@@ -898,6 +918,11 @@ function mountPrinciple(root, app, rawId) {
     const rules = (p.ruleIds ?? []).map((rid) => RULES_BY_ID[rid]).filter(Boolean);
     // "Practise this" only when a drill actually teaches it (a v1 principle without one would dead-end).
     const hasDrills = (app.data.scenarios?.index ?? []).some((e) => (e.principles ?? []).includes(p.id));
+    // Passing principles (PA) are practised in Player mode's "Who's open?" (Explore has no passing view): the Road's
+    // pass node on this idea, else the quick passing set.
+    const passing = p.category === 'passing';
+    const passNode = passing ? (app.data.road?.chapters ?? []).flatMap((c) => c.nodes ?? []).find((n) => n.kind === 'pass' && (n.principles ?? []).includes(p.id)) ?? null : null;
+    const passHref = passNode ? `#/pass/${encodeURIComponent(passNode.id)}` : '#/pass';
     const i = list.indexOf(p);
     const prev = i > 0 ? list[i - 1] : null, next = i >= 0 && i < list.length - 1 ? list[i + 1] : null;
     const block = (title, content, cls) => (content ? el('section', { class: ['ln-block', cls] }, [el('h2', { class: 'ln-h2', text: title }), typeof content === 'string' ? el('p', { text: content }) : content]) : null);
@@ -906,7 +931,7 @@ function mountPrinciple(root, app, rawId) {
     const checks = isAvailable(p)
       ? rules.length
         ? el('ul', { class: 'ln-rules' }, rules.map((r) => el('li', {}, [icon('check', { size: 16 }), el('span', { text: r.text?.[wd]?.name ?? r.text?.standard?.name ?? r.id })])))
-        : el('p', { text: L.checksNone })
+        : el('p', { text: passing ? L.checksPass : L.checksNone })
       : el('p', { text: L.checksLater });
 
     const ruleOfThumb = p.ruleOfThumb
@@ -928,11 +953,15 @@ function mountPrinciple(root, app, rawId) {
         el('h1', { class: 'ln-dtitle', text: p.name }),
         el('p', { class: 'ln-dstars' }, [starRating(prog.stars, { label: L.stars(prog.stars, prog.count) }), el('span', { 'aria-hidden': 'true', text: L.stars(prog.stars, prog.count) })]),
         el('p', { class: 'ln-dsummary', text: pickText(p.summary, wd) }),
-        el('div', { class: 'ln-dactions' }, [
-          isAvailable(p) && hasDrills ? linkButton(L.practise, `#/drill/p/${encodeURIComponent(p.id)}`, { variant: 'primary', icon: 'drill' }) : null,
-          linkButton(L.tryExplore, '#/explore', { icon: 'explore' }),
-        ]),
-        isAvailable(p) ? (hasDrills ? null : el('p', { class: 'ln-psection-note', text: L.practiseNoDrills })) : el('p', { class: 'ln-psection-note', text: L.practiseLater }),
+        el('div', { class: 'ln-dactions' }, passing
+          ? [isAvailable(p) ? linkButton(L.playPass, passHref, { variant: 'primary', icon: 'play' }) : null]
+          : [
+            isAvailable(p) && hasDrills ? linkButton(L.practise, `#/drill/p/${encodeURIComponent(p.id)}`, { variant: 'primary', icon: 'drill' }) : null,
+            linkButton(L.tryExplore, '#/explore', { icon: 'explore' }),
+          ]),
+        isAvailable(p)
+          ? (passing ? el('p', { class: 'ln-psection-note', text: L.passNote }) : hasDrills ? null : el('p', { class: 'ln-psection-note', text: L.practiseNoDrills }))
+          : el('p', { class: 'ln-psection-note', text: L.practiseLater }),
       ]),
       el('div', { class: 'ln-dgrid' }, [
         el('div', { class: 'ln-dmain' }, [
@@ -948,7 +977,9 @@ function mountPrinciple(root, app, rawId) {
           block(L.checks, checks),
           modules.length ? block(L.where, el('ul', { class: 'ln-modlinks' }, modules.map((m) => el('li', {}, [
             el('a', { href: m.kind === 'tutorial' ? '#/learn' : `#/drill/${m.id}`, text: L.moduleLink(m) }),
-          ])))) : null,
+          ])))) : passing && isAvailable(p) ? block(L.where, el('ul', { class: 'ln-modlinks' }, [el('li', {}, [
+            el('a', { href: passHref, text: passNode ? L.passWhere(passNode.title) : L.passGame }),
+          ])])) : null,
           p.learnMore?.length ? block(L.learnMore, el('ul', { class: 'ln-extlinks' }, p.learnMore.map((l) => el('li', {}, [externalLink(app, l.url, l.label)])))) : null,
         ]),
       ]),

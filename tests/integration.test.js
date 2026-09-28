@@ -3,7 +3,7 @@
 // computeGhost → evaluate / explain (js/engine/analyse.js). Holds the engine to the acceptance
 // criteria of RESEARCH 9.5: the ghost scores S, far spots fail, criticals cap, every failing rule
 // can be put into words in both wordings, mirrored scenes give mirrored answers, and it is fast.
-import { test, assert, loadJSON } from './harness.js';
+import { test, assert, loadJSON, timed, PERF_SLACK } from './harness.js';
 import { SITUATIONS, sceneOptions, mirrorSituation } from './situations.js';
 import { createFormation } from '../js/engine/formation.js';
 import { analyseScene, judgeSpot } from '../js/engine/analyse.js';
@@ -253,15 +253,11 @@ test('integration: HELIOS placement is continuous along the centre line (no play
 });
 
 test('integration: ghost search averages under 30 ms (RESEARCH 9.5 heatmap budget)', () => {
+  // Medians of a few runs over every case, after a warm-up (harness.js timed: steady on a busy machine).
   const ctxs = CASES.map((c) => c.scene.ctx);
-  for (const ctx of ctxs.slice(0, 5)) computeGhost(ctx); // warm up
-  const t0 = performance.now();
-  for (const ctx of ctxs) computeGhost(ctx);
-  const perGhost = (performance.now() - t0) / ctxs.length;
-  assert.ok(perGhost < 30, `computeGhost averages ${perGhost.toFixed(2)} ms`);
+  const perGhost = timed(() => { for (const ctx of ctxs) computeGhost(ctx); }, { warmup: 1, runs: 5 }).median / ctxs.length;
+  assert.ok(perGhost < 30 * PERF_SLACK, `computeGhost averages ${perGhost.toFixed(2)} ms`);
   // The whole loop (placement, base, context, ghost) stays inside the same budget.
-  const t1 = performance.now();
-  for (const { situation, id } of CASES) analyseScene(sceneOptions(situation, id, formations));
-  const perScene = (performance.now() - t1) / CASES.length;
-  assert.ok(perScene < 30, `analyseScene averages ${perScene.toFixed(2)} ms`);
+  const perScene = timed(() => { for (const { situation, id } of CASES) analyseScene(sceneOptions(situation, id, formations)); }, { warmup: 1, runs: 3 }).median / CASES.length;
+  assert.ok(perScene < 30 * PERF_SLACK, `analyseScene averages ${perScene.toFixed(2)} ms`);
 });

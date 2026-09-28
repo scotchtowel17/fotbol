@@ -72,7 +72,7 @@ export default {
     },
     kid: {
       name: 'Spread out',
-      ok: (v) => (v.min > 0 ? 'You have good spacing from your teammates!' : 'Good, you stay close to your team.'),
+      ok: (v) => (v.min > 0 ? 'Good, you have space from your teammates.' : 'Good, you stay close to your team.'),
       fail: (v) => (v.d < v.min
         ? 'You are too close to a teammate, so spread out.'
         : 'You are too far from your team, so move closer.'),

@@ -73,8 +73,8 @@ export default {
     },
     kid: {
       name: 'Stay onside',
-      ok: (v) => (v.nearLine ? 'Nice, you stayed onside!' : ''),
-      fail: (v) => `Step back ${m(v.beyond)} m so you are level with ${REF[v.by]}.`,
+      ok: (v) => (v.nearLine ? 'Good timing, you stayed onside.' : ''),
+      fail: (v) => `Step back so you are level with ${REF[v.by]}.`,
       cue: () => 'Where is their last defender?',
     },
   },

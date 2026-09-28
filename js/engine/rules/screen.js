@@ -105,14 +105,14 @@ export default {
     },
     kid: {
       name: 'Protect the middle',
-      ok: () => 'Great, you are guarding the middle in front of your defenders.',
+      ok: () => 'Good, you are guarding the middle in front of your defenders.',
       fail: (v) => ({
-        deep: 'Step up a little, you are too close to your defenders.',
-        high: 'Drop back to just in front of your defenders.',
+        deep: 'Move forward a little, you are too close to your defenders.',
+        high: 'Move back, to just in front of your defenders.',
         wide: 'Come back to the middle of the pitch.',
         lane: `Stand in the path between the ball and ${v.whoKid}.`,
       })[v.issue] ?? 'Stay in the middle, just in front of your defenders.',
-      cue: () => 'Which pass would be most dangerous right now?',
+      cue: () => 'Which pass would hurt us most right now?',
     },
   },
   cue(ctx) {

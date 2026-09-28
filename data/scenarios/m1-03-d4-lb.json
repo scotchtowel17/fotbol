@@ -76,7 +76,7 @@
       "id": "tucked-but-high",
       "region": { "type": "circle", "x": 37, "y": 26, "r": 3 },
       "text": "You tucked in but stayed high, so a ball over the top gets in behind you; drop level with the back line too.",
-      "textKid": "Good, you came in, but drop back in line with your defenders."
+      "textKid": "Good, you came in. Now move back, in line with your defenders."
     }
   ],
   "difficulty": -1,

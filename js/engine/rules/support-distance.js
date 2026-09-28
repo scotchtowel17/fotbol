@@ -103,14 +103,14 @@ export default {
       cue: () => 'How much pressure is the carrier under, and how close should you be?',
     },
     kid: {
-      name: 'Be a passing option',
-      ok: (v) => (v.pressured ? 'Nice, you came close to help!' : 'You are a good distance from the ball!'),
+      name: 'Help the passer',
+      ok: (v) => (v.pressured ? 'Good, you came close to help.' : 'Good, you are a nice distance from the ball.'),
       fail: (v) => {
         if (v.part === 'angle') return 'Find your own angle, not in line with a teammate.';
-        if (v.d < v.lo) return `Move ${m(v.lo - v.d)} m away to give the passer more room.`;
+        if (v.d < v.lo) return 'Move a little away to give the passer more room.';
         return v.pressured
-          ? `The passer is in trouble, so come ${m(v.d - v.hi)} m closer.`
-          : `Come ${m(v.d - v.hi)} m closer so the passer can reach you.`;
+          ? 'The passer is in trouble, so come closer.'
+          : 'Come closer so the passer can reach you.';
       },
       cue: () => 'Is the passer in trouble, or do they have time?',
     },

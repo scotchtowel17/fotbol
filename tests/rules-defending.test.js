@@ -2,7 +2,7 @@
 // tuck, compact, screen. Each rule: a clearly good spot scores >= 0.8, a clearly bad
 // spot <= 0.3, weight 0 where it does not apply, plus criticals, text and speed.
 
-import { test, assert, approx } from './harness.js';
+import { test, assert, approx, timed, PERF_SLACK } from './harness.js';
 import { buildContext } from '../js/engine/context.js';
 import { makeFrame, posOf } from './fixtures.js';
 import press, { PRESS_DEFAULTS } from '../js/engine/rules/press.js';
@@ -733,10 +733,9 @@ test('all rules: 8 rules x 700 spots evaluate in under 15 ms', () => {
     }
     return { ms: performance.now() - t0, acc };
   };
-  run(build()); // warm up the JIT
-  let best = Infinity;
-  for (let i = 0; i < 3; i++) best = Math.min(best, run(build()).ms); // fresh contexts: includes per-context prep
-  assert.ok(best < 15, `took ${best.toFixed(2)} ms`);
+  // Fresh contexts each run (so per-context prep counts): the median of 7 runs after a warm-up (harness.js timed).
+  const ms = timed(() => run(build()), { warmup: 2, runs: 7 }).median;
+  assert.ok(ms < 15 * PERF_SLACK, `took ${ms.toFixed(2)} ms`);
 });
 
 // ---------------------------------------------------------------------------

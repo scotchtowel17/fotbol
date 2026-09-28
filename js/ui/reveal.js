@@ -14,9 +14,10 @@
 // the caller's job: feedback.cue.highlight is a board marker, ghost/zone come from the scene.
 //
 // Extras beyond the contract (all optional): showCue/showFull take `focus` (default true: focus the
-// main button), showFull takes `nextLabel`/`replayLabel` and `animate` (default true; false re-shows a
-// reveal without the count-up or the S celebration); the module exports the pure helpers hotCold,
-// gradeColor, revealModel, topLine, pickText, createLiveAnnouncer and the starRating() DOM helper.
+// main button), showFull takes `nextLabel`/`replayLabel`, `animate` (default true; false re-shows a
+// reveal without the count-up or the S celebration) and `reward` (a node shown under the grade: the
+// rep's stars and XP, js/ui/celebrate.js); the module exports the pure helpers hotCold, gradeColor,
+// revealModel, topLine, pickText, principleLabel, createLiveAnnouncer and the starRating() DOM helper.
 
 import { el, button, icon } from './components.js';
 
@@ -117,6 +118,15 @@ const COPY = {
 };
 
 /**
+ * A principle's short label in a wording: its kidName in Kid wording (when the data has one), else its short name.
+ * @param {{ short?: string, kidName?: string, name?: string, id?: string }|null|undefined} p
+ */
+export function principleLabel(p, wording = 'standard') {
+  if (!p) return '';
+  return (wording === 'kid' && p.kidName) || p.short || p.name || p.id || '';
+}
+
+/**
  * Everything beat 2 shows, as plain data (pure; the DOM is built from it).
  * @param {{ result: object, feedback: object }} judgement  from judgeSpot()
  * @param {{ wording?: 'standard'|'kid', principles?: object, principleLinks?: boolean }} [opts]
@@ -139,7 +149,7 @@ export function revealModel(judgement, { wording = 'standard', principles, princ
     const principle = r.principleId ? {
       id: r.principleId,
       name,
-      label: p?.short ?? r.name ?? r.principleId,
+      label: principleLabel(p, w) || r.name || r.principleId,
       href: principleLinks ? `#/learn/p/${encodeURIComponent(r.principleId)}` : null,
     } : null;
     return { text: r.text ?? '', critical: !!r.critical, principle };
@@ -365,7 +375,7 @@ export function createFeedbackPanel(container, { app } = {}) {
     later(() => bits.remove(), 1600);
   }
 
-  function showFull(judgement, { onNext, onReplay, takeaway, misconception, principleLinks = true, nextLabel, replayLabel, focus = true, animate = true } = {}) {
+  function showFull(judgement, { onNext, onReplay, takeaway, misconception, principleLinks = true, nextLabel, replayLabel, focus = true, animate = true, reward = null } = {}) {
     if (!judgement) { clear(); return; }
     enterBeat('full');
     const w = wording();
@@ -408,6 +418,7 @@ export function createFeedbackPanel(container, { app } = {}) {
         ]),
       ]),
       el('p', { class: 'visually-hidden', text: C.sr(m.score, m.grade) }),
+      reward ? el('div', { class: 'rv-reward' }, [reward]) : null,
       reasons,
       fix,
       praise,

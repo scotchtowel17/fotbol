@@ -1,5 +1,5 @@
 // ghost.js: grid argmax (the ideal spot) and the heatmap field.
-import { test, assert, approx } from './harness.js';
+import { test, assert, approx, timed, PERF_SLACK } from './harness.js';
 import { makeFrame, posOf } from './fixtures.js';
 import { buildContext } from '../js/engine/context.js';
 import { mirrorPlayerId, mirrorRole } from '../js/engine/roles.js';
@@ -157,14 +157,10 @@ test('performance: a full search stays under 30 ms with 16 applicable rules', ()
   const frame = makeFrame('ipBuildUp', { ball: at(45, 30), carrierId: 'us-DM', move: { 'us-DM': at(45, 30) } });
   const ctx = ctxOf(frame, 'ipBuildUp', 'us-LCM');
   const oop = ctxOf(makeFrame('oopMidBlock'), 'oopMidBlock', 'us-DM');
-  const time = (fn) => {
-    fn(); fn(); // warm up
-    const ts = [];
-    for (let i = 0; i < 7; i++) { const t0 = performance.now(); fn(); ts.push(performance.now() - t0); }
-    return ts.sort((a, b) => a - b)[3];
-  };
-  const tHeavy = time(() => computeGhost(ctx, { rules: heavy }));
-  const tRegistry = time(() => computeGhost(oop));
-  assert.ok(tHeavy < 30, `16 forced rules: median ${tHeavy.toFixed(1)} ms`);
-  assert.ok(tRegistry < 30, `registry, #6 out of possession: median ${tRegistry.toFixed(1)} ms`);
+  // The median of 9 runs after a warm-up (harness.js timed): about 3 ms and 0.4 ms on a laptop, 5 ms and 0.6 ms with
+  // every core busy, so the 30 ms budget (RESEARCH 9.5) only fails on a real slowdown.
+  const tHeavy = timed(() => computeGhost(ctx, { rules: heavy }), { warmup: 3, runs: 9 }).median;
+  const tRegistry = timed(() => computeGhost(oop), { warmup: 3, runs: 9 }).median;
+  assert.ok(tHeavy < 30 * PERF_SLACK, `16 forced rules: median ${tHeavy.toFixed(1)} ms`);
+  assert.ok(tRegistry < 30 * PERF_SLACK, `registry, #6 out of possession: median ${tRegistry.toFixed(1)} ms`);
 });

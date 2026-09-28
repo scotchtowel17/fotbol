@@ -5,7 +5,7 @@
   "brief": "Their #8 is about to slip the ball out to their winger. Keep an eye on their #9.",
   "briefKid": "Their midfielder is about to pass out wide. Watch their striker too.",
   "question": "The ball is out wide and their #9 is running into the box. Where do you go?",
-  "questionKid": "The ball is out wide and their striker is running in. Where do you go?",
+  "questionKid": "Ball out wide, their striker running in. Where do you go?",
   "takeaway": {
     "standard": "When the ball goes wide, your job is their #9: drop with your line and stand between them and the middle of our goal, leaning a little toward the ball.",
     "kid": "When the ball goes wide, stay between their striker and our goal."
@@ -77,7 +77,7 @@
       "id": "ball-watching",
       "region": { "type": "circle", "x": 18, "y": 23, "r": 2.5 },
       "text": "You drifted toward the ball, but your full-back and your partner have it covered; their #9 is your job.",
-      "textKid": "Your teammates have the ball covered, so watch their striker."
+      "textKid": "Your teammates are going to the ball, so watch their striker."
     },
     {
       "id": "in-front-of-the-striker",

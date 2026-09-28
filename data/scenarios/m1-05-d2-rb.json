@@ -5,10 +5,10 @@
   "brief": "Their #8 is about to play the ball out to their winger on your side.",
   "briefKid": "Their midfielder is about to pass to their winger near you.",
   "question": "Their winger has turned to face you on the touchline. Where do you go?",
-  "questionKid": "Their winger has the ball and is facing you. Where do you go?",
+  "questionKid": "Their winger has the ball, facing you. Where do you go?",
   "takeaway": {
     "standard": "Press a winger from the inside: close them down goal-side with the middle shut, so the only way on is down the touchline.",
-    "kid": "Get close from the middle side, so they can only go down the line."
+    "kid": "Get close from the middle side, so they can only go toward the sideline."
   },
   "module": "M1",
   "moment": "out_of_possession",
@@ -70,7 +70,7 @@
       "id": "pressed-from-the-touchline-side",
       "region": { "type": "circle", "x": 39.8, "y": 64.5, "r": 1.8 },
       "text": "You pressed from the touchline side, which leaves the inside open for them to cut in toward our goal.",
-      "textKid": "Coming from the side line lets them cut inside, so come from the middle side."
+      "textKid": "Coming from the sideline lets them cut inside. Come from the middle side."
     },
     {
       "id": "stood-off",

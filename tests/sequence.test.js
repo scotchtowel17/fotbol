@@ -1,5 +1,5 @@
 // js/engine/sequence.js: the Live-mode sequence generator and the incremental playback cursor.
-import { test, assert, loadJSON } from './harness.js';
+import { test, assert, loadJSON, timed, PERF_SLACK } from './harness.js';
 import {
   generateSequence, createPlayback, graceEvents, hashSeed, mulberry32, createRng, SEQUENCE_DEFAULTS,
 } from '../js/engine/sequence.js';
@@ -188,12 +188,15 @@ test('createPlayback returns exactly what timeline.frameAt returns (fixed learne
 
 test('createPlayback is cheap enough for 60 fps (a 45 s sequence, every frame)', () => {
   const s = gen(11);
-  const pb = createPlayback(s, { formations });
-  const t0 = performance.now();
   let n = 0;
-  for (let t = 0; t <= s.timeline.duration; t += 1 / 60) { pb.frameAt(t, { x: 35, y: 30 }); n++; }
-  const per = (performance.now() - t0) / n;
-  assert.ok(per < 2, `${per.toFixed(3)} ms per frame`);
+  // A fresh playback each run (its state changes are computed as it goes); the median of 3 runs (harness.js timed).
+  const run = () => {
+    const pb = createPlayback(s, { formations });
+    n = 0;
+    for (let t = 0; t <= s.timeline.duration; t += 1 / 60) { pb.frameAt(t, { x: 35, y: 30 }); n++; }
+  };
+  const per = timed(run, { warmup: 1, runs: 3 }).median / n;
+  assert.ok(per < 2 * PERF_SLACK, `${per.toFixed(3)} ms per frame`);
 });
 
 test('live sampling: carrierAt and possessionAt agree with the playback at every 10 Hz sample', () => {

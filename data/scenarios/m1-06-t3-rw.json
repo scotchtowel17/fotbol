@@ -5,10 +5,10 @@
   "brief": "We are attacking down your side. Watch what happens to the ball.",
   "briefKid": "We are attacking near you. Watch the ball.",
   "question": "We have lost it and their full-back is sprinting past you. Where do you go?",
-  "questionKid": "We lost the ball and their defender is running past you. Where do you go?",
+  "questionKid": "Ball lost! Their defender runs past you. Where do you go?",
   "takeaway": {
     "standard": "When the ball is lost, sprint back toward our goal, not toward the ball, until you are goal-side of the player you are tracking.",
-    "kid": "When we lose the ball, sprint back toward our goal and beat your player back."
+    "kid": "We lose the ball? Sprint back toward our goal and beat your player back."
   },
   "module": "M1",
   "moment": "defensive_transition",
@@ -88,7 +88,7 @@
       "id": "ball-watching",
       "region": { "type": "circle", "x": 66, "y": 54, "r": 3 },
       "text": "You drifted toward the ball, and their full-back ran into the space behind you.",
-      "textKid": "Don't run to the ball; run back and pick up your player."
+      "textKid": "Don't run to the ball. Run back and stay with your player."
     },
     {
       "id": "wrong-side",

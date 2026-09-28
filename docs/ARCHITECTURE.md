@@ -14,13 +14,18 @@ This is the **source of truth for module boundaries**. If you change a signature
 ## 2. File layout
 
 ```
-index.html                 app shell (single page, hash router)
+index.html                 app shell (single page, hash router): the Coach header and Player mode's top bar (#player-bar)
 tests.html                 runs tests/*.test.js in the browser (list: tests/manifest.js)
 css/app.css                design tokens (light/dark), layout, components
+css/player.css             Player mode's frame: top bar, kick-off, home and the Road, the card (shell)
+css/play.css, css/pass.css Player mode's "Find your spot" (with its reveal, Full time, Match day) and "Who's open?" screens
 assets/                    favicon
-js/main.js                 boot: load data, route #/home | #/learn | #/explore | #/drill | #/live | #/progress | #/author | #/credits | #/dev
+js/main.js                 boot: load data and the Road, the two modes (§5.9), route #/ (Player home or #/kickoff) | #/kickoff |
+                           #/play | #/pass | #/matchday | #/card (js/ui/player/) and #/coach | #/learn | #/explore | #/drill |
+                           #/live | #/progress | #/trophies | #/author | #/credits | #/dev (js/ui/modes/)
 js/data.js                 browser-side loaders (fetch JSON, one retry after a dropped connection) → plain objects passed to the engine
 js/store.js                localStorage wrapper (try/catch), progress export/import
+js/rewards.js              PURE game layer: XP, levels and ranks, stars, badges, sticker cards, kit unlocks (§5.13)
 js/engine/                 PURE (no DOM, no fetch)
   geometry.js              vectors, projection, barycentric, band()
   pitch.js                 IFAB constants, lanes, thirds, zone 14, frame transforms
@@ -29,6 +34,9 @@ js/engine/                 PURE (no DOM, no fetch)
   scene.js                 autoFrame(): place all 22 players for a ball position/possession; learnerBase()
   timeline.js              frameAt(scenario, t): ball-scripted scenario playback; learnerBaseAt()
   sequence.js              Live mode: seeded 45-60 s sequences (generateSequence) and an incremental playback cursor (§5.11)
+  passing.js               the on-ball decision: rate every pass (rateOptions), grade a choice, say why (§5.14)
+  passdrill.js             "Who's open?" pass drills: generate, check, mirror; pass moments in Live sequences (§5.14)
+  spotdrill.js             generated "Find your spot" drills in the scenario format, kept by the drill gates (§5.15)
   scenario.js              validate / mirror (left↔right) / normalise scenarios
   context.js               buildContext(frame, learner): duties, lines, pressure, block height, marks
   rules/<id>.js            one principle rule per file; rules/index.js exports RULES
@@ -44,9 +52,17 @@ js/ui/
   reveal.js                the shared feedback panel: live hot/cold readout, beat 1 (cue), beat 2 (full reveal) (§5.12)
   session.js               pure session helpers: persistence, drill selection, streaks, summaries (§5.12)
   components.js            small DOM helpers (el(), buttons, toasts, stageLayout)
-  modes/                   one file per route (§5.9): home learn explore drill live progress author credits dev
+  rewards-store.js         rewards in the app: store key 'rewards', award(), the kit on the page (§5.13)
+  celebrate.js             celebrations and every reward visual: stars + XP row, level-up screen, player card, level bar (§5.13)
+  sound.js                 tiny WebAudio synth: whistle, star, good, cheer, levelup, groan, lift (no audio files) (§5.13)
+  modes/                   Coach mode: one file per route (§5.9): home learn explore drill live progress trophies author credits dev
+  player/                  Player mode (§5.16, docs/KID_REDESIGN.md): shell (top bar, settings sheet, icons), home (the Road),
+                           kickoff (first open, "What do you play?", "Make it yours"), card (card, stickers, badges, kit),
+                           road (the Road, the profile, set building), play ("Find your spot" sets), pass ("Who's open?"),
+                           reveal (the Player reveal), fulltime (the end of a set), matchday (simplified Live), strings (shared words)
 data/formations/helios-433.json   ball→11 positions table (converted from HELIOS, MIT; 48 documented edits)
-data/principles.json              principle catalogue (IDs, names, text, links)
+data/principles.json              principle catalogue (IDs, names, text, links; kidName and summary.kid are Player mode's words)
+data/road.json                    Player mode's Road: chapters of nodes (spot, pass, mix) over the principles (§5.16)
 data/curriculum.json              modules → principles → scenario IDs
 data/tutorial.json                M0 guided tour
 data/resources.json               reading list
@@ -59,9 +75,11 @@ scripts/build-index.mjs           npm run index: writes data/scenarios/index.jso
 scripts/sanity.mjs                coach-facing report on the canonical situations → docs/sanity-output.txt
 scripts/shape.mjs                 print both teams' layer-A targets for a ball position
 scripts/lib/ascii.mjs             ASCII pitch for terminals
-tests/harness.js                  test() / assert that work in Node and the browser
+tests/harness.js                  test() / assert that work in Node and the browser; timed() for the speed tests (median of runs after a
+                                  warm-up, bounds scaled by FOTBOL_PERF_SLACK)
 tests/fixtures.js                 hand-placed 22-player frames for unit tests
 tests/situations.js               canonical match situations (integration test, sanity report, dev playground)
+tests/road-sets.js                the Road sweep (every node x every position group, real generators), run by road-sets-*.test.js in Node
 tests/manifest.js                 test files tests.html runs (tests/manifest.test.js keeps it complete)
 tests/*.test.js                   unit tests; integration.test.js is end to end on real data
 docs/sanity-output.txt            the last sanity report (regenerate after engine changes: npm run sanity)
@@ -126,9 +144,10 @@ HELIOS role number → our role: 1 GK, 2 LCB, 3 RCB, 4 LB, 5 RB, 6 DM, 7 LCM, 8 
 
 ### 4.1 Content data
 
-- `data/principles.json` = `{ version, $comment, principles: [...] }`. Each principle: `id, name, short, category, section` (RESEARCH subsection), `who, families, level, release, ruleIds, summary{standard,kid}, ruleOfThumb, why, commonMistake, learnMore[{label,url}], sources`. `name`, `level`, `release` and `sources` follow the RESEARCH §8 table (tested). `ruleIds` follow the RESEARCH 5.5 map and agree both ways with the rule registry (tested).
+- `data/principles.json` = `{ version, $comment, principles: [...] }`. Each principle: `id, name, short, kidName` (Player mode's 2-4 plain words, e.g. "Back Up Your Buddy"), `category, section` (RESEARCH subsection), `who, families, level, release, ruleIds, summary{standard,kid}, ruleOfThumb, why, commonMistake, learnMore[{label,url}], sources`. `name`, `level`, `release` and `sources` follow the RESEARCH §8 table (tested). `ruleIds` follow the RESEARCH 5.5 map and agree both ways with the rule registry (tested). The passing principles PA1-PA15 (category `passing`, section `research/passing.md §2`, `ruleIds: []`: passing.js rates them, §5.14) follow [research/passing.md](research/passing.md) §2 instead (release and source keys, tested), link only to its §7 sources, and add `related` (the F/B/P rows they mirror, e.g. PA4 → B3).
 - `data/curriculum.json` = `{ version, $comment, moduleUnlockStars, levels: [{level, name, kidName, mix, scaffold, timer, unlockStars, description{standard,kid}}], session{...}, modules: [{ id, kind: 'tutorial'|'drills', title, subtitle, description{standard,kid}, principles, roles, unlock, tutorial?, scenarios: [], levels: [{level, focus{standard,kid}}], interleave: [{pair, label{standard,kid}}], pitchChallenge{standard,kid} }] }`. A drill module's `scenarios` lists exactly the indexed scenarios whose `scenario.module` is that module, in teaching order (easy to hard), and `roles` exactly the role families those scenarios play (both tested in `tests/scenarios-content.test.js`). The app selects drills from the index by `scenario.module` (session.js `candidatesFor`), so the list is the curriculum's record, not a second source of truth.
 - `data/tutorial.json` = `{ version, $comment, module: 'M0', title, intro{standard,kid}, outro{standard,kid}, steps: [{ id, topic, title, text{standard,kid}, principles, setup{ ball, possession, carrierId?, learnerRole, learnerStart?, overlays{thirds,lanes,zone14,offsideLine: boolean}, highlight, overrides? }, task{ type, to|target|answer, prompt{standard,kid}, success{standard,kid}, hint? } }] }`. `setup` means the same as the autoFrame options; `overlays.offsideLine` is a boolean, so the UI computes the line (their second-last player) before calling `board.setOverlays`.
+- `data/road.json` = `{ version, $comment, groups: { DEF: ['CB','FB'], MID: ['DM','CM'], WING: ['W'], STRIKER: ['ST'] }, defaultRoles: { DEF: 'LB', MID: 'LCM', WING: 'LW', STRIKER: 'ST' }, lead: { [group]: chapterId }, quickPass: nodeId[], matchday: { unlockAfter: nodeId }, chapters: [{ id, title, skill, icon, opensAfter?, nodes: [{ id, kind: 'spot'|'pass'|'mix', title, icon, principles? | from? }] }] }`: Player mode's Road (docs/KID_REDESIGN.md §3; js/ui/player/road.js normalises it, §5.16). Node titles are 4 words or fewer; the home writes only the current chapter's titles and, under its node, the title of the node that opens Match day (the Big Match); `icon` stands for the rest. A mix node draws from its chapter (`from`); `skill` names the chapter's rating on the card. **Unlocks:** the first node is open; a node opens when the one before it has a star (or once you have played it); a chapter's `opensAfter` also opens its first node when that node has a star ("Help the ball" and "Pass it right" both open after Close Them Down); Match day opens when `matchday.unlockAfter` (Big Match) has a star. `lead` names, per position group, the chapter whose open nodes Next up offers first (`{ MID: 'help', WING: 'help', STRIKER: 'help' }`: attackers get attacking plays early; defenders follow the Road's order). `quickPass` names the pass nodes the quick "Who's open?" set (`#/pass`) takes in turn (`['free-player', 'play-forward']`: the first gets the odd rep). Tested in `tests/road.test.js`.
 - `data/resources.json` is an array of `{ id, title, url, kind: 'book'|'website'|'video'|'course'|'curriculum'|'app', group: 'start-here'|'beginner'|'intermediate'|'advanced'|'video', level, audience, why, free, verified, note? }` in display order.
 
 ## 5. Engine API
@@ -486,19 +505,55 @@ export function kFactor(n, params?), principleTheta, roleTheta, targetFor(skills
 ```js
 // js/ui/board.js
 export const BALL_ID = 'ball';                         // the ball's id in enableDrag ids, highlight lists and onMove/onEnd
-export function createBoard(container, { orientation = 'auto', params } = {}) → Board   // params: BOARD_DEFAULTS overrides
+export function createBoard(container, { orientation = 'auto', params, youLabel = 'YOU', labels = 'role', youNumber = null } = {}) → Board
+//   params: BOARD_DEFAULTS overrides; youLabel: the tag over the learner (app.createBoard passes the learner's nickname, §5.13);
+//   labels: 'role' (Coach mode: role codes on the tokens) | 'number' (Player mode: each team's unique shirt numbers, ROLE_INFO num:
+//   GK 1, RB 2, LB 3, LCB 4, RCB 5, DM 6, RW 7, LCM 8, ST 9, RCM 10, LW 11; plain names and places for screen readers, no codes
+//   or metres; and Player mode's sizes: pitch and marker labels at least playerLabelPx (16 px, R6) tall, up to
+//   playerMaxLabelScale (3.6) times life size, and YOUR name tag's text at least playerTagPx (14 px), up to maxTagScale (3)
+//   times what the token alone would draw);
+//   youNumber: in number mode, YOUR kit number on YOUR token (default: the position's); the teammate whose position wears that
+//   number wears YOUR position's number instead (shirtNumberOf), so no two players on a team share one; theirs keep theirs
 // Board = {
-//   el, orientation (getter), setOrientation('auto'|'horizontal'|'vertical'),
-//   render(frame, { learnerId, highlight: string[], labels: 'role'|'none', dimOthers: boolean }),
+//   el, orientation (getter), tokenScale (getter), pxPerMetre (getter), setOrientation('auto'|'horizontal'|'vertical'),
+//   render(frame, { learnerId, highlight: string[], labels: 'role'|'number'|'none', dimOthers: boolean, youLabel?: string, youNumber?: number }),
 //   setGhost(Vec|null), setZone({ center, tol }|null), setHeatmap(field|null),
 //   setOverlays({ thirds, lanes, zone14, offsideLine: number|null, backLine: number|null }),   // merges partial patches
-//   setMarkers([ arrow {from,to,tone?,label?} | segment {a,b,tone?,dashed?,label?} | ring {at?|id?, r?, tone?, pulse?, label?}
-//                | label {at,text,tone?} | a rule cue() object ]),                               // tone: fix|cue|good|bad|info
-//   enableDrag({ ids: string[], onMove(id, Vec), onEnd(id, Vec) }), disableDrag(),
-//   toWorld(clientX, clientY) → Vec, destroy()
+//   setFocus({ x0, x1 } | Vec[] | null),              // the pitch length a mode needs: a phone held upright crops the rest (focusViewBox)
+//   setMarkers([ arrow {from,to,tone?,label?} | segment {a,b,tone?,dashed?,label?,labelAt?,clear?} | line-x {x,tone?,dashed?,label?,labelAt?,clear?}
+//                | ring {at?|id?, r?, tone?, pulse?, label?} | label {at,text,tone?,lift?,below?,clear?} | a rule cue() object ]),   // tone: fix|cue|good|bad|info
+//                // every marker may carry cls (extra class names: Player mode styles its lanes, rings and ★ ✓ ! ✗ labels with them).
+//                // Label placement: a label's lift raises it by that many metres, or 'token' clears a drawn token (or the best-spot
+//                // ring) at any scale; below: true writes it under the point; clear: 'you' (Player mode) keeps it off YOU and YOUR
+//                // name tag: the side asked for, else the other side, else right or left of the point, whichever covers neither and
+//                // stays in view. A segment's or line's label sits at labelAt (a world point) instead of its middle; an arrow that
+//                // runs up or down the screen has its label just past its tail. Centred labels slide sideways to stay in view.
+//   enableDrag({ ids: string[], onMove(id, Vec), onEnd(id, Vec), tapToMove?: id, onArm?(id|null) }), disableDrag(),
+//                // tapToMove: a tap on the pitch moves that token there; tap-YOU-then-a-spot still works, but only a tap on the drawn
+//                // token picks it up (a tap on its tag or the grab area just around it is a move there: tapAction); onArm: a tap
+//                // armed or disarmed a token. A press within grabRadius (4 m; never less than the drawn token or minHitPx across)
+//                // picks the token up to drag.
+//   toWorld(clientX, clientY) → Vec, destroy(),
+//   // Player mode extras (docs/KID_REDESIGN.md §8.1; Coach mode never calls them):
+//   setSpotlight(ids: string[] | null),              // everything but YOU, the ball and these tokens dimmed to 40 %; null = all normal
+//   enableTargets({ ids, onTap(id), onPreview(id|null), labelFor?(id) }), disableTargets(), previewTarget(id|null), previewed (getter)
+//                // big (≥ 44 px) numbered tap targets on tokens: a first tap (or Enter/Space) previews, a second on the same one confirms
+//   showHintHand({ from, to }) → Promise,            // the worked example: a hand drags YOU to `to`, YOU snaps back; resolves when done
+//                // (at once under reduced motion; a timer backs up the animation frames, so a hidden tab never keeps it waiting)
+//   setAid({ kind: 'glow', target } | { kind: 'heat', level: 'hot'|'warm'|'cool'|'cold' } | null),
+//                // a warm/cold ring on YOU: glow brightens and warms as YOU nears target (BOARD_DEFAULTS aidFar, aidBands); heat is Match day's
 // }
-// also pure helpers: pickOrientation, viewBoxFor, project/unproject, worldTransform, keyDelta, describeSpot, tokenName, pitchMarkings, drawPitch
+// also pure helpers: pickOrientation, viewBoxFor, project/unproject, worldTransform, keyDelta, describeSpot, tokenName, pitchMarkings, drawPitch,
+//   pxPerMetre(box, vb), tokenScale(pxPerM), labelScale(pxPerM), focusViewBox(orientation, box, focus), hitRadius(pxPerM, drawnM)
+//   playerLabelParams(P) → P with Player mode's label minimums; tagScale(pxPerM, tokenK, { player }) → YOUR tag's extra scale (1 in Coach mode)
+//   youTag(label) → { text, width }   // the learner's tag: the label in capitals (≤ 12 characters) or 'YOU', and its pill width in metres
+//   SHIRT_NUMBERS, shirtNumberOf(id, { learnerId, youNumber }) → number|null   // the position's number, YOUR kit number swapped in (see youNumber)
+//   tokenLabel(id, mode, { learnerId, youNumber }), simpleTokenName(id, learnerId, youNumber) ("Teammate, number 4"), describeSpotSimple(p)
+//   tapAction({ armed, pressed, tapToMove, onBody }) → { kind: 'arm'|'disarm'|'move'|'none', id }   // what a tap does (see enableDrag)
+//   hintPose, hintTotalMs, aidLevel, aidStrength    // the worked-example hand's pose over time, its length, the glow band and strength for a distance
 ```
+
+Every draggable or tappable token is at least `minHitPx` (44 CSS px) wide to hit, however small it is drawn (R10).
 
 The shared feedback panel (`js/ui/reveal.js`) is specified in §5.12.
 
@@ -506,10 +561,12 @@ Board rules: SVG `viewBox` in metres (with a 3 m margin), a vertical layout when
 
 ### 5.9 App shell and mode contract
 
-`js/main.js` builds an `app` object once, then routes `#/<mode>[/<arg>...]` to `js/ui/modes/<mode>.js` via dynamic `import()`. A missing mode module shows a friendly "coming soon" card instead of crashing.
+`js/main.js` builds an `app` object once, then routes `#/<mode>[/<arg>...]` via dynamic `import()` to `js/ui/player/<name>.js` (Player mode's routes) or `js/ui/modes/<mode>.js` (Coach mode's). A missing module shows a friendly "coming soon" card instead of crashing.
+
+**Two modes** (docs/KID_REDESIGN.md §1): `settings.mode` is `'player'` (the default for everyone: the kid-first screens of §5.16, always in simple wording) or `'coach'` (the full app below, unchanged in substance: detailed wording, scores and grades, principle codes, Explore, Learn, Progress, Author, Live). Coach mode's settings menu has **More detail** (`settings.detail`: on = detailed wording, off = simple wording); the word "Kid" never shows. `settings.wording` is derived (`effectiveWording({ mode, detail })`: `'standard'` only in Coach mode with More detail on, else `'kid'`), so every module that reads it keeps working; an old `wording` patch sets `detail`. Switching: Player mode's settings sheet has "Coach or parent? Open Coach mode" (→ `#/coach`); Coach mode's header has **Back to Player mode** (→ `#/`). Pure helpers exported for tests: `parseHash`, `toHash`, `resolveRoute(parsed, { appMode, onboarded })` → `{ kind: 'player'|'coach', module, mode, params, redirect? }`, `navigateTo(target, { replace }, env)`, `normalizeSettings`, `mergeSettings`, `effectiveWording`, `MODE_INFO`, `PLAYER_ROUTES`, `settingsLinks`, `isDevMode`. Which header shows is `js/ui/player/shell.js chromeFor(route)`: the Coach header for Coach routes, Player mode's top bar for `#/` and `#/card`, none for the kick-off and the play screens (they bring their own way out).
 
 ```js
-// every js/ui/modes/<mode>.js
+// every js/ui/modes/<mode>.js and js/ui/player/<name>.js
 export async function mount(root /* a fresh <div class="view view--<mode>"> per route */, app, params /* string[] from the hash */) → (void | () => void /* unmount */)
 // board modes use components.js stageLayout(root, {label}) → { board, panel: {root, head, actions, feedback (aria-live), body}, expand, collapse, toggle, destroy }
 
@@ -524,30 +581,52 @@ export async function mount(root /* a fresh <div class="view view--<mode>"> per 
     scenarios: { index: ScenarioMeta[], meta(id), load(id) → Promise<Scenario> },
   },
   store,          // js/store.js
-  settings,       // { wording: 'standard'|'kid', theme: 'auto'|'light'|'dark', reducedMotion: boolean, role: LEARNABLE_ROLES } (persisted; unknown keys kept)
-  setSettings(patch), onSettings(fn) → unsubscribe,
-  navigate(hash), route: { mode, params },
-  createBoard,    // js/ui/board.js
+  settings,       // { mode: 'player'|'coach' /* default 'player' */, detail: boolean /* Coach mode's More detail, default true */,
+                  //   wording: 'standard'|'kid' /* derived: effectiveWording */, theme: 'auto'|'light'|'dark', reducedMotion: boolean,
+                  //   role: LEARNABLE_ROLES /* Coach mode's position */, sound: boolean /* default true */ }   (persisted; unknown keys kept)
+  setSettings(patch), onSettings(fn) → unsubscribe,   // listeners get (settings, changed); a mode or detail change reports wording too
+  navigate(hash, { replace = false } = {}), route: { mode, params, kind: 'player'|'coach' },
+                  // replace: true swaps the current history entry and routes at once: a screen that sends you on (a spot node
+                  //   opened at '#/pass/<id>' goes to '#/play/<id>', and the other way round) leaves no address that Back would land on
+  createBoard,    // js/ui/board.js, with { youLabel: the learner's nickname or 'YOU' } by default
+  sound,          // extra (§5.13): js/ui/sound.js createSound({ enabled: () => settings.sound })
+  celebrate,      // extra (§5.13): js/ui/celebrate.js createCelebrations(app)
+  shell,          // extra: Player mode's top bar (js/ui/player/shell.js createPlayerShell): setChrome, refresh, openSettings, closeSettings
 }
+// app.data.road: data/road.json normalised (js/ui/player/road.js loadRoad), loaded at boot with the rest of the data (§5.16)
 ```
 
 Routes (`#/<mode>[/<arg>...]`; a bad argument never dead-ends: it falls back to the mode's default view with a way on):
 
+Player mode's routes (`js/ui/player/`, §5.16; they work in either mode):
+
 | Route | View |
 |---|---|
-| `#/` `#/home` | home: pick your position, your path through the modules, the ways to play |
+| `#/` | Player home (`home.js`): the big Play button, "Who's open?" and Match day, days played this week, the Road. With no position picked yet (profile `onboarded` false) the address becomes `#/kickoff`. In Coach mode `#/` is Coach home. |
+| `#/kickoff`, `#/kickoff/pick`, `#/kickoff/kit` | the first open (`kickoff.js`): Play, "What do you play?", and after the first set "Make it yours" |
+| `#/play`, `#/play/<nodeId>`, `#/play/first` | "Find your spot" (`play.js`): the next node, a node (locked or unknown: the next one; a pass node: `#/pass/<nodeId>`), the onboarding set |
+| `#/pass`, `#/pass/<nodeId>` | "Who's open?" (`pass.js`): a quick set of mixed passing lessons, a Road pass node (a spot node: `#/play/<nodeId>`; locked or unknown: the quick set) |
+| `#/matchday` | Match day (`matchday.js`), locked (with the way to open it) until chapter 1's Big Match has a star (`?dev` skips the lock) |
+| `#/card`, `#/card/stickers`, `#/card/badges`, `#/card/kit` | your card (`card.js`) |
+
+Coach mode's routes (`js/ui/modes/`):
+
+| Route | View |
+|---|---|
+| `#/coach` (and `#/` `#/home` in Coach mode) | Coach home: pick your position, your path through the modules, the ways to play |
 | `#/learn` (`#/learn/tutorial`) | the M0 tutorial (data/tutorial.json) |
 | `#/learn/principles`, `#/learn/p/<ID>`, `#/learn/resources` | principle library, one principle (case-insensitive), reading list |
 | `#/explore`, `#/explore/<ROLE>` | free play on a static scene (sets settings.role; role changes rewrite the hash with replaceState) |
 | `#/drill`, `#/drill/<M1-M3>`, `#/drill/p/<ID>`, `#/drill/s/<scenarioId>` | a 6-rep drill session: first unfinished module, one module, one principle, one scenario then its module (`-m` suffix: mirrored; `_example` and other unindexed files load by id) |
 | `#/live`, `#/live/<seed>[/<45\|60>]` | a live sequence; a fresh seed is written into the URL (replaceState) so a link replays it |
-| `#/progress` | level, streaks, stars, positions, history, export / import / reset |
+| `#/progress` | level, days played this week (and the best week), stars, positions, history (Player mode's passing reps say Passing), the way into the trophy room, export / import / reset |
+| `#/trophies`, `#/trophies/badges`, `#/trophies/album`, `#/trophies/kit[/<paletteId>]` | the trophy room (§5.13): player card and tiles, badges, the sticker album, the kit locker (a palette id pre-selects that unlocked kit to try on) |
 | `#/author`, `#/author/<scenarioId>` | the scenario editor |
 | `#/credits`, `#/dev` | credits and licences; the engine playground |
 
-A mode module that fails to load is retried once (a dropped connection), then shows a card with Try again (reload) and Back to home.
+A mode module that fails to load is retried once (a dropped connection), then shows a card with Try again (reload) and Back to home. (A browser remembers a module whose own import failed, so only the reload fixes a dependency the server dropped; `python3 -m http.server` drops one now and then under a cold load.)
 
-Store keys (all under the `fotbol:` prefix): `settings` (main.js), `skills`, `history`, `streak`, `live` (session.js, §5.12), `tutorial` `{ completed, completedAt, done: stepId[], step }` (learn.js `normalizeTutorialProgress`), `explore` `{ found, best }` (explore.js), `author:draft` `{ version: 1, scenario, savedAt, origin: {id}|null }` (author.js). "Reset progress" clears `session.js RESET_KEYS` (the progress keys, `tutorial` and `explore`); settings and the author draft stay. Every key degrades to its default when storage is blocked or corrupt (store.js), and the UI says when progress cannot be saved.
+Store keys (all under the `fotbol:` prefix): `settings` (main.js), `skills`, `history`, `streak`, `live` (session.js, §5.12), `tutorial` `{ completed, completedAt, done: stepId[], step }` (learn.js `normalizeTutorialProgress`), `explore` `{ found, best }` (explore.js), `rewards` (js/rewards.js state, ui/rewards-store.js; §5.13), `player` (Player mode's profile: `{ version, group, role, onboarded, road: { [nodeId]: { stars, plays, starts? } }, last: { nodeId, ids } | null }`, js/ui/player/road.js, §5.16: `plays` counts finished sets, `starts` sets begun, which a set's seed takes in, so a reload or a quit mid-set never deals the same reps again; `last` is the last set's drill ids, which the next recall rep never repeats), `player:today` (`{ day, ms }`: today's play time for Full time's break nudge, js/ui/player/fulltime.js), `author:draft` `{ version: 1, scenario, savedAt, origin: {id}|null }` (author.js). "Reset progress" clears `session.js RESET_KEYS` (the progress keys, `tutorial`, `explore`, `rewards` and `player`: after a reset the next open starts at the kick-off); settings, today's play time and the author draft stay. An import replaces the same keys (`IMPORT_KEYS`); `parseProgressFile` passes a file's rewards through `normalizeRewards` (a damaged entry reads as a fresh start, never a refusal). Every key degrades to its default when storage is blocked or corrupt (store.js), and the UI says when progress cannot be saved.
 
 `js/store.js`:
 ```js
@@ -582,6 +661,11 @@ export function hashSeed(seed) → uint32;  mulberry32(a) → () => [0, 1);  cre
  *  module 'live', phase 'open_play', principles ['F2','F1','F3'], every player auto, answer.mode 'engine',
  *  source { kind: 'generated', generator: 'fotbol sequence v1', seed }. Ball keys: 'pass' when the ball is struck, 'carry' at the
  *  start of a carry; a tackle keys possession 'none' with a null carrier, then the winner. The learner never has the ball.
+ *  Every pass (a turnover's aside, which is meant to be cut out) is chosen on the frame the viewer will see: the free playback of
+ *  what has been written so far (states, blends and committed pressers as createPlayback; settle and separation as they are, not
+ *  averaged), rated with passing.js rateOptions (their passes on swapTeams), a softmax over U at passTemperature times the length
+ *  and forward preferences; a pass rated cut out is never played (with none safe the carrier runs with it; boxed in, the least
+ *  bad pass). research/passing.md §5.4; tests/passdrill.test.js holds it (at most 5 % of passes would be cut out).
  *  PURE: no Math.random, no clock. */
 export function generateSequence({ seed, duration = 45, role, formations, params }) → Scenario
 /** ballEvents without 'carry', plus every possession change as 'turnover': Live scores a sample only when
@@ -603,21 +687,31 @@ Live (`js/ui/modes/live.js`) scores at `sampleHz` (10 Hz) off the render path: t
 export function createFeedbackPanel(container, { app }) → { el, showLive, showCue, showFull, clear, destroy }
 //   showLive(judgement)                           every drag move: score, grade, hot/cold word and meter, the top line (text only)
 //   showCue(judgement, { onReveal, focus = true }) beat 1: a cue question (feedback.cue, never the grade) and "Show me"
-//   showFull(judgement, { onNext, onReplay, takeaway, misconception, principleLinks = true, nextLabel, replayLabel, focus = true })
+//   showFull(judgement, { onNext, onReplay, takeaway, misconception, principleLinks = true, nextLabel, replayLabel, focus = true, animate = true, reward })
 //                                                 beat 2: count-up score, grade badge, reasons with principle chips, the fix, praise,
 //                                                 takeaway and misconception notes (string or { standard, kid }); S = confetti unless
 //                                                 reduced motion. Drill and Live pass principleLinks: false (a link would leave the
 //                                                 session) and keep Replay / Next in the stage's action bar instead of onNext/onReplay.
+//                                                 reward: a node shown under the grade (Drill and Explore pass a slot the
+//                                                 celebration draws the stars and XP into, §5.13; none in Coach mode, which
+//                                                 earns nothing).
 //   judgement = judgeSpot() output; the board side (cue highlight, ghost, zone, heatmap) is the caller's job.
 export const REVEAL_DEFAULTS, HOT_COLD_BANDS /* on fire ≥ 90, hot ≥ 70, warm ≥ 50, else cold */, GRADE_COLORS, GRADE_INK
 export function hotCold(score), gradeColor(grade), pickText(v, wording), topLine(feedback), revealModel(judgement, opts) /* pure */
 export function starRating(n, { max, label, size }), principleChip(principle, { wording, className })   // small DOM helpers
+export function principleLabel(principle, wording) // kidName in Kid wording (when present), else short; revealModel's chips use it
 
 // js/ui/session.js: PURE (the store, the day and the time are passed in).
 export const SESSION_DEFAULTS   // reps: 6 per drill session, historyMax: 500, goodScore: 70, liveWorst: 3, liveWorstBelow: 90, ...
-export const STORE_KEYS = { skills, history, streak, live }, PROGRESS_KEYS, RESET_KEYS, LEVELS
+export const STORE_KEYS = { skills, history, streak, live }, PROGRESS_KEYS, RESET_KEYS /* + tutorial, explore, rewards, player */, IMPORT_KEYS /* = RESET_KEYS */, LEVELS
 // persistence: normalizeSkills, loadSkills, saveSkills, loadHistory, appendHistory, loadStreak, saveStreak, updateStreak,
-//   currentDayStreak, dayKey, dayDiff, loadLive, recordLiveBest, saveLive, exportFileName, parseProgressFile
+//   weekDays(streak, today) (days played this week, 0-7; currentDayStreak is its old name), dayKey, dayDiff, loadLive, recordLiveBest,
+//   saveLive, exportFileName, parseProgressFile
+// The streak record (store key 'streak'): { day: { current, best, last, days }, reps: { current, best } }. Days played this week
+//   (R35) replace the day streak: a training day joins its Monday-to-Sunday week, a new week starts again at 1, nothing ever
+//   "breaks"; loadStreak folds in the rewards' training days (so Player mode's play counts), and `best` is the most days in one
+//   week. Coach mode's Drill summary says "N days played this week" and Progress "Days this week" / "Best week: N". The rep
+//   streak (good reps in a row, Coach mode's Drill header) is unchanged.
 // selection: parseDrillRoute(params), authoredRole, playAs(entryRole, role) → { mirror, role } | null,
 //   candidatesFor({ index, role, module?, principle?, scenarioId?, anyRole? }) → refs { id ('<base>-m' when mirrored), baseId, mirror,
 //   role, authoredRole, principles, module, difficulty, title }, extraCandidates(own, anyRole) (other-role refs, flagged extra),
@@ -628,11 +722,317 @@ export const STORE_KEYS = { skills, history, streak, live }, PROGRESS_KEYS, RESE
 //   roleAbilities, learningCurve, longestRun, targetRate
 ```
 
-History entries: drill `{ t, mode: 'drill', id, baseId, title, module, principles, role, score, grade, dist, ms, confidence: 'sure'|'unsure'|null, misconception, mirrored, reasons: ruleIds }`; live `{ t, mode: 'live', id, seed, title, role, score, grade, assisted, duration, speed, recovery, onSpot, early }`. Elo keys items by `baseId` and uses the role actually played; a drill rep updates Elo with `score / 100` as partial credit and the scenario's `difficulty` as the prior.
+History entries: drill `{ t, mode: 'drill', id, baseId, title, module, principles, role, score, grade, dist, ms, confidence: 'sure'|'unsure'|null, misconception, mirrored, reasons: ruleIds }`; live `{ t, mode: 'live', id, seed, title, role, score, grade, assisted, duration, speed, recovery, onSpot, early }`. Elo keys items by `baseId` and uses the role actually played; a drill rep updates Elo with `score / 100` as partial credit and the scenario's `difficulty` as the prior. Player mode adds: its "Find your spot" reps as drill entries with `via: 'play'`, `nodeId` (a Road node or `'first'`) and `aid` (`'example'`, `'glow'` or null), with `baseId` the scenario's (a generated drill's: `gen-<principle>-<family>`, which Progress does not link); its passing reps `{ t, mode: 'pass', id, title, principles, role, score, grade, choice, outcome, best, ms, nodeId }` (Progress labels them Passing); Match day runs as live entries with `via: 'matchday'`.
+
+### 5.13 Rewards (`js/rewards.js`, pure) and celebrations (`js/ui/celebrate.js`)
+
+Game layer for younger learners (about age 11 and up), with the policy of docs/KID_REDESIGN.md §6.3: a rep earns 0-3 **stars** for how good the position was (`starsForScore`: 3 at 90 or more, 2 at 75, 1 at 55 [D]; Player mode shows them with one word, `wordForStars`: Spot on / Great / Close / Not yet, never a grade or a score), and **XP comes from stars and improvement only** (0/10/20/30 by stars, a bonus for beating your best on a drill, the first 3 stars on it, sticker cards and badges): nothing for taking part, finishing a set or session, the tutorial or time spent (R28). There are no leaderboards, no random prizes, and no streak that can break: training days only add up, and "days played this week" only fills up within a week (`weekDaysPlayed`, R35). The nickname is picked from a list (`NICKNAMES`; `setKit` keeps list values only, and imports drop anything else), so no real name is ever typed (R27). Store key: `'rewards'` (included in progress export/import).
+
+- **Stars** (`REWARDS_DEFAULTS.starAt` [D]; equal to passing.js `STAR_BANDS`, tested): 1 at 55, 2 at 75, 3 at 90. A rep's stars are the ones its reveal showed, else its score's, else its grade's (`repStars`).
+- **XP** (all [D]): 0/10/20/30 for a rep with 0-3 stars (`starXp`); +10 for beating your best on that drill by 10 points or more (`improveXp`, `improveMin`); +10 for a drill's first 3 stars (`firstThreeStarXp`); +10 per sticker card or upgrade (`cardXp`); a Live run or Match day 0/20/40/60 by its stars (`liveStarXp`); an Explore S find 10, at most 5 a day; each badge its own bonus (below). A set or session, the tutorial, taking part and time earn none (R28).
+- **Levels** (`LEVEL_XP` [D]): level 2 at 50 XP, then 250, 700, 1600, 2550, 3550, 4600, 5700, 6850, 8050, 9300, 10600, 11950, 13350 and 14800 (level 16), and 1500 more for each level after that. Ranks (`RANKS`): Rookie from level 1, Academy 3, First Team 5, Captain 8, Legend 11. The pace (tests/rewards.test.js plays it through): five 1-star plays reach level 2; a strong first session (the 3-play first set, whose taught reps earn nothing, then two 5-play sets, mostly 3 stars) ends at level 3, never 4; six strong sets stay below First Team, which takes about eight strong sets or twice as many average ones; Captain and Legend take many weeks.
+- **Badges** (`BADGES`, XP bonus in brackets; each for a skill, never for taking part or finishing): Spot on (a first 3 stars, 20), Hat-trick (3 stars three times in a row, 40), Top form (3 stars on 10 plays, 40), On a roll (a star five times in a row, 30), Perfect set (a star on every play of a set of 3 or more, 30), Comeback (2 stars on a drill you once got none on, 30), All-rounder (a star in all six outfield position families, 40), Live wire (2 stars in a Live run or Match day, 40), Red hot (3 stars there, 60), Collector (10 sticker cards, 40), Gold standard (a gold sticker, 30), Regular (5 days played, 0), Captain and Legend (the ranks, 0), and the `coachOnly` Kick-off (the tutorial, 0) and Explorer (5 S finds in Explore, 20), which Player mode's card hides until earned. Renamed badges keep their ids: Top form is `first-rep` (once "Boots on", a first play), Red hot `live-finisher` (once "Went the distance"), and `normalizeRewards` drops a version 1 record of either; Perfect set is `perfect-session` ("Perfect session" in detailed wording). Perfect set comes from the `session` event every Player-mode set sends at its end with its first tries' stars.
+- **Sticker cards** (R25: mastery, not practice): after each counted rep the callers send a `mastery` event with the Elo's mastery stars for each of its ideas, and `award()` gives or upgrades the card only when `stickerReady(history, principleId)`: the idea's last `stickerWindow` (5) counting plays (Player mode's "Find your spot" and "Who's open?" first tries without an aid; `stickerReps`) number at least `stickerMinReps` (3) and average `stickerStars` (2) stars or more. A card is never taken back.
+- **Coach mode earns nothing** (`earnsRewards(app)` is false when `settings.mode` is `'coach'`): it is for coaches and parents and shares the player's store, so `award()` returns `emptyGains()` there and saves nothing (the Elo, the history and the week's days still update). Its screens show no rewards UI and play no reward sounds or burst: no reward row in the Drill or Explore reveal, no rewards card on the Drill summary (never "+0 XP"), no floating celebration (Live, the tutorial), and Live's training-wheels note does not mention XP (tests/celebrate.test.js checks that every Coach screen with a reward hook asks `earnsRewards`). They still show the player's standing, read from the store: the header's level pill, Coach home's player card (with a note that playing in Coach mode never changes it), Progress's trophies tile and the trophy room. A Coach route opened in Player mode earns and shows rewards as before.
+
+```js
+// js/rewards.js: pure (no DOM, storage or clock; the UI passes the local day 'YYYY-MM-DD')
+createRewards() → RewardsState    normalizeRewards(raw) → RewardsState   // sanitises imports and corrupt storage
+applyEvent(state, event, { day }) → { state, gained }                    // immutable
+//  event: { type: 'rep', scenarioId, role, score, grade?, stars? }   after each rep is judged (stars: the ones the reveal showed;
+//                                                          else repStars from the score; Player mode passes one scenarioId per
+//                                                          lesson and position family for generated drills: 'gen-D1-FB', 'gen-PA5-FB')
+//       | { type: 'session', stars? | scores? | grades? }   when a set ends (Player mode: its first tries' stars) or a Drill session (its scores)
+//       | { type: 'live', average }                         when a Live run ends
+//       | { type: 'explore-s' }                             when Explore's "find the S spot" succeeds
+//       | { type: 'tutorial-complete' }
+//       | { type: 'mastery', principleId, stars }           after each rep, for each principle, with elo.mastery()
+//  gained: { xp, stars (rep only), newBest, improved, badges: [id], cards: [{ id, tier, upgrade }],
+//            levelUp: null | { from, to, rank, rankUp, unlocks: [paletteId] } }
+levelFor(xp) → { level, rank, xp, levelXp, nextXp, progress }   LEVEL_XP (level 2 comes within the first set), RANKS
+starsForScore(score) → 0..3, STAR_WORDS, wordForStars(stars), repStars(event)   starsFor(grade) → 0..3 (S 3, A 2, B 1: events with no score)
+weekStart(day), weekDaysPlayed(state, today) → 0..7                    // days played this week (Monday start; only fills up)
+BADGES, BADGES_BY_ID, badgeProgress(state), CARD_TIERS (1 bronze, 2 silver, 3 gold), cardTier(state, principleId)
+KIT_PALETTES (light shirts only: colour-blind safe against --kit-them), kitOptions(state), paletteById(id), setKit(state, patch),
+NICKNAMES (30 football nicknames), pickNickname(raw) → a NICKNAMES entry or '', cleanNickname(s)
+```
+
+Mirrored drills (`<id>-m`) share one best-score record with their original. `REWARDS_DEFAULTS`, `LEVEL_XP` and `RANKS` hold every tunable number.
+
+```js
+// js/ui/rewards-store.js: rewards in the app (the store, the clock, the page)
+REWARDS_KEY = 'rewards'; REWARDS_EVENT = 'fotbol:rewards' (window event, detail { state }); KIT_VARS = { shirt: '--kit-us', edge: '--kit-us-edge', ink: '--kit-us-ink' }
+todayLocal(now?) → 'YYYY-MM-DD' (local)       loadRewards(app) → normalizeRewards(store 'rewards')     daysThisWeek(app, now?) → 0..7
+saveRewards(app, state, { notify = true })    // store, applyKit, then REWARDS_EVENT unless notify: false
+refreshRewards(app)                           // after an import or a reset, and when a drill reveals a rep: re-apply the kit, fire the event
+onRewards(fn) → unsubscribe
+award(app, event, { celebrate = true, grade, host, card, now }) → gained   // applyEvent with todayLocal(), save, app.celebrate.show(gained, ...);
+                                                                           //   Coach mode: nothing (emptyGains); a 'mastery' event waits for stickerReady
+                                                                           //   a rep's gained also gets firstTry; never throws (logs, empty gains)
+                                                                           //   celebrate: false = the caller shows it later (also holds back the event)
+earnsRewards(app) → boolean                        // false in Coach mode (settings.mode 'coach'): every reward hook asks it first
+emptyGains(), cleanGains(raw), mergeGains(a, b)   // one celebration for a rep and its stickers; a session's running total
+kitVars(state), paletteVars(p), applyKit(state)   // classic clears the inline values (css/app.css defaults = the classic palette)
+youLabel(state) → nickname | 'YOU';  shirtNumber(state, roleNum);  totalStars(state)
+
+// js/ui/celebrate.js: every reward visual (restyle here)
+createCelebrations(app) → { show(gained, { grade, host, card = true, quiet }), destroy }
+//   host (an element): the row is drawn in place (the Drill and Explore reveals); quiet redraws it with no sounds or burst.
+//   no host: a floating card under the header, one at a time (queued), auto-dismissed after showMs (3.5 s), paused while
+//   hovered or focused, with a dismiss button (Live, the tutorial). card: false = sounds, burst and level-up only (the drill summary).
+//   One celebration = the star row (the lit stars pop in one at a time, a 'star' tick each) and "+N XP", a short kid headline
+//   ("Brilliant!"), "New best!" / "You improved!", and one chip per badge or sticker (≤ 6 words and an icon; "+N more" past maxChips).
+//   An S grade or a level-up bursts confetti (DOM pieces, Web Animations; none under reduced motion). A level-up then opens the
+//   level-up screen (openModal: focus trapped, Esc or the close button, focus returned): "Level up!", the level, big, the rank and
+//   one button: "Try it on" → #/trophies/kit/<id> when a kit was unlocked, else "Keep going". Only that screen blocks play.
+//   Announced once through its own polite live region (not again when the host is inside a live region, like the reveal).
+celebrationModel, rewardChips, soundPlan, levelModel, pillModel, levelUpModel, starSlots, confettiPieces   // pure
+starRow, rewardRow, kitToken, levelBar, playerCard, sessionCard, renderPill, starIcon                     // DOM builders
+CELEBRATE_DEFAULTS, RANK_ICONS (rookie 🌱, academy ⚽, first-team 👕, captain 🧢, legend 🏆), TIER_ICONS (🥉 🥈 🥇)
+
+// Player mode's celebrations (R29: a short acknowledgement per rep, a big celebration at most once a set):
+PLAYER_CELEBRATE, playerStarPlan(stars) → [{ name: 'star', at, index }] (all done in under 0.6 s), playerAckMs(stars),
+createBurstBudget(n = 1) → { take(), left }   // one per set, shared by the Player reveal (the set's first 3-star rep) and Full time
+                                              //   (a level up or a gold sticker): confetti and the fanfare only while it lasts
+playerMilestone({ stars, firstThreeOfSet, gained }) → 'level-up' | 'gold' | 'three-stars' | null
+reducedMotion(app), confettiBurst(app, { anchor })   // no confetti under reduced motion
+
+// js/ui/sound.js
+createSound({ enabled, volume, win }) → { play(name, { index }?) → boolean, unlock(), ready, destroy() }
+SOUND_NAMES = ['whistle', 'star', 'good', 'cheer', 'levelup', 'groan', 'lift']   // synthesised (oscillators, filtered noise); SOUND_DEFAULTS
+//   groan: "Who's open?" when a pass is cut out; lift: when a pass breaks a line. Sounds never carry meaning alone (the pitch and
+//   the words say it too), and none plays during Watch and Decide except the whistle at the freeze.
+//   The AudioContext is made on the first user gesture while sound is on; no WebAudio (or any failure) → play() returns false.
+```
+
+In Player mode the rewards are awarded rep by rep with `celebrate: false` and shown by Full time (§5.16: stars, the XP bar sweeping, the node's stars, then each sticker, badge or kit colour one at a time, big: at most 3, biggest first, "More" stepping to the next and "+N more on your card" for the rest), and the top bar's level ring catches up then (`refreshRewards`); the reveal only pops the rep's stars.
+
+Hooks (each a small named function in its mode, so the presentation can change without touching them; in Coach mode each does nothing and draws nothing, `earnsRewards`): Drill `rewardRep` (when a rep is judged: the rep with its played id, `-m` included, then a `mastery` event for each of its principles whose `elo.mastery` with the updated skills beats `cardTier`; `celebrate: false`) and `rewardSlot` (beat 2: the row under the grade, and the header pill catches up; beat 1 never gives the grade away), `rewardSession` and `sessionRewards` (the summary: the session event with the reps' scores, which earns no XP but may earn the perfect-set badge, then XP this session, the stars won (`starsForScore` of each rep's score, as the reps' awards counted them), the level bar and the badges and stickers of the session; an unfinished session keeps its gains); Live `rewardRun` (a run played to the end without the best spot on show); Explore `rewardFind` (a counted S spot, in the reveal); Learn `rewardCompletion` (once per completion). A drill freezing plays the whistle. The header's level pill (main.js) links to `#/trophies`; Home shows the player card; Progress links to the trophy room.
+
+### 5.14 passing.js and passdrill.js (the on-ball decision: "Who's open?")
+
+The formulas, the numbers (every one in `PASS_DEFAULTS`, tagged) and the prototype are in [research/passing.md](research/passing.md) §4. Canonical frame, us on the ball; rate their passes on `swapTeams(frame)`. Static frames: no velocities, no body shape.
+
+```js
+// js/engine/passing.js: PURE
+export const PASS_DEFAULTS   // physics [S] (ballSpeed 15, reactionTime 0.7, maxSpeed 5, sigma 0.45), body block, tracking markers, youth execution, pressure oval [S], value, risk premium, labels [D]
+export function rateOptions(frame, carrierId = frame.carrierId, params) → PassRating   // about 0.5 ms of CPU for 13 options (tested < 2 ms)
+// PassRating = { carrierId, ball, vBall, lines: { front, mid, back, secondLast } /* their lines, median x */, offsideX /* = rules/offside.js offsideLineX (tested) */,
+//                options: PassOption[] /* score, then worth, descending */, best /* = options[0] */,
+//                fwdOn /* a good forward pass to a receiver who is not marked (pressure < fwdOnPressure 0.3) within forwardWindow of the best */, params }
+// PassOption = { id: 'us-LCM' | 'us-LW@space', targetId, kind: 'feet'|'space', point, aim /* PA7 far-foot point */, receiverAt, len,
+//   direction: 'forward'|'square'|'back', pSafe /* = pExec x pLane x pWin */, pLane, pExec, pWin, blocker: { id, pInt, at, via: 'block'|'run' } | null,
+//   receiverPressure /* 0..1 */, presserId, room, bypassed, lineBroken: 'front'|'mid'|'back'|null, offside, acrossOwnGoal, value, valueGain,
+//   U /* expected utility, goals: what Live (sequence.js) plays on */, worth /* U less the risk premium: what the rating ranks and scores by */,
+//   score /* 0..100 int */, colour: 'green'|'amber'|'red', label: 'best'|'good'|'risky'|'cut-out'|'offside'|'danger', critical,
+//   tags: [{ tag, principle, kind: 'problem'|'strength'|'direction', weight, who?, kidWho?, whoId? /* blocker, presser or rival */, to, kidTo /* receiver */, n? }] }
+export function gradePass(rating, choiceId, { accept = [] } = {}) → { score, grade /* score.js gradeOf */, stars, outcome: 'completed'|'risky'|'cut-out'|'offside'|'danger', isBest, option } | null
+export function explainPass(rating, choiceId, { wording = 'kid', accept = [], focus = [] } = {})
+  → { headline, line, yours: { text, principleId, tag }, best: { text, principleId, tag, id } | null, more: [{ text, principleId, tag }] /* ≤ 2 */,
+      cue: { text, highlight /* a rule-cue object, §5.5 */, principleId }, grade } | null
+export function starsForScore(score), STAR_BANDS   // 3 ≥ 90, 2 ≥ 75, 1 ≥ 55 (KID_REDESIGN §6.3; equal to js/rewards.js starsForScore, tested once it exists)
+export const PASS_TAGS /* tag → { principles, kind, weight, text: { standard, kid } } */, PASS_FALLBACK, PASS_HEADLINES, PASS_CUES
+export function allPassTexts(wording) → [{ key, text }]   // every sentence the reveal can show, names filled in (tests/copy.test.js reads it)
+export function value, valueOpp, lossCost, execProb, laneRisk, raceAt, markedBy, pressureAt, roomAt, goalAngle, oppLines, swapTeams, kidName, optionOf
+```
+
+- **Lane and race** (research/passing.md §4.2, with two corrections from the Player-mode review): to feet, the race to intercept is run only up to where the receiver meets the ball, but the body block covers the whole lane up to his last metre, so a defender standing in the receiver's run to the ball (in front of him, between the meeting point and him) cuts it out; one level with him or behind counts `runBehind` (3) times further off (that is pressure, not a block). Into space, a marker tracking the runner (`markedBy`: within `markReach` 3 m of him, fading over 2 m more, and level or goal-side of him on his run, fading once he is 1-3 m past) reacts with the runner (`markReaction` 0.3 s), not when the pass is played (0.7 s): a centre-back level with our #9 and 2 m from him contests the ball behind him (pWin about 0.5), one goal-side wins it (below 0.45).
+- **Score:** `worth = U - riskWorth x pointValue x r`, r = 0 for a safe (green) pass, 1 to 2 for a risky (amber) one as its pSafe falls from 0.8 to 0.5, 2 for a cut-out one: a teaching prior (riskWorth 20 points; 20-40 star the same passes) so a risky pass is starred only when it is worth clearly more than the best safe one ("Risky, but worth it" in front of their goal). `score = 100 - (worth_best - worth) / pointValue` (1 point = 0.1 % of a goal), worth_best over the options that can be starred (not critical, and not cut out while any is not), so the starred pass scores 100; clipped to 0-100; a good (green) option never below 75 (`safeFloor`: two stars), a cut-out (red) one at most 45, a critical one (offside now, or a pass across the front of our own goal, PA10) at most 30.
+- **Labels:** the top option `best`; critical ones `offside` / `danger`; `cut-out` when pSafe < 0.5; `good` when pSafe ≥ 0.8 and the receiver's pressure < 0.6; else `risky`. `colour` keeps green/amber/red for the best too (a risky best says "Risky, but worth it.").
+- **Grading:** S for the best, a good option within `bestMargin` (5) of it, or an `accept` id; anything else at most 89; a risky one at most 74 (`riskyCap`); a safe square or back pass more than `tooSafeGap` (15) points below the best while a good forward pass to an unmarked receiver was on (`too-safe`, PA2) exactly 74 (`tooSafeCap`); stars by `starsForScore`. So the stars say what the label says: the best 3, a good pass 2 ("Great"; a safe-but-slow one 1, "Safe, but a forward pass was on."), a risky one at most 1, a cut-out one 0. The outcome is the most likely one: we grade the decision, not a dice roll.
+- **Words:** simple (kid) lines are at most 14 words (tag sentences at most 12), name players by position words ("their midfielder", "your winger"), and never use codes or sides; standard lines name players with `rules/_util.js nameOf`. `headline` is the consequence (Cut out! / Risky! / Line broken! / Safe pass. / Offside! / Danger!). `yours` explains the choice (why it is best, or its main problem, or its strength); `best` the best one when the choice was not as good; a good choice with the same reason as the best says what made the best better. `focus` (a drill's `principles`) makes the best's line lead with a reason that teaches one of them. `cue.highlight`: the blocker, presser or rival as `{ type: 'player', id }`, the offside line or the line broken as `{ type: 'line-x', x }`, else the pass as a segment.
+
+```js
+// js/engine/passdrill.js: PURE, deterministic (sequence.js createRng, no Math.random)
+export const PASSDRILL_DEFAULTS, PASS_LESSONS
+export function generatePassDrill({ seed, role, principles = [], formations, catalogue, direction = 'auto', avoid = [], unlike = [], params, trace }) → PassDrill | null
+  // avoid: receivers the best must not go to (roles or ids: 'ST', 'us-LW'); unlike: drills already in the set it must not look like
+export function generatePassSet({ seed, count = 5, role, principles, formations, catalogue, params }) → PassDrill[]
+  // 3 of every 5 with a forward best where the position has them; at most maxSameBest (2) to the same receiver; no two alike
+export function passForwardable(principles, role) → boolean   // should a set on these principles hold forward bests for this role (generatePassSet's rule)
+export function canGeneratePass(roleOrFamily, principles, { direction = 'any', min = 0.01 }) → boolean   // PASS_YIELD: cells a builder can skip
+export const PASS_YIELD   // [M] { [principle]: { [family]: [any, forward] } }: the share of calls that give a drill (8 seeds; zeros on 32)
+export function passDrillPicture(drill) → { role, ball, best /* receiver role */, kind, template } | null
+export function similarPassDrills(a, b) → boolean   // the same position and the ball within nearBall (3 m), or the same best receiver within nearSameBest (15 m)
+export function checkPassDrill(drill, { formations, principles, params, mirror = true })
+  → { errors } | { errors: [], frame, rating, best, margin, choices, decoys, forward, lessons, problems }   // problems empty = a good drill
+export function validatePassDrill(drill, { principles }) → string[];   passDrillGates(rating, { accept, keyed, params }) → { problems, margin, choices, decoys }
+export function passDrillFrame(drill, t, { formations }) → Frame      // = frameAt(drill, t, { formations, learnerId: null })
+export function passDrillPlayback(drill, { formations }) → { frameAt(t) }   // createPlayback with nobody held back
+export function passDrillRating(drill, { formations }) → PassRating   // at the freeze
+export function mirrorPassDrill(drill, { formations }) → PassDrill    // mirrorScenario + carrier and keyed answers mirrored + the rating recomputed
+export function passLessons(rating, principles) → string[];   forwardSlot(seed) → boolean
+export function passMoments(sequence, { formations, after = 0.4 }) → [{ t, carrierId, rating }]   // our receptions in a Live sequence
+```
+
+A pass drill is a ball-scripted scenario (§5.3) in which **the learner has the ball at the freeze** (so `validateScenario` alone would refuse it; `validatePassDrill` checks it):
+
+```jsonc
+{ "id": "pass-lcm-12-pa2-pa5", "kind": "pass", "title", "titleKid", "brief", "briefKid": "The ball is coming to you. Look around.",
+  "question": "Who do you pass to?", "questionKid": "Who's open?", "takeaway": { "standard", "kid" },   // the primary principle's (catalogue)
+  "module": "pass", "moment": "in_possession", "phase", "principles": ["PA5", "PA2"],                 // first = the lesson
+  "learner": { "role": "LCM" }, "carrierId": "us-LCM", "carrier": "us-LCM",
+  "timeline": { "duration", "freezeAt",   // = duration, 1.5-3 s: a teammate has it (maybe running with it), passes; the learner receives; ~0.5 s later the freeze
+                "ball", "possession", "carrier": [{ "t": 0, "id": "us-DM" }, { "t": 0.65, "id": null }, { "t": 1.39, "id": "us-LCM" }],
+                "players": { "auto": true, "overrides": [] /* the templates key their players */ }, "tags": [] },
+  "answer": { "mode": "pass", "best": "us-ST", "accept": [], "space": false },
+  "rating": PassRating,                   // at the freeze, JSON-safe: grade and explain without recomputing
+  "misconceptions": [], "difficulty", "params": { "autoPress": false } /* a quarter of drills: nobody presses the learner */,
+  "source": { "kind": "generated", "generator": "fotbol passdrill v1", "seed", "role", "principles", "direction", "attempt",
+              "template": "switch"|"own-goal"|"marked"|"free"|null, "variantOf"? /* the teammate marked or left free */,
+              "short"? /* m the learner came short */, "avoid"? } }
+// id: pass-<role>-<seed>[-<principles asked>][-<direction>][-x-<roles avoided>][-a<attempt>, from the second attempt on]
+```
+
+- **Playing it (UI):** always with nobody held back: `passDrillFrame` or `passDrillPlayback` (with the default learnerId the learner is held at their spot and never reaches the ball). Grade with `gradePass(drill.rating, choiceId, { accept: drill.answer.accept })`, explain with `explainPass(drill.rating, choiceId, { wording: 'kid', accept: drill.answer.accept, focus: drill.principles })`. Mirror with `mirrorPassDrill` (`mirrorScenario` alone leaves the rating and the answer stale). Player mode (js/ui/player/pass.js) does exactly this: the watch plays on `passDrillPlayback`, the freeze is `passDrillFrame`, and the drill's stored rating is graded and explained (recomputed with `passDrillRating` only for a drill without one). Pass `catalogue: app.data.principles` so a drill's `titleKid` and `takeaway` are data/principles.json's.
+- **Gates** (`checkPassDrill`; generation keeps only drills whose mirror passes too): the learner on the ball at the freeze; the best leads every other option by `margin` (8) points (accepted ids aside; a too-safe option counts at its graded cap, 74); the best not cut out; at least 3 options not cut out; a decoy (a cut-out pass to a teammate who looks free, or a too-safe one); a keyed `answer.best` within `bestMargin` of the engine's best; passes at most 20 m/s and carries at most 7 m/s; the stored rating not stale.
+- **Generation:** the learner receives in their zone (their in-possession spot for a random ball) from a teammate 8-24 m away (measured with the learner where their shape puts them with the ball at the passer), aimed at their in-flight spot; the freeze frame is rated. The drill must teach a principle asked (`PASS_LESSONS`): a reason of the best pass (PA3 free, PA5 a line broken, PA6 switch, PA8 into space, PA9 can turn, PA11 zone 14 or a pull-back, PA13 keep it) or a trap among the others (PA2 too-safe, PA4 a free-looking teammate who would be cut out, PA10 across our own goal, PA12 a long pass). With none asked, any. PA1 is every drill's watch; PA7, PA14 and PA15 (v2) give null. Templates: `switch` (PA6; centre-backs, #6, #8: their block slid toward the ball side, one presses, others mark our ball-side options and screen the square pass; the far side free) and `own-goal` (PA10; a centre-back at the corner of our box, their #9 lurking in front of goal).
+- **Who's open, varied:** the shape puts a position's teammates and markers in much the same places every time (a full-back's winger free down the line 3 times in 4), so a natural scene's picture is varied (`varyScene`, `source.template`): `marked` (40 %: the opponent nearest the plain best's receiver comes to stand 1.6 m from him, goal-side and a little ball-side, so that pass is no longer on) or `free` (30 %: the opponents within 5 m of a teammate ahead of the ball, or level with it, step 7 m away from him, to the spot nearest where each started, out of the pass to him); the movers walk there during the lead-in (override keys at 0 and the reception, at most 7 m/s). A winger or #9 comes short to get the ball in 35 % of natural scenes (6-12 m toward the passer and our goal; the learner's override ends where the pass arrives), so they also have it in the middle. A candidate varied scene that fails the cheap checks falls back to the plain one (never when the plain best is avoided); `avoid` forces `marked` on an avoided plain best (then `free` on someone else), and a forward slot whose plain best is not forward forces `free` on a teammate ahead. `fastFail` (default on): a call `canGeneratePass` says no to gives null at once.
+- **The "always pass back" trap:** `direction: 'auto'` wants a forward best (or a switch) on 3 of every 5 consecutive integer seeds (`forwardSlot`), unless no principle asked can be taught by a forward pass for the role (PA13; PA10 except for a centre-back). Build a set from consecutive integer seeds, or with `generatePassSet`. The Road (js/ui/player/road.js, §5.16) builds its pass sets from consecutive integer seeds with an explicit `direction` per rep (3 of 5 `'forward'` where `passForwardable` allows), so it can fall back per rep: a teammate in the position group, then the neighbouring groups, then any pass, then another passing idea of the chapter.
+- **Varied sets (the "pass to 9" trap):** a winger's only forward receiver is nearly always the #9, so forward slots alone would star him 3 times in 5. `generatePassSet` stars no receiver (by role) more than `maxSameBest` (2) times: a slot passes `avoid` (the roles already starred twice) and `unlike` (the drills so far) to generatePassDrill, and a forward slot that cannot find a new receiver takes any direction, so a winger's set holds 2 forward bests. A set can come back short when an idea has too few receivers (a winger's "Play It Forward": the #9 twice). A set builder calling generatePassDrill itself should do the same: `avoid` the roles already starred twice and pass the set as `unlike` (a skipped scene costs one scene, not a call), and use `passDrillPicture`/`similarPassDrills` for its own checks. The Road's pass sets (road.js) do not yet: they ask 3 forward bests of 5 and keep two reps with the same best receiver apart only when the ball is within 5 m (`nearDuplicate`), so a winger's forward bests nearly all go to the #9 and a full-back's to his winger (ROADMAP known issues).
+- **Measured** (Node 24; `PASS_YIELD`: the share of calls giving a drill on one principle, 8 seeds a cell, the zeros re-checked on 24 more): PA3, PA4 and PA12 for every position on nearly every seed (with a forward best: wingers and the #9 63-100 %); PA2, PA5 and PA9 50-100 %; PA8 (into space): the #6, #8s, wingers and #9 50-100 %, centre-backs 13-25 %, full-backs 0; PA6 (switch): centre-backs 63 %, the #6 13-25 %, the #9 13 % (any), full-backs, #8s and wingers 0; PA10: the back four 100 %, the #6 13-25 %, the others 0; PA11: the #6, #8s and #9 100 % (any), wingers 63 %, the back four 0; PA13: 63-100 %, never as a forward best (the #6's switch across the back aside). A drill takes 5-70 ms of CPU, a call that fails 120-150 ms (40 scenes), one `canGeneratePass` says no to nothing. Five drills from consecutive seeds: 50-200 ms; a varied set (`generatePassSet`): 100-900 ms.
+- **The review's measures** (12 seeds x LW, RW, LB, #6, LCM, #9, LCB, direction 'auto'; before → after): the best a safe (green) pass 45 of 82 → 76 of 84; the best a ball into space behind a runner whose marker is level with him or goal-side within 3 m 13 → 0; a winger's best to the #9 (direction 'any') 13 of 24 → 5 of 24; a safe pass to a free teammate 2+ stars 77 of 169 → 105 of 163 (all 105 that are not too safe); the most open teammate within 25 m 2+ stars 43 of 74 → 54 of 74. tests/passdrill.test.js holds these bounds; tests/road-sets-*.test.js sweeps every Road node for every position group with these generators.
+
+### 5.15 spotdrill.js (generated "Find your spot" drills)
+
+```js
+// js/engine/spotdrill.js: PURE, deterministic (sequence.js createRng)
+export const SPOT_DEFAULTS      // the gates = scripts/check-scenarios.mjs CHECK_DEFAULTS (tested), minRuleWeight 2, minRuleScore 0.9, the carrier
+                                //   on the ball (carrierGap 1.5 m, carrierSpeed 2 m/s), timings; speeds = SEQUENCE_DEFAULTS (tested)
+export const SPOT_PRINCIPLES    // { [principleId]: { rules, moments: ['us'|'them'] } }: every principle with a rule (from the registry)
+export function generateSpotDrill({ seed, role, principles = [], formations, catalogue, params, trace, avoidTemplates = [] }) → Scenario | null
+  // avoidTemplates: question template ids a set builder has used (the drill is the same; its question another one that fits)
+export function checkSpotDrill(scenario, { formations, principles /* catalogue */, want, params, quick = false })
+  → { errors } | { errors: [], t, frame, base, ctx, ghost, start, moved, startScore, taught: [{ principle, rule, weight, s, sStart }], problems }
+  // quick: stop at the gates that need no ghost (a generator's failed try is cheap); then ghost, start and startScore are null
+export function canGenerateSpot(roleOrFamily, principles, { min = 0.01 }) → boolean   // SPOT_YIELD: cells a set builder can skip
+export const SPOT_YIELD   // [M] { [principle]: { [family]: share of calls that give a drill } } (8 seeds; zeros on 32)
+export const SPOT_WORDS /* brief, briefKid, templates: { [id]: { when, kid(v), standard(v) } }, question(holder, id, x), questionKid(...) */
+export function allSpotTexts(wording) → [{ key, text }]   // every question and brief, names and areas filled in (tests/spotdrill.test.js)
+export function spotPrinciples()
+```
+
+- **The scenario** is the authored format (§5.3; `validateScenario` and `npm run check`'s `checkScenario` pass it): id `spot-<role>-<seed>[-<principles asked>]`, module `generated`, `answer: { mode: 'engine' }`, `learner: { role, start }` with `start` the learner's own automatic spot at t = 0 (before the event), one misconception `stood-still` (2 m round the start), `difficulty` from the principle's level, `title`/`titleKid`/`takeaway` from the catalogue (else the rule's names), `brief`/`briefKid`/`question`/`questionKid` from templates (no side, no code), `template` (the question template's id), `source: { kind: 'generated', generator: 'fotbol spotdrill v1', seed /* the seed used */, requestedSeed, attempt }`.
+- **The words:** a brief by the event (they/we pass, run with the ball, or play a long pass to the other side: 25 m or more across) and a question from a template that fits it, picked on its own seeded stream: `has-ball` ("Their defender has the ball. Where do you go?"), `has-ball-area` ("... has the ball near our goal / in the middle / near their goal. ..."), `goes-to` ("The ball goes to their winger. Where do you go now?", a pass), `runs` ("Their midfielder runs with the ball. ...", a carry), `long-pass` ("A long pass finds their winger. ..."), `wide` ("... has the ball out wide. ...", within 10 m of a sideline), `close` ("... has the ball close to you. ...", within 10 m of your start). The holder is the player on the ball at the freeze. `avoidTemplates` lets a set builder keep a set from asking the same question twice (the Road passes the questions its set asks already on every call, §5.16); `allSpotTexts` lists every one (≤ 12 words, reading age 9, tested).
+- **The event:** the team on the ball (theirs for a defending principle, ours for an attacking one) holds it 1-1.5 s, then a pass (12-20 m/s, to the player nearest the end spot while the ball travels, within `receiveReach` 10 m of it, aimed where they are when it arrives, so they meet it and are on the ball at the freeze) or a carry (4-7 m/s) leaves it where the focus principle's rule applies (a few metres in front of the learner for the press, beside them for cover, in the far wing lane for tuck, wide in the final third for crosses, anywhere for the rest). The freeze comes 0.4-1 s after the ball arrives; from 0.4 s after it, 1.5 s more play (the holder runs on) for "See what happens", which never changes the frozen picture.
+- **Gates:** `npm run check`'s (the ghost scores S, it is at least 5 m from the start, standing still scores below 70, the answer is outside the misconception), plus a rule of a principle asked weighted at least 2 and scoring at least 0.9 at the answer (that principle becomes `principles[0]`; the rule the start fails most wins), the moment and the learner's duty match (never on the ball), realistic speeds, and **the player the question names on the ball at the freeze**: within `carrierGap` (1.5 m) of it and moving at most `carrierSpeed` (2 m/s) over the last 0.2 s (before, a pass aimed at the end spot of a receiver 10 m away left "Their defender has the ball" with the ball 3-15 m from him, still running at 6 m/s, in 10-21 of 40 drills per position and idea). The gates that need no ghost (the moment, the duty, the carrier, a rule of the ideas asked that weighs 2+ here, the speeds) run first; a generator's try stops there (`quick`). A failed try moves to the next of the seed's own stream (`'<seed>#k'`; `seed + k` made seeds 1 and 2 share drills) up to `maxAttempts` (30).
+- **Yield** (`SPOT_YIELD`: the share of calls giving a drill on one principle, 8 seeds a cell, the zeros re-checked on 24 more): press D1/D2 and compact and slide U1/U2 100 % for everyone; marking D5 the back four and #8s 100 %, the #6 63 %; cover D3 the #6, #8s and #9 88-100 %, centre-backs 88 %, wingers 13 %, full-backs 0; tuck D4/U5 and the line U4 the back four; support B3/B4 63-100 %; B5 50-100 %; between the lines P2 the #8s 75 %; width B1 the wingers, pin B2 the #9, screen R3 the #6 (100 %); crosses P10 and offside F4 the #8s, wingers and #9. About 5-80 ms of CPU a drill; a call `canGenerateSpot` says no to returns at once.
+- **Cannot be generated:** principles with no rule (T2, T3, U3, U6, U7, U8, R1, R2, B6, P1, every PA) give null at once, and so does a cell `SPOT_YIELD` measured at 0 (`fastFail`; `canGenerateSpot(role, principles)` says which up front): F8 (spacing weighs 1) for everyone, and a rule for a position it never judges or an event that never sets it up (width for all but wingers, pin for all but the #9, screen for all but the #6, between the lines for all but the #8s, tuck and the line for all but the back four, crosses and offside for the back four and the #6, cover for full-backs). The Road's spot nodes each hold at least one generatable principle, but not always for every position: "Pack the Middle" (R3, U7, T2) generates only for the #6, crosses (P10) not for defenders or the #6, width and pin (B1, B2) only for wingers and the #9. There the Road's sets lean on authored drills in other positions and the chapter's other ideas (§5.16), skip what `canGenerateSpot` rules out, and a generator that comes back empty twice is not asked again in that set.
+
+### 5.16 Player mode (`js/ui/player/`)
+
+The kid-first screens of docs/KID_REDESIGN.md (the spec: §0 rules, §2 routes, §3 the Road, §4 screens, §8.1 shared contracts). Every module exports a `STRINGS` object with all of its visible words (functions allowed for templates), which `tests/copy.test.js` holds to the Player-mode copy rules (word budgets, reading age, no codes, grades, "/100", metres or "kid"); none touches `document` or `window` at import time, so Node imports them all. Each screen module has the §5.9 `mount` contract.
+
+```js
+// road.js: the Road (data/road.json), the player profile (store key 'player'), set building. Pure except the store, the fetch and buildSet's defaults.
+ROAD_DEFAULTS   // reps 5, firstReps 3, recall 1, unlockStars 1, starBands [[2.5, 3], [1.8, 2], [1, 1]], generatorTries 3, generatorNulls 2,
+                //   forwardPasses 3, nearSpot 5 m, nextStars 2, maxBorrowed 2, lastIds 10
+loadRoad(app?) → Promise<road>, normalizeRoad(raw) → road (bad entries dropped; nodes tagged with chapter and repKind; mix nodes get their
+  chapter's principles; `lead` and `quickPass` checked against the chapters and pass nodes), bindRoad(app) (main.js at boot: buildSet's
+  defaults are the app's store, formations, road and principles)
+createProfile(), normalizeProfile(raw), loadProfile(app), saveProfile(app, profile) (fires PROFILE_EVENT 'fotbol:player'), onProfile(fn),
+  pickGroup(profile, group, road?) (the group, its starting role: DEF LB, MID LCM, WING LW, STRIKER ST; onboarded)
+roadNodes(road), nodeById, chapterOf, chapterOrder(road, group) (the group's `lead` chapter first), repKind(road, node) → 'spot'|'pass',
+  nodeHref → '#/play/<id>' | '#/pass/<id>', groupOfRole(role)
+nodeStars(profile, id), nodePlays, nodeAttempt (sets begun: `starts`, or `plays` for an older profile), isUnlocked(road, profile, id) (the
+  first node, a node you played, the one before has a star, or its chapter's opensAfter node has one: "Help the ball" and "Pass it right" open
+  after Close Them Down), nextNode (in chapterOrder, the first open node under nextStars (2) stars, then under 3, else the last open one),
+  matchdayGate(road), isMatchdayUnlocked (road.matchday.unlockAfter: chapter 1's Big Match has a star), roadModel(road, profile) (what home
+  and the card draw)
+setStarsFor(repStars) → 0..3 (the average: 3 at 2.5, 2 at 1.8, 1 at 1), recordSet(app, nodeId, repStars) → { before, after, setStars, plays,
+  unlocked: nodeId[], matchday: boolean }   // node stars = max(before, set stars); 'first' and unknown ids are not recorded
+startSet(app, nodeId, reps) → attempt     // the node's `starts` + 1 and `last` = these reps' ids (buildSet calls it when given the app)
+buildSet(node, { road, profile, index, load, rewards, skills, seed, formations, catalogue, generators, count, app }) → Promise<rep[]>
+  // rep = { kind: 'spot', scenario, mirrored, nodeId, recall?, generated?, borrowed?, spare?, extra?, twin?, repeat? }
+  //     | { kind: 'pass', drill, nodeId, borrowed?, spare?, extra? }
+  // the seed takes in nodeAttempt, so every set of a node (and one begun again after a reload or a quit) is new
+buildFirstSet({ ... }) → Promise<rep[]>        // '#/play/first': 3 easy reps for your group, your role first
+buildQuickPassSet({ road, profile, seed, formations, catalogue, generators, count }) → Promise<rep[]>   // '#/pass': road.quickPass's
+  //   lessons in turn (the free player, the odd rep, and playing forward), built as a pass node's set; each rep has `lesson` (its node id)
+recallSources(road, profile, node), forwardPlan(ok: boolean[], count = 3) → Set<slot>, ballAtFreeze(scenario), repPicture(rep),
+  nearDuplicate(a, b), repLooks(rep), carrierAtFreeze(scenario), hash32, seededRandom (pure); NEIGHBOUR_GROUPS, QUICK_PASS, QUICK_PASS_NODES
+STRINGS.groups   // Defender, Midfielder, Winger, Striker
+```
+
+- **Spot sets** (5 reps, deterministic for a seed): 1 recall rep (not in a mix set) from an earlier spot node you played (R23: never this node or its ideas, never a rep of your last set, and from another node than your last set's when there is one), then authored scenarios on the node's ideas played in your position (mirrored to your side), then in another position of your group, then generated drills for your position (spotdrill.js, with the catalogue), then authored ones in other positions; a mix node takes its chapter's nodes in turn. Your last set's drills come only after all of those. Still short: the chapter's other ideas the same way (`extra`); only then mirrored twins and repeats (never needed on the Road). **Pass sets**: authored pass drills (index entries with `kind: 'pass'`; none yet), then generated ones (passdrill.js) from consecutive integer seeds, 3 of 5 asked for a forward best where `passForwardable` allows (§5.14; the forward slots are filled first); a rep your position rarely gets is played by a teammate in your group (`borrowed`: a full-back's "free side" is the centre-back's switch; the card says "Now you're the left centre-back"), then the neighbouring groups (`NEIGHBOUR_GROUPS`: a striker's forward pass is a winger's), then (a forward slot) any pass from you or your group, then another idea of the chapter (`extra`, in your own position), then anyone. Every set: no drill twice (a drill and its mirror count once); no two reps that look the same (`nearDuplicate`: same position, the ball within 5 m at the freeze and the same start, or the same best pass; a pass received within 2 m); no two generated reps from one engine template or with the same player on the ball at the freeze (`repLooks`: "Their winger has the ball" once); at most `maxBorrowed` (2) reps in another position, more (`spare`) only when nothing else in yours is left. Each spot generator call is told the questions the set asks already (`avoidTemplates`: the same drill, other words), so a drill is turned away for its question only when no other question fits it. Nothing is asked of a generator that its `canGenerate*` helper rules out, and one that comes back empty twice (more than it gives) for a position and its ideas is not asked again in that set. The generators are imported lazily and awaited between calls with a breath for the page. Measured (Node 24 on a laptop, the real generators, every node for every group, seed 1 and the set begun again: 152 builds): spot sets median 28 ms, 90th percentile 240 ms, slowest 0.5 s; pass sets median 160 ms, 90th percentile 670 ms, slowest 0.9 s (a defender's "Find the Free Side"). `tests/road-sets-*.test.js` sweeps every node for every group with the real generators.
+- **Records** (play.js `recordPolicy`): a counted first try at a "Find your spot" rep updates Elo (not for the worked example and glow-aided reps), the history and the week's days as a drill rep does (drill.js), then awards the rep (`stars` as shown) and any sticker its mastery earned, `celebrate: false`; the first set's taught reps earn no XP (R28). Try again is practice only (in both games): nothing is recorded, it never celebrates, and the slot keeps its first try's stars, so copying the ring you were just shown is never worth more than getting it right first time. A pass rep's first try does the same with `passRecordId` (`gen-<principle>-<family>` for generated drills). A set ends with a `session` rewards event (its first tries' stars: "Perfect set"), `recordSet` (Road nodes only) and `showFullTime`. Leaving a "Find your spot" set early (the X, Back, anything) keeps what was played, with no "are you sure?" (R37): the reps locked in so far go on the Road as a shorter set, and the play time counts toward the break nudge (R22); a "Who's open?" set left early keeps each rep's records but puts nothing on the Road. Match day runs are scored as Coach mode's Live (§5.11) and awarded once played to the end.
+
+```js
+// reveal.js: the Player reveal, shared by play and pass (KID_REDESIGN §4.3 steps 6-7)
+createPlayerReveal(container, { app, budget? }) → { el, show({ stars, word, line, why: { title, summary, reasons, praise }, onNext, onRetry?,
+  onReplay?, replayLabel?, note?, nextLabel?, celebrate? /* default false */ }), clear(), destroy(), setBusy(on), budget (getter) }
+  // stars pop in under 0.6 s (a tick each); confetti and a cheer only for a rep the caller lets celebrate (celebrate: true: a counted
+  // first try, never practice or the worked example), the set's first such 3-star rep, while the budget allows (one per set; burstFor);
+  // Why? opens a sheet of at most 60 words (whyModel); everything is tap-paced, never on a timer (R16)
+whyModel(why), burstFor({ stars, celebrate, celebrated }) (pure), revealWordCount(...), REVEAL_DEFAULTS { lineMaxWords 14, beforeWhyMaxWords 30,
+  whyMaxWords 60, whyReasons 2, whyPraise 1 }
+
+// fulltime.js: the end of a set, shared by play, pass and Match day (KID_REDESIGN §4.5)
+showFullTime(root, app, { node, reps: [{ stars, title }], xpBefore, xpAfter, gained, nodeStars: { before, after } | null, onHome, onAgain,
+  title?, extra?, homeLabel?, budget?, playedMs?, now? }) → cleanup
+  // the star rows and total, the XP bar sweeping (a level up fills it and starts again), the node's stars before → after, then each
+  // sticker, badge and kit colour one at a time, big: at most maxItems (3), biggest first, "More" stepping to the next (never a second
+  // "Next"), then "+N more on your card" (a link to #/card) for the rest (R29); "Best move: ..." (a rep with 2 stars or more); after about
+  // 15 minutes of play today (store key 'player:today', addPlayTime / playMinutesToday) "Good work today. Take a break?" (R22). Home is
+  // the main button; Play again is neutral (onAgain: null hides it).
+fullTimeModel(...) → { rows, total, xpGain, levelUp, items, moreItems, best, nodeStars, ... }, earnedItems(gained), bestMoveName, addToday,
+  minutesOn, breakDue, sentenceCase (pure), TODAY_KEY, FULLTIME_DEFAULTS (maxItems 3, bestMoveStars 2, breakAfterMin 15)
+
+// play.js ('#/play', '#/play/<nodeId>', '#/play/first'): "Find your spot" (KID_REDESIGN §4.1 step 3, §4.3)
+//   set (the role card; "Now you're the striker" when the rep's position is not yours) → watch (spotlight: YOU, the ball and up to 4 key
+//   players lit) → freeze (the whistle, the question ≤ 12 words) → place (drag, tap YOU then a spot, or the keys; "Watch again"; the glow
+//   aid on a node's first reps the first time through) → Lock it (or Enter; YOU picked up but not moved: the tip again, not a lock at the
+//   start: lockAction) → the reveal (the ring with "Best spot" written on the side away from YOU, an arrow, at most one labelled cue,
+//   stars, one word, one line ≤ 14 words; Next / Why? / Try again after 0-1 stars: the mirrored twin, "Same play, other side", practice
+//   only / See what happens). The first set: rep 1 a worked example (the hand; under reduced motion the ring and an arrow while YOU can
+//   already move), rep 2 the glow, rep 3 on its own, then Full time and '#/kickoff/kit'. "Hard one. Pros miss it too." once a set after a
+//   miss (R20). A pass node opened here goes to '#/pass/<id>' (redirectTo: navigate with replace). Leaving keeps the set (Records above).
+//   Playback advances with the clock (at most 1 s a frame) and restarts it when a hidden tab comes back.
+PLAY_DEFAULTS, usableText, starsForScore, wordForStars, questionFor, briefFor, takeawayFor, ideasOf, praiseOf, pickLine, whyFor, bestMoveOf,
+cueMarker, bestSpotMarker, recordPolicy({ counts, aided, example, retry, firstSet }) → { practice, elo, streak, rewards, mastery, history, tally,
+celebrate }, lockAction, repCard, keyPlayers, firstSetStep, setStep, createTally, tallyTry, tallyStars, missNote, repTitle, seedFor, recordIdOf,
+repScene, revealFor (pure), redirectTo(app, hash)
+
+// pass.js ('#/pass', '#/pass/<nodeId>'): "Who's open?" (KID_REDESIGN §4.4)
+//   set ("You've got the ball", or "Now you're the ..." for a borrowed rep) → watch (2.5 s on passDrillPlayback) → choose ("Pick the best
+//   pass."; the teammates are big numbered targets, but not one further than farPass (45 m) from the ball nor the keeper unless that pass
+//   is really on: passTargets; a first tap previews a dotted pass line, a second tap or Pass plays it; Enter/Space and Escape on a target) →
+//   the ball travels ("Cut out!" + groan and the defender flashes, "Line broken!" + lift, "Safe", "Risky!", "Offside!", "Danger!") →
+//   the reveal (the pitch crops to the play, and a phone held upright zooms in on it, never under reduced motion: revealFocus, revealZoom;
+//   Best, your pick and up to 2 others labelled with a shape and a colour, ★ Best, ✓ Good, ! Risky, ✗ Cut out / Offside / Danger, each on
+//   the side of its player where nobody stands: revealPicks, labelSide; the lanes of your pass and the best, blockers ringed; stars, a
+//   word, one line from explainPass (a safe pass that was not the best names the better one: betterLine); Why? titled with the rep's
+//   lesson when the explanation is about it; Try again after 0-1 stars: the same freeze, practice only). A spot node opened here goes to
+//   '#/play/<id>' before any set is built (navigate with replace). Animations are backed by timers (a hidden tab never stalls a rep).
+PASS_DEFAULTS, LABELS, labelStyle, outcomeKey, passOutcome, starsOf, wordFor, receiverOf, optionsByReceiver, genuinelyOn, passTargets,
+revealPicks, labelSide, orderTargets, rankOptions, shirtOf, carrierOf, roleOfDrill, aimOf, revealMarkers, revealZoom, revealFocus,
+previewMarkers, flashMarkers, passFlight, flightFrame, repFocus, pickLine, betterLine, whyFor, repTitle, questionOf, briefOf, historyEntry,
+passRecordId, hashString, nodeSeed, roleFor, generateReps, assembleSet (pure, deps passed in)
+
+// matchday.js ('#/matchday'): simplified Live (KID_REDESIGN §4.6): 45 s of generateSequence play scored at 10 Hz as Live; the ring on YOU and
+//   one big word with a shape (Hot: a flame, Warm: a sun, Cold: a snowflake), no numbers; Pause (Space; a hidden tab pauses);
+//   Full time with the run's stars, word, best hot streak and "See your hardest moment" (frozen, the ring and an arrow, "Watch it").
+MATCHDAY_DEFAULTS, heatFor(score), bestHotStreak(samples), hardestMoment(result) (pure)
+
+// shell.js: the top bar (your token and nickname, the level ring and rank, the card, the settings cog: Sound, Theme, "Coach or parent?
+//   Open Coach mode"), which header a route shows, the Player "coming soon" and "couldn't start" cards, the icons
+chromeFor(route) → 'coach'|'player'|'none', playerTitle(module), topBarModel({ rewards, profile, settings }), createPlayerShell(app, { bar }),
+PLAYER_ICONS, playerIcon(name), levelRing(level, progress), soonCard(), failedCard()
+// home.js ('#/'): the Play button ("Next: <node> · 5 plays"), the two tiles, days played this week (dots that only fill), the Road (only the
+//   current chapter's title is written, and the Big Match's under its node, so the home stays within 25 words). Match day locked: the
+//   tile says "Finish" with the Big Match's trophy, and a tap scrolls the Road to that node, which pulses.
+//   homeModel({ road, profile, rewards, today }), homeWords(model) (the 25-word check), weekCount (pure)
+// kickoff.js ('#/kickoff[/pick|/kit]'): the pitch replaying behind the wordmark, Play, "Coach or parent?"; four shirts; "Make it yours"
+// card.js ('#/card[/stickers|/badges|/kit]'): the FC-style card (skill ratings 0-99 per chapter from Road stars and Elo), the sticker album
+//   by chapter, badges, the kit locker (kitEditor, shared with "Make it yours"; nickname from NICKNAMES), "Your stats stay on this device."
+//   skillRatings, cardMetal, stickerAlbum, badgeList, nicknameList (pure)
+// strings.js: the shared words: STAR_WORDS, ROLE_NAMES (plain position names), roleName, starWord, roleCard(role, profileRole), STRINGS
+```
 
 ## 6. Adding things
 
 - **A new rule:** add `js/engine/rules/<id>.js` with the contract above, register it in `rules/index.js`, reference its principle IDs (and add the rule to those principles' `ruleIds` in `data/principles.json`, to the RESEARCH 5.5 table and to `RULE_REFS` in `tests/content.test.js`), and add tests in `tests/rules-attacking.test.js` or `tests/rules-defending.test.js` (a passing spot, a failing spot, and not-applicable). Then run `npm test`: `tests/integration.test.js` checks that every canonical situation still gives an S-grade ghost, and `node scripts/sanity.mjs > docs/sanity-output.txt` shows what changed.
 - **A new scenario:** author it in `#/author` (or by hand from `_example.json`), download it and save it as `data/scenarios/<id>.json`, add the id to its module's `scenarios` in `data/curriculum.json`, run `npm run index` (never edit `index.json` by hand), then `npm run check` (validates it, prints the engine's answer and fails the drill-quality gates of §5.3) and `npm test` (`tests/scenarios-content.test.js` checks the copy rules, the mirror and the primary principle's rule).
 - **A new formation:** add a table under `data/formations/`, same shape as `helios-433.json`. Phase-specific tables (in and out of possession) would replace `phaseShape()`.
-- **A new test file:** add it to `tests/manifest.js` (tests/manifest.test.js fails otherwise) and use `tests/harness.js`, not `node:test` directly.
+- **A new Road node** (Player mode): add it to `data/road.json` with 1-3 principles and a title of 4 words or fewer. A spot node needs authored drills on its ideas (or ideas `spotdrill.js` can generate for most positions); a pass node needs ideas `passdrill.js` can teach (`PASS_LESSONS`). `tests/road.test.js` checks the file, and `tests/road-sets-*.test.js` must stay green: every node builds 5 fresh reps for every position group.
+- **A new test file:** add it to `tests/manifest.js` (tests/manifest.test.js fails otherwise) and use `tests/harness.js`, not `node:test` directly. A speed test uses `timed()` (the median of several runs after a warm-up) and a generous bound times `PERF_SLACK`.

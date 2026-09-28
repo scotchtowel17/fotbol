@@ -7,6 +7,9 @@
 // carries (4-7 m/s), the odd switch of play, and 2-4 turnovers (an interception or a tackle and a loose
 // ball), so both in- and out-of-possession positioning are tested. Every receiver and ball-winner is a
 // real player id standing where autoFrame() puts him at that moment; the learner never has the ball.
+// Each pass is chosen on the frame the viewer will see (the playback so far: blends, committed pressers,
+// settle and separation) with passing.js rateOptions() and a softmax over its utility, so play never goes
+// through a defender standing in the lane (docs/research/passing.md §5.4).
 // It is PURE and deterministic: a seeded PRNG (mulberry32), no Math.random, no clock.
 //
 // createPlayback() is the incremental twin of timeline.frameAt(): the same states, decisions and
@@ -21,6 +24,7 @@ import { LENGTH, WIDTH, MID_Y } from './pitch.js';
 import { LEARNABLE_ROLES, playerId } from './roles.js';
 import { autoFrame, autoRoles } from './scene.js';
 import { TIMELINE_DEFAULTS, interpKeys, ballAt, meanBallAt, possessionAt, carrierAt, ballEvents, adjustCells, applyAdjustments, adjustmentOf } from './timeline.js';
+import { rateOptions, swapTeams } from './passing.js';
 
 export const SEQUENCE_DEFAULTS = Object.freeze({
   duration: 45, // [S] seconds of play (RESEARCH 9.2 item 8: 30-60 s)
@@ -34,9 +38,9 @@ export const SEQUENCE_DEFAULTS = Object.freeze({
   switchChance: 0.12, // [D] chance that a pass is a switch of play
   switchRange: Object.freeze([24, 46]), // [D] m, switch length
   switchLateral: 20, // [D] m, a switch must move the ball at least this far across
-  laneClear: 3, // [D] m: a pass with an opponent closer than this to its line is risky...
-  laneBlocked: 1.5, // [D] m ...and one closer than this is nearly never played
-  markedAt: 1.5, // [D] m: a receiver with an opponent this close is rarely chosen
+  passTemperature: 0.004, // [D] softmax temperature over rateOptions' utility U (goals; 0.004 = 4 score points): an
+  //                          option 10 points worse is picked about 12x less often; one that would be cut out never
+  //                          (with no safe pass the carrier runs with the ball; boxed in, the least bad pass is played)
   carryChance: 0.35, // [D] chance the carrier runs with the ball before passing
   carrySpeed: Object.freeze([4, 7]), // [D] m/s
   carryTime: Object.freeze([0.8, 2.2]), // [D] s per carry key (ROADMAP: presses are re-decided at keys, so key a carry every 1-3 s)
@@ -135,6 +139,7 @@ export function generateSequence({ seed = 1, duration, role = 'DM', formations, 
 
   const ball = [], possession = [], carrier = [];
   const partial = { timeline: { ball, possession, carrier } }; // what has been written so far (for ballAt / meanBallAt)
+  const view = writingPlayback(partial, formations); // the free playback of what has been written: what the viewer sees
   const shapeAt = (t) => meanBallAt(partial, t - T.reactionLag - T.shapeWindow, t - T.reactionLag);
   const eligible = (p, team) => p.team === team && p.role !== 'GK' && p.id !== learner;
 
@@ -187,28 +192,31 @@ export function generateSequence({ seed = 1, duration, role = 'DM', formations, 
   const pass = (t0, frame, { forTurnover = false } = {}) => {
     const dir = dirOf(team);
     const mates = frame.players.filter((p) => eligible(p, team) && p.id !== carrierId);
-    const opps = frame.players.filter((p) => p.team !== team && p.role !== 'GK');
     const deep = upPitch(pos, team) > P.recycleFrom;
+    // A real pass is rated on the frame the viewer sees (a turnover pass is meant to be cut out).
+    const rated = forTurnover ? null : ratePasses(view.frameBefore(t0), carrierId, team);
     const tryPick = (isSwitch) => {
-      const weights = mates.map((c) => {
-        const d = dist(pos, c), gain = (c.x - pos.x) * dir, lat = Math.abs(c.y - pos.y);
-        if (d < P.passRange[0]) return 0;
-        if (d > (isSwitch ? P.switchRange[1] : P.passRange[1])) return 0;
-        if (isSwitch && (lat < P.switchLateral || d < P.switchRange[0])) return 0;
+      const cands = mates.map((c) => {
+        const o = rated?.get(c.id);
+        const at = o?.receiverAt ?? c; // where the viewer sees him
+        const d = dist(pos, at), gain = (at.x - pos.x) * dir, lat = Math.abs(at.y - pos.y);
+        if (d < P.passRange[0] || (rated && !o)) return null;
+        if (d > (isSwitch ? P.switchRange[1] : P.passRange[1])) return null;
+        if (isSwitch && (lat < P.switchLateral || d < P.switchRange[0])) return null;
         let w = Math.exp(-(((d - P.passPreferred) / P.passSpread) ** 2));
         const g = clamp(gain / 20, -0.6, 1);
         w *= 1 + (deep ? -0.3 : P.forwardBias) * g;
         if (isSwitch) w *= 1 + lat / 20;
-        if (!forTurnover) {
-          const lane = Math.min(Infinity, ...opps.map((o) => pointSegmentDistance(o, pos, c)));
-          w *= lane < P.laneBlocked ? 0.03 : lane < P.laneClear ? 0.35 : 1;
-          const mark = Math.min(Infinity, ...opps.map((o) => dist(o, c)));
-          if (mark < P.markedAt) w *= 0.3;
-        }
         if (upPitch(c, team) > P.attackLimit + 4) w *= 0.2;
-        return Math.max(0, w);
+        return { w: Math.max(0, w), o };
       });
-      const i = rng.weighted(weights);
+      if (rated) {
+        // Softmax over the utility; never a pass that would be cut out (with none safe, carry instead).
+        const live = cands.filter(Boolean);
+        const top = Math.max(...live.map((q) => q.o.U));
+        for (const q of live) q.w *= q.o.colour === 'red' ? 0 : Math.exp((q.o.U - top) / P.passTemperature);
+      }
+      const i = rng.weighted(cands.map((q) => q?.w ?? 0));
       return i >= 0 ? mates[i] : null;
     };
     const receiver = (rng.chance(P.switchChance) && tryPick(true)) || tryPick(false);
@@ -334,9 +342,11 @@ export function generateSequence({ seed = 1, duration, role = 'DM', formations, 
     if (wasCarry && rng.chance(0.3) && carry(t0, true)) { afterCarry = true; continue; }
     if (pass(t0, frame)) continue;
     if (carry(t0, wasCarry)) { afterCarry = true; continue; }
-    // Boxed in: a short safe pass to the nearest teammate, whatever the lane.
+    // Boxed in: the least bad pass on the frame the viewer sees (else to the nearest teammate), whatever the lane.
     const mates = frame.players.filter((p) => eligible(p, team) && p.id !== carrierId);
-    const id = nearestId(mates, pos);
+    const rated = ratePasses(view.frameBefore(t0), carrierId, team);
+    const ranked = rated ? mates.filter((m) => rated.has(m.id)).sort((a, b) => rated.get(b.id).U - rated.get(a.id).U) : [];
+    const id = ranked[0]?.id ?? nearestId(mates, pos);
     const q = mates.find((p) => p.id === id);
     const target = inBounds(q);
     const d = Math.max(dist(pos, target), 3);
@@ -392,6 +402,73 @@ function nearestId(players, p) {
     if (d < bd) { bd = d; best = q.id; }
   }
   return best;
+}
+
+/** Pass options of the carrier in a frame (their passes rated on the swapped frame): feet options by receiver id. */
+function ratePasses(frame, carrierId, team) {
+  if (frame.carrierId !== carrierId) return null;
+  const rating = rateOptions(team === 'us' ? frame : swapTeams(frame), carrierId);
+  return new Map(rating.options.filter((o) => o.kind === 'feet').map((o) => [o.targetId, o]));
+}
+
+/**
+ * The free playback (nobody held back) of a sequence while generateSequence() is still writing it: what the viewer
+ * will see. Keys are only ever written at or after the time being decided, so every state decided at a key before
+ * that time is final and is kept (createPlayback's states, blends and press commitments, computed once).
+ * frameBefore(t) is the frame just before t, before any key at t: the placement of the state then, what is left of
+ * its blend, and the settle and separation as they are at t (not averaged over adjustWindow: a few centimetres).
+ */
+function writingPlayback(scenario, formations) {
+  const P = TIMELINE_DEFAULTS;
+  const bareP = { ...P, settle: false, separationPasses: 0 };
+  const tl = scenario.timeline;
+  const sceneAt = (at) => ({
+    formations, ball: ballAt(scenario, at), shapeBall: meanBallAt(scenario, at - P.reactionLag - P.shapeWindow, at - P.reactionLag), overrides: {},
+  });
+  const decide = (t, players) => {
+    const possession = possessionAt(scenario, t), c = carrierAt(scenario, t), inFlight = c === null;
+    const rankFrom = players ? Object.fromEntries(players.map((p) => [p.id, { x: p.x, y: p.y }])) : undefined;
+    const roles = autoRoles({ ...sceneAt(t), possession, carrierId: c ?? null, inFlight, rankFrom, params: { ...P, pressHandover: 0 } });
+    const presserId = roles.presser && roles.presser.w >= P.pressCommit ? roles.presser.id : null;
+    return { t, possession, inFlight, carrierId: roles.carrierId, presserId };
+  };
+  const raw = (s, at, params) => autoFrame({ ...sceneAt(at), params, possession: s.possession, carrierId: s.carrierId, autoCarrier: false, inFlight: s.inFlight, presserId: s.presserId });
+  const segs = [];
+  let last = 0; // key times up to this are decided
+  const place = (s, at, params) => {
+    const f = raw(s, at, params);
+    if (!s.off || at - s.t >= s.longest) return f;
+    const dt = at - s.t;
+    f.players = f.players.map((p, i) => {
+      const o = s.off[i], left = o.T > 0 ? 1 - dt / o.T : 0;
+      return left > 0 ? { ...p, x: p.x + left * o.ox, y: p.y + left * o.oy } : p;
+    });
+    return f;
+  };
+  return {
+    frameBefore(t) {
+      if (!segs.length) segs.push({ ...decide(0, null), t: -Infinity });
+      const keys = [...new Set([...tl.ball, ...tl.possession, ...tl.carrier].map((k) => k.t))].filter((k) => k > last && k < t).sort((a, b) => a - b);
+      for (const kt of keys) {
+        const prev = segs[segs.length - 1];
+        const was = place(prev, kt, bareP).players;
+        const s = decide(kt, was);
+        last = kt;
+        if (s.possession === prev.possession && s.carrierId === prev.carrierId && s.inFlight === prev.inFlight && s.presserId === prev.presserId) continue;
+        const blend = s.possession !== prev.possession ? P.possessionBlend : P.carrierBlend;
+        const longest = Math.max(blend, P.maxBlend);
+        const wants = raw(s, kt, bareP).players;
+        const off = was.map((w, i) => {
+          const ox = w.x - wants[i].x, oy = w.y - wants[i].y;
+          return { ox, oy, T: clamp(Math.hypot(ox, oy) / P.recoverSpeed, blend, longest) };
+        });
+        segs.push({ ...s, blend, longest, off });
+      }
+      const s = segs[segs.length - 1];
+      const f = place(s, t, P);
+      return { t, ball: ballAt(scenario, t), possession: s.possession, carrierId: f.carrierId, players: f.players, tags: {} };
+    },
+  };
 }
 
 // ---------------------------------------------------------------- live-mode helpers

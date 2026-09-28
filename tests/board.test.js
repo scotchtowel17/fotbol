@@ -1,7 +1,9 @@
 import { test, assert, approx, isNode } from './harness.js';
 import {
   createBoard, BOARD_DEFAULTS, BALL_ID, pickOrientation, viewBoxFor, project, unproject, worldTransform,
-  keyDelta, describeSpot, tokenName, pitchMarkings, tokenScale, labelScale, pxPerMetre, focusViewBox,
+  keyDelta, describeSpot, tokenName, pitchMarkings, tokenScale, labelScale, pxPerMetre, focusViewBox, youTag,
+  SHIRT_NUMBERS, tokenLabel, simpleTokenName, describeSpotSimple, hitRadius, aidLevel, aidStrength, hintPose, hintTotalMs,
+  shirtNumberOf, tapAction, tagScale, playerLabelParams,
 } from '../js/ui/board.js';
 import { LENGTH, WIDTH, MID_Y, PENALTY_AREA, PENALTY_SPOT_DIST, CIRCLE_RADIUS, POSTS, GOAL_DEPTH } from '../js/engine/pitch.js';
 
@@ -162,6 +164,36 @@ test('board (browser): render wins over the pointer during a drag, so a mode can
   });
 });
 
+test('board: the tag over the learner says YOU, or the nickname in capitals in a pill that fits it', () => {
+  assert.deepEqual(youTag(), { text: 'YOU', width: 4.6 });
+  assert.deepEqual(youTag('  '), { text: 'YOU', width: 4.6 });
+  assert.equal(youTag('Leo').text, 'LEO');
+  assert.equal(youTag('Leo').width, 4.6, 'a short name keeps the YOU pill');
+  const long = youTag('Alexandrina');
+  assert.equal(long.text, 'ALEXANDRINA');
+  assert.ok(long.width > 4.6 && long.width < 12, `${long.width} m`);
+  assert.equal(youTag('abcdefghijklmnop').text.length, 12, 'capped');
+});
+
+test('board (browser): a nickname replaces YOU over the learner, and render() can change it', async () => {
+  if (isNode) return;
+  const container = document.createElement('div');
+  container.style.cssText = 'position:fixed;left:0;top:0;width:630px;height:444px;opacity:0;pointer-events:none';
+  document.body.appendChild(container);
+  const board = createBoard(container, { orientation: 'horizontal', youLabel: 'Mia' });
+  try {
+    board.render(frameWith({ x: 30, y: 30 }), { learnerId: 'us-LCB' });
+    const tag = () => board.el.querySelector('.token[data-id="us-LCB"] .token-you text').textContent;
+    assert.equal(tag(), 'MIA');
+    board.render(frameWith({ x: 30, y: 30 }), { learnerId: 'us-LCB', youLabel: 'Alexandrina' });
+    assert.equal(tag(), 'ALEXANDRINA');
+    const rect = board.el.querySelector('.token[data-id="us-LCB"] .token-you rect');
+    assert.ok(Number(rect.getAttribute('width')) > 4.6, 'the pill grows with the name');
+    board.render(frameWith({ x: 30, y: 30 }), { learnerId: 'us-LCB', youLabel: '' });
+    assert.equal(tag(), 'YOU');
+  } finally { board.destroy(); container.remove(); }
+});
+
 test('board (browser): setHeatmap with the same field object does not re-encode the image', async () => {
   if (isNode) return;
   await withBoard(async (board) => {
@@ -220,6 +252,20 @@ test('board: a phone held upright crops the pitch length to the focus; a big boa
   assert.ok(a <= 10 - pad && b >= 90 + pad, 'a long focus is never cut');
   assert.deepEqual(focusViewBox('horizontal', { width: 900, height: 600 }, { x0: 5, x1: 54 }), viewBoxFor('horizontal'), 'desktop');
   assert.deepEqual(focusViewBox('vertical', { width: 552, height: 740 }, { x0: 5, x1: 54 }), full, 'a narrow desktop window');
+});
+
+test('board: a forced focus crops even a board wide enough to draw the whole pitch (the pass reveal\'s zoom)', () => {
+  // A phone's pass reveal widens the board 1.7×: the whole pitch would draw at ≥ focusMinPxPerM and sit centred with
+  // empty space either side. setFocus(…, { force: true }) passes focusMinPxPerM: Infinity, so the length is cropped.
+  const zoomed = { width: 727, height: 627 };
+  const full = viewBoxFor('vertical');
+  assert.ok(pxPerMetre(zoomed, full) >= BOARD_DEFAULTS.focusMinPxPerM, 'this box would normally show the whole pitch');
+  assert.deepEqual(focusViewBox('vertical', zoomed, { x0: 30, x1: 60 }), full, 'unforced: whole pitch');
+  const forced = focusViewBox('vertical', zoomed, { x0: 30, x1: 60 }, { ...BOARD_DEFAULTS, focusMinPxPerM: Infinity });
+  assert.equal(forced.width, full.width, 'the whole width stays in view');
+  approx(forced.height / forced.width, zoomed.height / zoomed.width, 0.01, 'the pitch fills the widened board (no side gaps)');
+  const top = LENGTH - forced.y, bottom = LENGTH - (forced.y + forced.height);
+  assert.ok(bottom <= 30 && top >= 60, `the play stays in view (${bottom}..${top})`);
 });
 
 test('board (browser): a touch drag moves the token by the finger\'s move (never the other way), with a lift capped in metres on a long drag', async () => {
@@ -286,4 +332,276 @@ test('board (browser): with a token armed, a tap just beside it moves it there; 
     assert.ok(!board.el.classList.contains('is-armed'), 'a tap on the armed token disarms it');
     assert.equal(ends.length, 1, 'without moving it');
   });
+});
+
+// ---------------------------------------------------------------- Player mode extras (docs/KID_REDESIGN.md §5, §8.1)
+
+test('board: Player mode shows unique shirt numbers (GK 1, RB 2, LB 3, LCB 4, RCB 5, DM 6, RW 7, LCM 8, ST 9, RCM 10, LW 11)', () => {
+  assert.deepEqual({ ...SHIRT_NUMBERS }, { GK: 1, LCB: 4, RCB: 5, LB: 3, RB: 2, DM: 6, LCM: 8, RCM: 10, LW: 11, RW: 7, ST: 9 });
+  const nums = Object.keys(SHIRT_NUMBERS).map((r) => tokenLabel(`us-${r}`, 'number'));
+  assert.equal(new Set(nums).size, 11, 'one number per position');
+  assert.equal(tokenLabel('them-ST', 'number'), '9', 'theirs the same numbers in their kit');
+  assert.equal(tokenLabel('us-LCB', 'role'), 'LCB', 'Coach mode keeps the role codes');
+  assert.equal(tokenLabel('us-DM'), '6');
+  assert.equal(tokenLabel(BALL_ID, 'number'), '');
+});
+
+test('board: Player mode names tokens and spots without codes or metres', () => {
+  assert.equal(simpleTokenName('us-LB', 'us-LB'), 'You');
+  assert.equal(simpleTokenName('us-LCB', 'us-LB'), 'Teammate, number 4');
+  assert.equal(simpleTokenName('them-ST', 'us-LB'), 'Opponent, number 9');
+  assert.equal(simpleTokenName(BALL_ID, 'us-LB'), 'Ball');
+  assert.equal(describeSpotSimple({ x: 30, y: 10 }), 'in our half, on the left');
+  assert.equal(describeSpotSimple({ x: 95, y: 34 }), 'near their goal, in the middle');
+  assert.equal(describeSpotSimple({ x: 8, y: 60 }), 'near our goal, on the right');
+  assert.equal(describeSpotSimple({ x: 60, y: 50 }), 'in their half, on the right');
+  assert.equal(describeSpotSimple(null), '');
+  for (const p of [{ x: 12, y: 3 }, { x: 70, y: 40 }]) assert.doesNotMatch(describeSpotSimple(p), /\d|metre|half-space|third/);
+});
+
+test('board: every token you can drag or tap is at least 44 CSS px across to hit, however small it is drawn', () => {
+  assert.equal(BOARD_DEFAULTS.minHitPx, 44);
+  for (const pxm of [2.5, 3.2, 4.85, 6, 12]) {
+    const r = hitRadius(pxm, (BOARD_DEFAULTS.tokenRadius + 0.5) * tokenScale(pxm));
+    assert.ok(2 * r * pxm >= 44 - 1e-9, `${pxm} px/m: ${(2 * r * pxm).toFixed(1)} px`);
+  }
+  assert.equal(hitRadius(0, 2.3), 2.3, 'unmeasured: the drawn token');
+  assert.equal(hitRadius(20, 2.3), 2.3, 'a big board: the drawn token is bigger already');
+});
+
+test('board: the glow aid warms and brightens as YOU nears its target', () => {
+  assert.deepEqual([0, 2, 4, 8, 20].map((d) => aidLevel(d)), ['hot', 'hot', 'warm', 'cool', 'cold']);
+  assert.equal(aidLevel(NaN), 'cold');
+  const ks = [0, 3, 6, 9, 12, 15, 30].map((d) => aidStrength(d));
+  assert.equal(ks[0], 1);
+  assert.equal(ks.at(-1), 0);
+  assert.ok(ks.every((k, i) => i === 0 || k <= ks[i - 1]), 'never brighter further away');
+});
+
+test('board: the worked-example hand drags YOU to the best spot, holds, and YOU snaps back', () => {
+  const from = { x: 20, y: 30 }, to = { x: 26, y: 38 };
+  const H = BOARD_DEFAULTS.hint;
+  const at = (ms) => hintPose(ms, from, to, H);
+  assert.deepEqual(at(0).token, from);
+  assert.ok(at(H.inMs * 0.9).pressed, 'it presses before the drag');
+  const mid = at(H.inMs + H.dragMs / 2);
+  assert.ok(mid.token.x > from.x && mid.token.x < to.x, 'dragging');
+  assert.deepEqual(mid.hand, mid.token, 'the hand carries YOU');
+  const hold = at(H.inMs + H.dragMs + H.holdMs / 2);
+  assert.deepEqual(hold.token, to);
+  const end = at(hintTotalMs(H));
+  assert.deepEqual(end.token, from, 'YOU snaps back');
+  assert.equal(end.done, true);
+  assert.equal(end.opacity, 0);
+  assert.equal(at(hintTotalMs(H) - 1).done, false);
+});
+
+test('board (browser): Player-mode labels, the spotlight and the aid ring', async () => {
+  if (isNode) return;
+  const container = document.createElement('div');
+  container.style.cssText = 'position:fixed;left:0;top:0;width:630px;height:444px;opacity:0;pointer-events:none';
+  document.body.appendChild(container);
+  const board = createBoard(container, { orientation: 'horizontal', labels: 'number' });
+  try {
+    board.render(frameWith({ x: 30, y: 30 }), { learnerId: 'us-LCB' });
+    const text = (id) => board.el.querySelector(`.token[data-id="${id}"] .token-code`).textContent;
+    assert.equal(text('us-LCB'), '4');
+    assert.equal(text('them-ST'), '9');
+    board.render(frameWith({ x: 30, y: 30 }), { learnerId: 'us-LCB', youNumber: 10 });
+    assert.equal(text('us-LCB'), '10', 'your own kit number');
+    board.render(frameWith({ x: 30, y: 30 }), { learnerId: 'us-LCB', labels: 'role' });
+    assert.equal(text('them-ST'), '9', 'role codes on request (the #9 reads 9 either way)');
+    assert.equal(text('us-LCB'), 'LCB');
+    board.render(frameWith({ x: 30, y: 30 }), { learnerId: 'us-LCB', labels: 'number' });
+    board.setSpotlight(['them-ST']);
+    const unlit = (id) => board.el.querySelector(`.token[data-id="${id}"]`).classList.contains('is-unlit');
+    assert.equal(unlit('them-ST'), false);
+    assert.equal(unlit('us-LCB'), false, 'YOU are always lit');
+    assert.equal(unlit(BALL_ID), false, 'the ball too');
+    board.setSpotlight([]);
+    assert.equal(unlit('them-ST'), true);
+    board.setSpotlight(null);
+    assert.equal(unlit('them-ST'), false, 'null: everyone lit');
+    board.setAid({ kind: 'glow', target: { x: 50, y: 30 } });
+    const ring = board.el.querySelector('.board-aid');
+    assert.ok(ring.classList.contains('aid-cold'), '20 m away: cold');
+    board.render(frameWith({ x: 49, y: 30 }), { learnerId: 'us-LCB' });
+    assert.ok(ring.classList.contains('aid-hot'), '1 m away: hot');
+    board.setAid({ kind: 'heat', level: 'warm' });
+    assert.ok(ring.classList.contains('aid-warm'));
+    board.setAid(null);
+    assert.equal(ring.getAttribute('display'), 'none');
+  } finally { board.destroy(); container.remove(); }
+});
+
+test('board (browser): targets: the first tap previews, a second tap on the same one confirms', async () => {
+  if (isNode) return;
+  await withBoard(async (board) => {
+    const frame = { ...frameWith({ x: 30, y: 30 }), players: [...frameWith({ x: 30, y: 30 }).players, { id: 'us-DM', team: 'us', role: 'DM', x: 45, y: 20 }] };
+    board.render(frame, { learnerId: 'us-LCB' });
+    const previews = [], taps = [];
+    board.enableTargets({ ids: ['us-DM'], onPreview: (id) => previews.push(id), onTap: (id) => taps.push(id) });
+    const svg = board.el.querySelector('svg');
+    const m = board.el.querySelector('.board-world').getScreenCTM();
+    const toScreen = (p) => ({ clientX: m.a * p.x + m.c * p.y + m.e, clientY: m.b * p.x + m.d * p.y + m.f });
+    let id = 40;
+    const tap = (p) => {
+      const o = { pointerId: ++id, pointerType: 'touch', isPrimary: true, bubbles: true, cancelable: true, ...toScreen(p) };
+      svg.dispatchEvent(new PointerEvent('pointerdown', o));
+      svg.dispatchEvent(new PointerEvent('pointerup', o));
+    };
+    const target = board.el.querySelector('.board-target[data-id="us-DM"]');
+    assert.ok(target, 'a target on the teammate');
+    const r = Number(target.querySelector('.target-hit').getAttribute('r')) * board.tokenScale * board.pxPerMetre;
+    assert.ok(2 * r >= 44 - 0.5, `${(2 * r).toFixed(1)} px across`);
+    tap({ x: 46, y: 20.5 });
+    assert.deepEqual(previews, ['us-DM'], 'first tap: preview');
+    assert.equal(target.getAttribute('aria-pressed'), 'true');
+    assert.deepEqual(taps, []);
+    tap({ x: 45, y: 20 });
+    assert.deepEqual(taps, ['us-DM'], 'second tap: confirm');
+    tap({ x: 80, y: 60 });
+    assert.deepEqual(previews, ['us-DM', null], 'a tap elsewhere clears the preview');
+    board.disableTargets();
+    assert.equal(board.el.querySelector('.board-target'), null);
+  });
+});
+
+test('board (browser): tap-to-move: a tap on the pitch moves YOU there; a tap on YOU still arms it', async () => {
+  if (isNode) return;
+  await withBoard(async (board) => {
+    board.render(frameWith({ x: 30, y: 30 }), { learnerId: 'us-LCB' });
+    const ends = [], arms = [];
+    board.enableDrag({ ids: ['us-LCB'], tapToMove: 'us-LCB', onEnd: (id, p) => ends.push(p), onArm: (id) => arms.push(id) });
+    const svg = board.el.querySelector('svg');
+    const m = board.el.querySelector('.board-world').getScreenCTM();
+    const toScreen = (p) => ({ clientX: m.a * p.x + m.c * p.y + m.e, clientY: m.b * p.x + m.d * p.y + m.f });
+    let id = 60;
+    const tap = (p) => {
+      const o = { pointerId: ++id, pointerType: 'touch', isPrimary: true, bubbles: true, cancelable: true, ...toScreen(p) };
+      svg.dispatchEvent(new PointerEvent('pointerdown', o));
+      svg.dispatchEvent(new PointerEvent('pointerup', o));
+    };
+    tap({ x: 50, y: 40 });
+    assert.equal(ends.length, 1, 'moved straight there');
+    approx(ends[0].x, 50, 0.05);
+    board.render(frameWith(ends[0]), { learnerId: 'us-LCB' }); // the mode writes the spot back (the board is controlled)
+    tap({ x: 30, y: 30 });
+    assert.equal(ends.length, 2, 'the old spot is just a spot now: YOU goes back there');
+    approx(ends[1].y, 30, 0.05);
+    board.render(frameWith(ends[1]), { learnerId: 'us-LCB' });
+    tap(ends[1]);
+    assert.equal(ends.length, 2, 'a tap on YOU does not move it...');
+    assert.ok(board.el.classList.contains('is-armed'), '...it arms it');
+    assert.deepEqual(arms.at(-1), 'us-LCB');
+    tap({ x: 20, y: 20 });
+    assert.equal(ends.length, 3, 'then a tap on a spot moves it there');
+    approx(ends[2].y, 20, 0.05);
+    assert.equal(arms.at(-1), null, 'and disarms it');
+    board.render(frameWith(ends[2]), { learnerId: 'us-LCB' });
+    // Horizontal board: straight up the screen is toward our left touchline (world -y).
+    const tagAt = { x: ends[2].x, y: ends[2].y - (BOARD_DEFAULTS.tokenRadius + 2.2) * board.tokenScale };
+    tap(tagAt);
+    assert.equal(ends.length, 4, 'a tap on the YOU tag is a step that way: YOU moves there...');
+    approx(ends[3].y, tagAt.y, 0.05);
+    assert.ok(!board.el.classList.contains('is-armed'), '...it never picks YOU up');
+    board.render(frameWith(ends[3]), { learnerId: 'us-LCB' });
+    // Just off the drawn token (inside the 44 px grab area, which still starts a drag): a tap moves YOU there too.
+    const off = (BOARD_DEFAULTS.tokenRadius + 0.5) * board.tokenScale + 0.4;
+    tap({ x: ends[3].x + off, y: ends[3].y });
+    assert.equal(ends.length, 5, 'a tap beside YOU moves YOU');
+    assert.ok(!board.el.classList.contains('is-armed'));
+  });
+});
+
+test('board: a tap picks YOU up only on the token itself when tap-to-move is on; anywhere else it moves YOU there', () => {
+  const on = (ids) => (id) => ids.includes(id);
+  // Player mode (tap-to-move): the tag or the grab area round YOU pressed, but not the token: a move, not a pick-up.
+  assert.deepEqual(tapAction({ pressed: 'us-LB', tapToMove: 'us-LB', onBody: on([]) }), { kind: 'move', id: 'us-LB' });
+  assert.deepEqual(tapAction({ pressed: 'us-LB', tapToMove: 'us-LB', onBody: on(['us-LB']) }), { kind: 'arm', id: 'us-LB' });
+  assert.deepEqual(tapAction({ pressed: null, tapToMove: 'us-LB' }), { kind: 'move', id: 'us-LB' }, 'a tap on the pitch');
+  // Armed: a tap on YOU puts it down, anywhere else (the tag too) moves it there.
+  assert.deepEqual(tapAction({ armed: 'us-LB', pressed: 'us-LB', tapToMove: 'us-LB', onBody: on(['us-LB']) }), { kind: 'disarm', id: 'us-LB' });
+  assert.deepEqual(tapAction({ armed: 'us-LB', pressed: 'us-LB', tapToMove: 'us-LB', onBody: on([]) }), { kind: 'move', id: 'us-LB' });
+  // Coach mode (no tap-to-move): a tap near a token arms it, as before; another token's body arms that one.
+  assert.deepEqual(tapAction({ pressed: 'us-LB', onBody: on([]) }), { kind: 'arm', id: 'us-LB' });
+  assert.deepEqual(tapAction({ pressed: null }), { kind: 'none' });
+  assert.deepEqual(tapAction({ armed: 'us-LB', pressed: BALL_ID, onBody: on([BALL_ID]) }), { kind: 'arm', id: BALL_ID });
+  assert.deepEqual(tapAction({ armed: 'us-LB', pressed: null, onBody: on([]) }), { kind: 'move', id: 'us-LB' });
+});
+
+test('board: YOUR kit number is swapped with the teammate who wore it, so no two players share a number', () => {
+  // A left back who picks 7: YOU are 7, and our right winger (7) wears 3.
+  const you = { learnerId: 'us-LB', youNumber: 7 };
+  assert.equal(shirtNumberOf('us-LB', you), 7);
+  assert.equal(shirtNumberOf('us-RW', you), 3);
+  assert.equal(shirtNumberOf('them-RW', you), 7, 'their team keeps its numbers');
+  assert.equal(shirtNumberOf('us-ST', you), 9);
+  const ours = ['GK', 'LB', 'LCB', 'RCB', 'RB', 'DM', 'LCM', 'RCM', 'LW', 'RW', 'ST'].map((r) => tokenLabel(`us-${r}`, 'number', you));
+  assert.equal(new Set(ours).size, 11, `unique: ${ours.join(' ')}`);
+  assert.equal(simpleTokenName('us-RW', 'us-LB', 7), 'Teammate, number 3', 'a screen reader hears the number on the shirt');
+  // Your own number, a number nobody wears, or none: nothing to swap.
+  assert.equal(shirtNumberOf('us-RW', { learnerId: 'us-LB', youNumber: 3 }), 7);
+  assert.equal(shirtNumberOf('us-RW', { learnerId: 'us-LB', youNumber: 23 }), 7);
+  assert.equal(shirtNumberOf('us-RW', { learnerId: 'us-LB' }), 7);
+  assert.equal(shirtNumberOf(BALL_ID, you), null);
+  assert.equal(tokenLabel('us-RW', 'number'), '7');
+});
+
+test('board: in Player mode pitch labels are 16 px and YOUR tag 14 px or more on a phone; Coach mode keeps its sizes', () => {
+  const P = BOARD_DEFAULTS;
+  const LP = playerLabelParams();
+  // A 390 px phone held upright: the pitch's width (plus margins) across about 374 px, and the whole pitch (Match day).
+  const phone = pxPerMetre({ width: 374, height: 600 }, focusViewBox('vertical', { width: 374, height: 600 }, { x0: 10, x1: 60 }));
+  const whole = pxPerMetre({ width: 374, height: 420 }, viewBoxFor('vertical'));
+  for (const pxm of [phone, whole, 3.2]) {
+    const label = 1.5 * labelScale(pxm, LP) * pxm;
+    assert.ok(label >= P.playerLabelPx - 0.2, `${pxm.toFixed(2)} px/m: a label ${label.toFixed(1)} px tall`);
+    const k = tokenScale(pxm);
+    const tag = 1.15 * tagScale(pxm, k, { player: true }) * k * pxm;
+    assert.ok(tag >= P.playerTagPx - 0.2, `${pxm.toFixed(2)} px/m: the tag ${tag.toFixed(1)} px tall`);
+  }
+  assert.ok(P.playerLabelPx >= 16 && P.playerTagPx >= 14);
+  assert.equal(tagScale(phone, tokenScale(phone)), 1, 'Coach mode: the tag as drawn before');
+  assert.equal(labelScale(phone), labelScale(phone, P), 'Coach mode: the labels as before');
+  assert.equal(tagScale(40, 1, { player: true }), 1, 'a big board needs no help');
+});
+
+test('board (browser): the hint hand resolves (at once under reduced motion) and leaves YOU where you are', async () => {
+  if (isNode) return;
+  await withBoard(async (board) => {
+    board.render(frameWith({ x: 30, y: 30 }), { learnerId: 'us-LCB' });
+    const token = board.el.querySelector('.token[data-id="us-LCB"]');
+    const before = token.style.transform;
+    const t0 = performance.now();
+    await Promise.race([board.showHintHand({ from: { x: 30, y: 30 }, to: { x: 40, y: 34 } }), new Promise((r) => setTimeout(r, hintTotalMs() + 2500))]);
+    assert.ok(performance.now() - t0 < hintTotalMs() + 2000, 'resolved');
+    assert.equal(board.el.querySelector('.board-hand'), null, 'the hand is gone');
+    assert.equal(token.style.transform, before, 'YOU back on the real spot');
+    await board.showHintHand({ from: null, to: { x: 1, y: 1 } }); // bad input: resolves at once
+  });
+});
+
+test('board (browser): a label written with clear: "you" never covers YOU or YOUR name tag', async () => {
+  if (isNode) return;
+  const container = document.createElement('div');
+  container.style.cssText = 'position:fixed;left:0;top:0;width:360px;height:560px;opacity:0;pointer-events:none';
+  document.body.appendChild(container);
+  const board = createBoard(container, { orientation: 'vertical', labels: 'number' });
+  try {
+    const hit = (a, b) => !(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top);
+    const ring = { x: 40, y: 20 };
+    // YOU a little behind the ring and to one side (on screen: below it, to the right), where the words above the
+    // ring used to sit on YOUR name tag; then level with it, then in front of it.
+    for (const spot of [{ x: 36.5, y: 27 }, { x: 40, y: 28 }, { x: 45, y: 22 }, { x: 33, y: 17 }]) {
+      board.render(frameWith(spot), { learnerId: 'us-LCB' });
+      board.setMarkers([{ type: 'label', at: ring, text: 'Best spot', tone: 'good', lift: 'token', clear: 'you' }]);
+      const label = board.el.querySelector('.mk-label').getBoundingClientRect();
+      const body = board.el.querySelector('.token.is-learner .token-body').getBoundingClientRect();
+      const tagBox = board.el.querySelector('.token.is-learner .token-you rect').getBoundingClientRect();
+      assert.ok(label.width > 0, 'drawn');
+      assert.ok(!hit(label, body), `YOU at (${spot.x}, ${spot.y}): the label is off YOU`);
+      assert.ok(!hit(label, tagBox), `YOU at (${spot.x}, ${spot.y}): the label is off YOUR tag`);
+    }
+  } finally { board.destroy(); container.remove(); }
 });

@@ -66,4 +66,30 @@ async function loadJSON(repoPath) {
   return res.json();
 }
 
-export { test, assert, approx, loadJSON, isNode };
+/**
+ * Wall-clock timing that holds up on a busy machine (`npm test` runs the test files side by side, and a laptop may be
+ * doing other work): `warmup` untimed calls (the JIT), then `runs` timed runs of `reps` calls each. A busy machine only
+ * ever adds time, so the median of the runs is a fair reading and the fastest run the best one. The speed tests use
+ * the median with a generous bound: they catch an order-of-magnitude slowdown, not a few per cent.
+ * `FOTBOL_PERF_SLACK` (Node, a number, default 1) scales every bound for a very slow machine or CI runner.
+ * @returns {{ median: number, min: number, runs: number[] }}  milliseconds per call
+ */
+function timed(fn, { warmup = 2, runs = 7, reps = 1 } = {}) {
+  for (let i = 0; i < warmup; i++) fn();
+  const ts = [];
+  for (let r = 0; r < runs; r++) {
+    const t0 = performance.now();
+    for (let i = 0; i < reps; i++) fn();
+    ts.push((performance.now() - t0) / reps);
+  }
+  const sorted = [...ts].sort((a, b) => a - b);
+  return { median: sorted[Math.floor(sorted.length / 2)], min: sorted[0], runs: ts };
+}
+
+/** The factor every speed bound is multiplied by (see timed). */
+const PERF_SLACK = (() => {
+  const v = isNode ? Number(process.env.FOTBOL_PERF_SLACK) : NaN;
+  return Number.isFinite(v) && v > 0 ? v : 1;
+})();
+
+export { test, assert, approx, loadJSON, isNode, timed, PERF_SLACK };

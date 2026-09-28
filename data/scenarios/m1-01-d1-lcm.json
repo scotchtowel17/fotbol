@@ -5,10 +5,10 @@
   "brief": "Their #6 has the ball. Keep an eye on their #8 as well.",
   "briefKid": "Their midfielder has the ball. Watch the other midfielder near you too.",
   "question": "Their #8 has it and is running at our goal. Where do you go?",
-  "questionKid": "Their midfielder has the ball and is running at our goal. Where do you go?",
+  "questionKid": "Their midfielder is running at our goal. Where do you go?",
   "takeaway": {
     "standard": "When you are nearest the ball, get between it and our goal first, then close the carrier down to a couple of metres.",
-    "kid": "If you are nearest the ball, get between it and our goal, then get close."
+    "kid": "Nearest the ball? Get between it and our goal, then get close."
   },
   "module": "M1",
   "moment": "out_of_possession",
@@ -66,7 +66,7 @@
       "id": "pressed-from-behind",
       "region": { "type": "circle", "x": 51.5, "y": 18.8, "r": 2 },
       "text": "You chased the ball from behind it, so their #8 can still run straight at our goal; get goal-side first.",
-      "textKid": "Chasing from behind lets them run at our goal, so get between them and goal."
+      "textKid": "Chasing from behind lets them run at our goal. Get between them and goal."
     },
     {
       "id": "stood-off",

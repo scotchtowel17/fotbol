@@ -3,12 +3,12 @@
   "title": "Ball goes wide: take the half-space",
   "titleKid": "Ball wide? Find the in-between strip",
   "brief": "Your #6 plays the ball out to your full-back, who has space to run up the touchline.",
-  "briefKid": "Your midfielder passes out wide to your defender, who has space to run.",
+  "briefKid": "Your midfielder passes wide to your defender, who has space.",
   "question": "The ball is out wide on your side. Where do you go?",
   "questionKid": "The ball is out wide near you. Where do you go?",
   "takeaway": {
     "standard": "With the ball wide, get into the ball-side half-space between their midfield and back line: their full-back and centre-back must decide who takes you, and either choice opens a pass.",
-    "kid": "Ball out wide? Find the gap between the wing and the middle, behind their midfielders."
+    "kid": "Ball out wide? Find the gap between the wing and the middle."
   },
   "module": "M2",
   "moment": "in_possession",
@@ -167,7 +167,7 @@
         "r": 4
       },
       "text": "You stayed in the middle next to your #6, so their midfield can cover you both and the full-back has no pass inside.",
-      "textKid": "You stayed in the middle. Move toward the ball, into the channel behind their midfielders."
+      "textKid": "You stayed in the middle. Move toward the ball, behind their midfielders."
     },
     {
       "id": "behind-the-ball",

@@ -1,6 +1,8 @@
-// Home: what fotbol is, "pick your position", your path through the modules, and the ways in
-// (Learn, Explore, Drill, Live). The chosen role is saved in settings (app.settings.role) for every
-// other mode to use.
+// Home: what fotbol is, your player card (kit, level, stars: js/ui/celebrate.js), "pick your position",
+// your path through the modules, and the ways in (Learn, Explore, Drill, Live). The chosen role is saved in
+// settings (app.settings.role) for every other mode to use. In Coach mode (the full app, for coaches and parents)
+// a short note on top says what Coach mode is and that playing here never changes the player's card: rewards are
+// earned in Player mode only (js/ui/rewards-store.js award).
 //
 // Module cards (M0-M3, data/curriculum.json) read progress only: the tutorial from the store key
 // 'tutorial' (learn.js) and mastery stars from 'skills' (elo.mastery). A module is finished when the
@@ -16,6 +18,8 @@ import { teamTargets, linearTarget } from '../../engine/formation.js';
 import { MODE_INFO } from '../../main.js';
 import { mastery } from '../../engine/elo.js';
 import { normalizeTutorialProgress, TUTORIAL_KEY } from './learn.js';
+import { playerCard } from '../celebrate.js';
+import { loadRewards, onRewards } from '../rewards-store.js';
 
 export const HOME_DEFAULTS = Object.freeze({
   pictureBall: { x: 52.5, y: MID_Y }, // [D] ball at kick-off for the formation picture
@@ -60,6 +64,8 @@ const COPY = {
     blurbs: {},
     foot: 'No accounts and no tracking: your progress stays in this browser. ',
     credits: 'Credits and sources',
+    coachNote: 'Coach mode is for coaches and parents: every drill, with scores and the full reasons.',
+    coachNote2: 'Nothing played here changes the player\'s card: stars, stickers and levels are earned in Player mode.',
   },
   kid: {
     kicker: 'Learn to play football',
@@ -80,6 +86,8 @@ const COPY = {
     },
     foot: 'No accounts. Your progress stays on this device. ',
     credits: 'Who made this',
+    coachNote: 'This is Coach mode, for coaches and parents.',
+    coachNote2: 'Playing here does not change the player card. Stars and stickers come from Player mode.',
   },
 };
 
@@ -342,10 +350,18 @@ function modeCards(app) {
   }));
 }
 
+/** The note on top of the Coach home (Coach mode only): what it is, and that the player's card is not changed here. */
+function coachNote(copy) {
+  return el('p', { class: 'coach-note', role: 'note' }, [el('strong', { text: copy.coachNote }), ' ', copy.coachNote2]);
+}
+
 /** Mode contract (ARCHITECTURE §5.9). @returns {() => void} unmount */
 export async function mount(root, app) {
   const positions = picturePositions(app.data.formations);
   let pitch = null;
+  // The player card (ARCHITECTURE §5.13): your kit, level and stars, and the way into the trophy room.
+  const cardSlot = el('div', { class: 'hm-player' });
+  const drawCard = () => cardSlot.replaceChildren(playerCard(app, loadRewards(app)));
 
   function render() {
     const w = app.settings.wording;
@@ -361,14 +377,17 @@ export async function mount(root, app) {
       if (radio && !radio.checked) radio.checked = true;
       setChosen();
       cardsSlot.replaceChildren(modeCards(app));
+      drawCard(); // the shirt number follows the position (unless the kit sets one)
     };
     pitch = miniPitch(positions, app.settings.role, pick);
     setChosen();
     cardsSlot.replaceChildren(modeCards(app));
+    drawCard();
     const progress = readProgress(app);
     const P = PATH_COPY[w === 'kid' ? 'kid' : 'standard'];
 
     root.replaceChildren(el('div', { class: 'home' }, [
+      app.settings.mode === 'coach' ? coachNote(copy) : null,
       el('section', { class: 'hero', 'aria-labelledby': 'home-title' }, [
         el('p', { class: 'hero-kicker', text: copy.kicker }),
         el('h1', { id: 'home-title', text: copy.title }),
@@ -380,6 +399,7 @@ export async function mount(root, app) {
             : linkButton(P.explore, '#/explore', { icon: 'explore' }),
         ]),
       ]),
+      cardSlot,
       el('section', { class: 'picker', 'aria-labelledby': 'pick-title' }, [
         el('div', { class: 'picker-head' }, [
           el('h2', { id: 'pick-title', text: copy.pick }),
@@ -418,6 +438,7 @@ export async function mount(root, app) {
   const off = app.onSettings?.((s) => {
     if (s.wording !== lastWording) { lastWording = s.wording; render(); }
   });
-  return () => off?.();
+  const offRewards = onRewards(drawCard);
+  return () => { off?.(); offRewards(); };
 }
 

@@ -8,7 +8,7 @@
   "questionKid": "Their winger is running at our box. Where do you go?",
   "takeaway": {
     "standard": "When the ball is wide in your own third, the #6 drops to the edge of the box on the ball side, blocking the pass inside and the cut-back, while the defenders guard the goal.",
-    "kid": "When they attack near our goal, drop back to the front of our box."
+    "kid": "When they attack near our goal, run back to the front of our box."
   },
   "module": "M3",
   "moment": "out_of_possession",
@@ -76,13 +76,13 @@
       "id": "stayed-in-midfield",
       "region": { "type": "circle", "x": 36, "y": 27, "r": 4 },
       "text": "You stayed in midfield, so the edge of your box is empty for a cut-back or a pass inside.",
-      "textKid": "Drop back! The front of our box needs you."
+      "textKid": "Run back! Guard the front of our box."
     },
     {
       "id": "joined-the-back-line",
       "region": { "type": "circle", "x": 17.5, "y": 24.5, "r": 3 },
       "text": "You dropped into the back line; they already have the box covered, so stay just in front of them to block the pass inside.",
-      "textKid": "Too deep! Stay just in front of your defenders."
+      "textKid": "Too far back! Stay just in front of your defenders."
     }
   ],
   "difficulty": 1,

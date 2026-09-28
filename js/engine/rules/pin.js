@@ -68,11 +68,11 @@ export default {
       cue: () => 'Where is their last defender, and how close are you to them?',
     },
     kid: {
-      name: 'Stay high',
-      ok: () => 'Great, you stayed high next to their last defender!',
+      name: 'Stay up front',
+      ok: () => 'Good, you stayed level with their last defender.',
       fail: (v) => (v.issue === 'deep'
-        ? `Move ${m(-v.dx - v.depth)} m forward, next to their last defender.`
-        : `Step back ${m(v.dx)} m, level with their last defender.`),
+        ? 'Move forward, level with their last defender.'
+        : 'Step back, level with their last defender.'),
       cue: () => 'Where is their last defender?',
     },
   },

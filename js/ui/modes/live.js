@@ -12,6 +12,8 @@
 // End screen: the time-averaged score and grade, a score-over-time line, the 3 worst moments (each
 // can be replayed frozen with the best spot, the fix and the reasons), Play again and New sequence.
 // "Show the best spot" (training wheels) marks the run as assisted: it is kept, but never a best.
+// A run played to the end, unassisted, earns rewards (XP and the Live badges: rewardRun, ARCHITECTURE §5.13) in
+// Player mode; Coach mode earns none, so nothing here then shows or mentions them (rewards-store.js earnsRewards).
 
 import { el, button, icon, linkButton, segmented, toggleSwitch, stageLayout, announce, uid } from '../components.js';
 import { BALL_ID } from '../board.js';
@@ -26,6 +28,7 @@ import { judgeSpot } from '../../engine/analyse.js';
 import { createFormation } from '../../engine/formation.js';
 import { ROLE_INFO } from '../../engine/roles.js';
 import { dist, lerp } from '../../engine/geometry.js';
+import { award, earnsRewards } from '../rewards-store.js';
 import * as S from '../session.js';
 
 export const LIVE_DEFAULTS = Object.freeze({
@@ -67,7 +70,8 @@ const COPY = {
     verdict: { S: 'Superb: you were with the play all the way.', A: 'Great tracking.', B: 'Good: mostly in the right place.', C: 'Getting there: some moments got away from you.', D: 'Tough run: watch the ball and your partners.', F: 'Tough run: follow the ball and slide with your team.' },
     personalBest: 'New personal best!',
     firstBest: 'Your first live score in this position: now try to beat it.',
-    assistedNote: 'Assisted run: the best spot was on show, so it does not count as a best.',
+    assistedNote: 'Assisted run: the best spot was on show, so it does not count as a best or earn XP.',
+    assistedNoteNoXp: 'Assisted run: the best spot was on show, so it does not count as a best.', // Coach mode earns no XP
     onSpot: (pct) => `${pct}% of the time at A or better`,
     recovery: (s) => `${s} s to get back after a pass`,
     noRecovery: 'Never pulled out of position by a pass',
@@ -112,7 +116,8 @@ const COPY = {
     verdict: { S: 'Amazing! You were always in the right place.', A: 'Great job!', B: 'Good job!', C: 'Nearly! Some moments got away.', D: 'Keep watching the ball!', F: 'Keep practising: move with your team.' },
     personalBest: 'New best score!',
     firstBest: 'Your first score here. Can you beat it?',
-    assistedNote: 'Helper mode was on, so this is not your best.',
+    assistedNote: 'Helper mode was on, so this is not your best and earns no XP.',
+    assistedNoteNoXp: 'Helper mode was on, so this is not your best.',
     onSpot: (pct) => `${pct}% of the time in a great spot`,
     recovery: (s) => `${s} s to get back after a pass`,
     noRecovery: 'Passes never caught you out',
@@ -460,8 +465,15 @@ export async function mount(root, app, params = []) {
         t: Date.now(), mode: 'live', id: run.scenario.id, seed, length: run.duration, title: 'Live', role, score: res.average, grade: res.grade,
         assisted: run.assisted, duration: Math.round(run.t * 10) / 10, speed: opts.speed, recovery: res.recovery, onSpot: Math.round(res.onSpot * 100), early,
       });
+      rewardRun(res, early);
     } else run.tooShort = true;
     showResults();
+  }
+
+  /** Rewards (ARCHITECTURE §5.13) for a run played to the end without the best spot on show. */
+  function rewardRun(res, early) {
+    if (early || run.assisted || !earnsRewards(app)) return;
+    award(app, { type: 'live', average: res.average }, { grade: res.grade });
   }
 
   function showResults({ refocus = true } = {}) {
@@ -489,7 +501,7 @@ export async function mount(root, app, params = []) {
         el('p', { class: 'lv-verdict', text: c.verdict[res.grade] ?? '' }),
         run.isBest && !run.firstBest ? el('p', { class: 'lv-pb' }, [icon('check', { size: 18 }), c.personalBest]) : null,
         run.firstBest ? el('p', { class: 'lv-note', text: c.firstBest }) : null,
-        run.assisted ? el('p', { class: 'lv-note', text: c.assistedNote }) : null,
+        run.assisted ? el('p', { class: 'lv-note', text: earnsRewards(app) ? c.assistedNote : c.assistedNoteNoXp }) : null,
         el('ul', { class: 'lv-stats' }, [
           el('li', { text: c.onSpot(Math.round(res.onSpot * 100)) }),
           el('li', { text: res.recovery === null ? c.noRecovery : c.recovery(res.recovery) }),

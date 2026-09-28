@@ -12,24 +12,31 @@
 //   cue    → beat 1: the cue question and its highlight on the pitch; "Show me"
 //   full   → beat 2: ghost, zone, heatmap and the fix arrow; score, reasons, takeaway, misconception
 //   replay → the continuation with you where you stood and the ghost, so you see what happens
-// Each rep updates Elo (score / 100 as partial credit), the history and the streaks (js/ui/session.js).
+// Each rep updates Elo (score / 100 as partial credit), the history and the streaks (js/ui/session.js), and
+// earns rewards (XP, stars, badges, sticker cards: js/ui/rewards-store.js), shown with beat 2 and summed up
+// on the summary (the reward functions below lockIn; the visuals are js/ui/celebrate.js). Only Player mode
+// earns (a Coach route opened from it): in Coach mode nothing is earned, so no reward row, rewards card,
+// reward sound or burst shows (rewards-store.js earnsRewards).
 // Scenarios are played in your role: a scenario authored on the other side is mirrored left↔right.
 // Leave mid-session and come back (same practice, same role, same tab): "Carry on (rep N of 6)" picks the
 // session up again. On a phone held upright the pitch is cropped to the length the rep's play needs.
 
 import { el, button, icon, linkButton, notice, stageLayout, segmented, announce } from '../components.js';
 import { BALL_ID } from '../board.js';
-import { createFeedbackPanel, gradeColor, starRating, principleChip } from '../reveal.js';
+import { createFeedbackPanel, gradeColor, starRating, principleChip, principleLabel } from '../reveal.js';
 import { frameAt, learnerBaseAt, timing } from '../../engine/timeline.js';
 import { normalizeScenario, mirrorScenario, validateScenario, learnerId as learnerIdOf } from '../../engine/scenario.js';
 import { buildContext } from '../../engine/context.js';
 import { computeGhost } from '../../engine/ghost.js';
 import { toleranceFor } from '../../engine/score.js';
 import { judgeSpot } from '../../engine/analyse.js';
-import { update as eloUpdate } from '../../engine/elo.js';
+import { update as eloUpdate, mastery } from '../../engine/elo.js';
 import { createFormation } from '../../engine/formation.js';
 import { ROLE_INFO, mirrorRole } from '../../engine/roles.js';
 import { dist } from '../../engine/geometry.js';
+import { cardTier, starsForScore } from '../../rewards.js';
+import { award, loadRewards, refreshRewards, mergeGains, cleanGains, emptyGains, earnsRewards } from '../rewards-store.js';
+import { sessionCard } from '../celebrate.js';
 import * as S from '../session.js';
 
 export const DRILL_DEFAULTS = Object.freeze({
@@ -108,7 +115,7 @@ const COPY = {
     principles: 'Principles you worked on',
     newStar: 'New star!',
     streakReps: (n) => `${n} good ${n === 1 ? 'rep' : 'reps'} in a row`,
-    streakDays: (n) => `${n} ${n === 1 ? 'day' : 'days'} in a row`,
+    streakDays: (n) => `${n} ${n === 1 ? 'day' : 'days'} played this week`,
     bestRun: (n) => `Best run this session: ${n}`,
     keepGoing: 'Keep going',
     practise: (name) => `Practise ${name}`,
@@ -165,7 +172,7 @@ const COPY = {
     principles: 'Ideas you practised',
     newStar: 'New star!',
     streakReps: (n) => `${n} good ${n === 1 ? 'one' : 'ones'} in a row`,
-    streakDays: (n) => `${n} ${n === 1 ? 'day' : 'days'} in a row`,
+    streakDays: (n) => `${n} ${n === 1 ? 'day' : 'days'} this week`,
     bestRun: (n) => `Best run: ${n}`,
     keepGoing: 'Play more',
     practise: (name) => `Practise ${name}`,
@@ -247,27 +254,31 @@ export async function mount(root, app, params = []) {
     return { kind: 'module', module, candidates: c, extra, anyRole, label: module ? `${module} · ${modTitle(module)}` : '' };
   }
 
+  /** A principle's short name (its kidName in Kid wording). */
   function principleName(id) {
-    const p = principles[id];
-    return p?.short ?? p?.name ?? id;
+    return principleLabel(principles[id], wording()) || id;
   }
+  /** A scenario's (or a played rep's) title in the current wording. */
+  const titleOf = (s) => S.wordingOf(s?.title, wording(), s?.titleKid) || s?.title || '';
 
   // ---- stage state (declared before anything can tear the stage down)
   let layout = null, board = null, panel = null;
   const els = {};
-  const session = { reps: [], played: [], before: S.loadSkills(store), skills: S.loadSkills(store), streak: S.loadStreak(store), repsTotal: S.SESSION_DEFAULTS.reps };
+  const session = { reps: [], played: [], before: S.loadSkills(store), skills: S.loadSkills(store), streak: S.loadStreak(store), repsTotal: S.SESSION_DEFAULTS.reps, gained: emptyGains() };
   let rep = null; // the current rep
   let raf = 0, holdTimer = 0;
   let lastInputWasKeyboard = false;
   const play = { paused: false, speed: preferredSpeed };
   // A session of this same practice left unfinished (in this tab): offered back before the first rep.
   const sessionKey = S.drillSessionKey(plan, role);
-  let resumeOffer = S.resumableSession(readSavedSession(), { key: sessionKey, now: Date.now() });
+  const savedSession = readSavedSession();
+  let resumeOffer = S.resumableSession(savedSession, { key: sessionKey, now: Date.now() });
+  if (resumeOffer) resumeOffer.gained = cleanGains(savedSession?.gained); // what the reps so far earned (the summary adds it up)
 
   /** Keep the session so far (after each rep), or forget it once it is complete. */
   function saveSession() {
     if (session.reps.length >= session.repsTotal) { writeSavedSession(null); return; }
-    writeSavedSession({ key: sessionKey, reps: session.reps, played: session.played, before: session.before, repsTotal: session.repsTotal, at: Date.now() });
+    writeSavedSession({ key: sessionKey, reps: session.reps, played: session.played, before: session.before, repsTotal: session.repsTotal, gained: session.gained, at: Date.now() });
   }
 
   if (!plan.candidates.length && plan.kind !== 'scenario') {
@@ -303,7 +314,7 @@ export async function mount(root, app, params = []) {
       return el('li', {
         class: ['dr-dot', done && 'is-done', i === current && !done && 'is-current'],
         style: done ? { '--grade': gradeColor(done.grade) } : null,
-        title: done ? c.repScore(done.title, done.score, done.grade) : null,
+        title: done ? c.repScore(titleOf(done), done.score, done.grade) : null,
       }, [done ? el('span', { text: done.grade }) : null]);
     }));
     const streak = session.streak.reps.current;
@@ -495,15 +506,15 @@ export async function mount(root, app, params = []) {
     panel.clear();
     renderKicker();
     const s = rep.scenario;
-    els.title.textContent = s.title;
+    els.title.textContent = titleOf(s);
     const primary = s.principles?.[0];
     const p = primary ? principles[primary] : null;
     const roleLabel = ROLE_INFO[s.learner.role]?.label ?? s.learner.role;
-    put(els.lead, 
+    put(els.lead,
       el('p', { class: 'dr-brief', text: S.wordingOf(s.brief, wording(), s.briefKid) || c.watchLead }),
       el('div', { class: 'dr-chips' }, [
         el('span', { class: 'dr-role' }, [el('b', { text: ROLE_INFO[s.learner.role]?.short ?? '' }), el('span', {}, [el('span', { class: 'visually-hidden', text: `${c.you}: ` }), roleLabel])]),
-        primary ? principleChip({ id: primary, label: p?.short ?? primary, name: p?.name ?? primary, href: null }, { wording: wording(), className: 'dr-focus' }) : null,
+        primary ? principleChip({ id: primary, label: principleName(primary), name: p?.name ?? primary, href: null }, { wording: wording(), className: 'dr-focus' }) : null,
       ]),
       rep.ref.extra ? el('p', { class: 'dr-note', text: c.extraRole(roleLabel.toLowerCase()) })
         : rep.ref.role !== role && !rep.ref.mirror ? el('p', { class: 'dr-note', text: c.otherRole(roleLabel.toLowerCase()) }) : null,
@@ -532,7 +543,7 @@ export async function mount(root, app, params = []) {
     board.disableDrag();
     clearOverlays();
     panel.clear();
-    els.title.textContent = rep.scenario.title;
+    els.title.textContent = titleOf(rep.scenario);
     const bar = el('span', { class: 'dr-progress-fill' });
     put(els.lead, 
       el('p', { class: 'dr-brief', text: c.watching }),
@@ -556,7 +567,10 @@ export async function mount(root, app, params = []) {
         const pct = Math.round((100 * t) / Math.max(rep.freezeAt, 1e-6));
         if (pct !== lastPct) { lastPct = pct; bar.style.width = `${pct}%`; bar.parentElement.setAttribute('aria-valuenow', String(pct)); }
       },
-      onEnd: () => showPlace(saved),
+      onEnd: () => {
+        app.sound?.play('whistle'); // the referee's whistle: play freezes here
+        showPlace(saved);
+      },
     });
   }
 
@@ -573,7 +587,7 @@ export async function mount(root, app, params = []) {
     if (savedSpot) rep.spot = savedSpot; else rep.spot = { ...rep.start };
     if (fresh) rep.decisionStart = performance.now();
     const question = S.wordingOf(s.question, wording(), s.questionKid) || c.question;
-    els.title.textContent = s.title;
+    els.title.textContent = titleOf(s);
     const conf = (value, label) => el('button', {
       type: 'button', class: ['dr-conf-btn', rep.confidence === value && 'is-on'], 'aria-pressed': String(rep.confidence === value),
       onclick: (e) => {
@@ -644,9 +658,50 @@ export async function mount(root, app, params = []) {
       misconception: rep.judged.misconception?.id ?? null, mirrored: !!rep.ref.mirror,
       reasons: rep.judged.judgement.feedback.reasons.map((r) => r.ruleId),
     });
-    session.reps.push({ id: s.id, baseId: rep.ref.baseId, title: s.title, score: result.score, grade: result.grade, principles: s.principles });
+    rep.gained = rewardRep(s, result);
+    session.reps.push({ id: s.id, baseId: rep.ref.baseId, title: s.title, ...(s.titleKid ? { titleKid: s.titleKid } : {}), score: result.score, grade: result.grade, principles: s.principles });
     saveSession();
     showCue();
+  }
+
+  // ---- rewards (ARCHITECTURE §5.13): awarded when a rep is judged, shown with beat 2 (beat 1 never gives the grade away)
+  /** The rep's XP and stars, then a sticker card for each of its principles whose mastery (updated Elo) went up. */
+  function rewardRep(s, result) {
+    let gained = award(app, { type: 'rep', scenarioId: s.id, role: s.learner.role, grade: result.grade, score: result.score }, { celebrate: false });
+    for (const id of s.principles ?? []) {
+      const stars = mastery(session.skills, id);
+      if (stars > cardTier(loadRewards(app), id)) gained = mergeGains(gained, award(app, { type: 'mastery', principleId: id, stars }, { celebrate: false }));
+    }
+    session.gained = mergeGains(session.gained, gained);
+    return gained;
+  }
+
+  /** Beat 2's reward row (stars, XP, badges, stickers) under the grade: celebrated once, redrawn quietly after.
+   *  The header's level pill catches up now too (the award at lock-in held it back). None in Coach mode. */
+  function rewardSlot(fresh) {
+    if (!rep?.gained || !earnsRewards(app)) return null;
+    const slot = el('div', { class: 'dr-reward' });
+    queueMicrotask(() => {
+      app.celebrate?.show(rep.gained, { grade: rep.judged?.judgement.result.grade ?? null, host: slot, quiet: !fresh });
+      if (fresh) refreshRewards(app);
+    });
+    return slot;
+  }
+
+  /** The session bonus: its sounds, burst and level-up now (the summary card shows the XP). None in Coach mode. */
+  function rewardSession(grade) {
+    if (!earnsRewards(app)) return;
+    // The session's stars come from the scores (rewards.js starsForScore), like each rep's.
+    const gained = award(app, { type: 'session', scores: session.reps.map((r) => r.score), grades: session.reps.map((r) => r.grade) }, { grade, card: false });
+    session.gained = mergeGains(session.gained, gained);
+  }
+
+  /** The summary's rewards card: XP this session, the stars won, the level bar, the badges and stickers. Coach mode
+   *  earns nothing, so it shows no card (never "+0 XP"). */
+  function sessionRewards() {
+    if (!earnsRewards(app)) return null;
+    const stars = session.reps.reduce((a, r) => a + starsForScore(r.score), 0); // as each rep's award counted them
+    return sessionCard({ gained: session.gained, stars, maxStars: session.reps.length * 3, state: loadRewards(app) }, { wording: wording(), principles });
   }
 
   /**
@@ -671,6 +726,7 @@ export async function mount(root, app, params = []) {
     rep.phase = 'cue';
     if (refocus) layout.panel.head.scrollTop = 0;
     renderKicker();
+    els.title.textContent = titleOf(rep.scenario); // (a wording change re-phrases it)
     const { frame, judgement } = rep.judged;
     drawFrame(frameWithSpot(frame, rep.spot));
     const hl = judgement.feedback.cue?.highlight;
@@ -691,6 +747,7 @@ export async function mount(root, app, params = []) {
     renderKicker();
     const { frame, judgement, misconception } = rep.judged;
     const s = rep.scenario;
+    els.title.textContent = titleOf(s);
     drawFrame(frameWithSpot(frame, rep.spot));
     keepInView(rep.spot, rep.judged.ghost.spot);
     drawAnswer();
@@ -699,7 +756,7 @@ export async function mount(root, app, params = []) {
     const miscText = misconception ? S.wordingOf(misconception.text, wording(), misconception.textKid) || undefined : undefined;
     put(els.lead);
     // Principle chips stay plain tags mid-session (a link would leave the drill); the summary links out.
-    panel.showFull(judgement, { takeaway, misconception: miscText, focus: false, principleLinks: false, animate: fresh });
+    panel.showFull(judgement, { takeaway, misconception: miscText, focus: false, principleLinks: false, animate: fresh, reward: rewardSlot(fresh) });
     const confidentMiss = rep.confidence === 'sure' && judgement.result.score < 60;
     put(els.after, 
       confidentMiss ? el('p', { class: 'dr-note dr-note--sure', text: c.confidentMiss }) : null,
@@ -772,7 +829,7 @@ export async function mount(root, app, params = []) {
     rep = null;
     stopPlayback();
     // The session so far fills the rep dots; "Start a new session" puts a fresh one back.
-    Object.assign(session, { reps: saved.reps.map((r) => ({ ...r })), played: [...saved.played], before: saved.before, repsTotal: saved.repsTotal });
+    Object.assign(session, { reps: saved.reps.map((r) => ({ ...r })), played: [...saved.played], before: saved.before, repsTotal: saved.repsTotal, gained: cleanGains(saved.gained) });
     board.disableDrag();
     clearOverlays();
     board.setFocus(null);
@@ -789,7 +846,7 @@ export async function mount(root, app, params = []) {
     const fresh = button(c.resumeNew, { variant: 'ghost', onClick: () => {
       resumeOffer = null;
       writeSavedSession(null);
-      Object.assign(session, { reps: [], played: [], before: S.loadSkills(store), repsTotal: S.SESSION_DEFAULTS.reps });
+      Object.assign(session, { reps: [], played: [], before: S.loadSkills(store), repsTotal: S.SESSION_DEFAULTS.reps, gained: emptyGains() });
       nextRep();
     } });
     setActions([go, fresh]);
@@ -804,9 +861,10 @@ export async function mount(root, app, params = []) {
     const c = C();
     const sum = S.summarizeSession({ reps: session.reps, before: session.before, after: session.skills });
     const today = S.dayKey(new Date());
-    const days = S.currentDayStreak(session.streak, today);
+    const days = S.weekDays(session.streak, today); // days played this week (R35: it only fills up)
     const weakest = sum.weakest;
     const weakName = weakest ? principleName(weakest) : null;
+    rewardSession(sum.grade);
     teardownStage();
     const again = plan.kind === 'principle' ? `#/drill/p/${encodeURIComponent(plan.principle)}`
       : plan.module ? `#/drill/${plan.module}` : route.kind === 'scenario' ? `#/drill/s/${encodeURIComponent(plan.first)}` : '#/drill';
@@ -841,11 +899,12 @@ export async function mount(root, app, params = []) {
           sum.run >= 2 ? el('p', { class: 'dr-sum-run', text: c.bestRun(sum.run) }) : null,
         ]),
       ]),
+      sessionRewards(),
       el('section', { class: 'dr-sum-section', 'aria-labelledby': 'dr-sum-reps-h' }, [
         el('h2', { id: 'dr-sum-reps-h', text: c.yourReps }),
         el('ol', { class: 'dr-sum-reps' }, sum.reps.map((r, i) => el('li', { style: { '--i': String(i) } }, [
           badge(r.grade),
-          el('span', { class: 'dr-sum-rep-title', text: r.title }),
+          el('span', { class: 'dr-sum-rep-title', text: titleOf(r) }),
           el('span', { class: 'dr-sum-rep-score' }, [el('span', { class: 'visually-hidden', text: c.repSr(r.score, r.grade) }), el('span', { 'aria-hidden': 'true', text: String(r.score) })]),
         ]))),
       ]),

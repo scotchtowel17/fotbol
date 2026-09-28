@@ -108,7 +108,7 @@ export default {
     },
     kid: {
       name: 'Fill the box',
-      ok: () => 'Great, you are in a scoring spot for the cross!',
+      ok: () => 'Good run, you are in a scoring spot for the cross.',
       fail: (v) => `Run to the ${v.kidZone} for the cross.`,
       cue: () => 'Where can the cross find you?',
     },

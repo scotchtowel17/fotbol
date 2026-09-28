@@ -86,13 +86,13 @@ export default {
       cue: () => 'With the ball on the far wing, which part of your side of the pitch still needs guarding?',
     },
     kid: {
-      name: 'Squeeze in',
-      ok: () => 'Nice, you moved in toward the ball side.',
+      name: 'Come inside',
+      ok: () => 'Good, you moved across toward the ball.',
       fail: (v) => {
         if (v.mode === 'centre') return v.issue === 'narrow' ? 'Stay in the middle, your partner has gone to the ball.' : 'Move into the middle, your partner has gone to the ball.';
-        return v.issue === 'narrow' ? 'Stay a little wider so there is no big hole beside you.' : 'Move in toward the middle, the ball is on the other side.';
+        return v.issue === 'narrow' ? 'Stay a little wider, so there is no big gap beside you.' : 'Move in toward the middle, the ball is on the other side.';
       },
-      cue: () => 'With the ball on the other wing, do you need to be so wide?',
+      cue: () => 'Ball on the other side: do you need to be so wide?',
     },
   },
   cue(ctx) {

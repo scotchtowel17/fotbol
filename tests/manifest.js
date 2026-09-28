@@ -19,10 +19,14 @@ export const TEST_FILES = Object.freeze([
   'explain.test.js',
   'elo.test.js',
   'sequence.test.js',
+  'passing.test.js',
+  'passdrill.test.js',
+  'spotdrill.test.js',
   'integration.test.js',
   // data files
   'content.test.js',
   'scenarios-content.test.js',
+  'copy.test.js',
   'build-index.test.js',
   // app plumbing and UI (pure parts)
   'store.test.js',
@@ -31,5 +35,13 @@ export const TEST_FILES = Object.freeze([
   'heatmap.test.js',
   'reveal.test.js',
   'session.test.js',
+  'rewards.test.js',
+  'celebrate.test.js',
+  'player-play.test.js',
+  'player-pass.test.js',
+  'road.test.js',
+  'road-sets-back.test.js',
+  'road-sets-front.test.js',
+  'player-shell.test.js',
   'manifest.test.js',
 ]);

@@ -131,8 +131,8 @@ export default {
       cue: (v) => `Where is ${v.who}, and which side of them is our goal?`,
     },
     kid: {
-      name: 'Stay between them and goal',
-      ok: () => 'Great, you are between your player and our goal.',
+      name: 'Between them and goal',
+      ok: () => 'Good, you are between your player and our goal.',
       fail: (v) => ({
         'wrong-side': `Get between ${v.whoKid} and our goal.`,
         angle: `Stand on the line from ${v.whoKid} to the middle of our goal.`,
