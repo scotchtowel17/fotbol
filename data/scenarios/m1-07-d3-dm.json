@@ -8,7 +8,7 @@
   "questionKid": "Your teammate is going to the ball. Where do you go?",
   "takeaway": {
     "standard": "When the ball moves across, the cover moves with it: sit behind and inside whichever teammate is pressing, still in front of your centre-backs.",
-    "kid": "When the ball moves across, move across too and stand behind the teammate pressing."
+    "kid": "Ball moves across? Move across too, behind the teammate who went to the ball."
   },
   "module": "M1",
   "moment": "out_of_possession",

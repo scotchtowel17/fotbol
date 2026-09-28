@@ -34,14 +34,14 @@ export const TUTORIAL_KEY = 'tutorial';
 
 // ------------------------------------------------------------------ labels
 
-export const CATEGORY_ORDER = Object.freeze(['foundations', 'out_of_possession', 'in_possession', 'transition', 'team_shape', 'role', 'goalkeeper', 'set_piece']);
+export const CATEGORY_ORDER = Object.freeze(['foundations', 'out_of_possession', 'in_possession', 'passing', 'transition', 'team_shape', 'role', 'goalkeeper', 'set_piece']);
 const CATEGORY_LABEL = {
   standard: {
-    foundations: 'Foundations', in_possession: 'In possession', transition: 'Transitions', out_of_possession: 'Out of possession',
+    foundations: 'Foundations', in_possession: 'In possession', passing: 'Passing', transition: 'Transitions', out_of_possession: 'Out of possession',
     team_shape: 'Team shape', role: 'Role cards', goalkeeper: 'Goalkeeper', set_piece: 'Set pieces',
   },
   kid: {
-    foundations: 'The basics', in_possession: 'When we have the ball', transition: 'When the ball changes team', out_of_possession: 'When they have the ball',
+    foundations: 'The basics', in_possession: 'When we have the ball', passing: 'Where to pass', transition: 'When the ball changes team', out_of_possession: 'When they have the ball',
     team_shape: 'Team shape', role: 'Your position', goalkeeper: 'Goalkeeper', set_piece: 'Free kicks and corners',
   },
 };

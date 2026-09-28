@@ -1,1 +1,153 @@
-/* Player mode: pass (see docs/KID_REDESIGN.md §8). */
+/* Player mode: pass (see docs/KID_REDESIGN.md §8). "Who's open?" (js/ui/player/pass.js, §4.4).
+   A full-height stage: a thin bar (rep dots, Home), the pitch, and a dock with one line and the actions (or the reveal).
+   Phones: the dock sits under the pitch. Desktop (≥ 900 px): the dock is a column beside the pitch.
+   On the pitch: option labels, lanes and rings are board markers with ps-* classes (pass.js revealMarkers); every
+   colour pairs with a shape (★ ✓ ! ✗) and a line pattern (solid, dashed, dotted), never colour alone (R39). */
+
+:root {
+  --ps-good: var(--ideal);      /* ★ Best, ✓ Good: the best-spot cyan */
+  --ps-warn: #ffd84d;           /* ! Risky: amber yellow (lighter than the coral cut-out, a different hue from cyan) */
+  --ps-bad: var(--mk-bad);      /* ✗ Cut out, Offside, Danger: coral */
+  --ps-card-bg: rgb(10 20 14 / 0.86);
+  --ps-card-ink: #ffffff;
+  --ps-good-bg: #bdf3ff; --ps-good-ink: #04313c;
+  --ps-warn-bg: #ffe98a; --ps-warn-ink: #3a2c00;
+  --ps-bad-bg: #ffc9bb;  --ps-bad-ink: #3d0d02;
+  --ps-dot: var(--surface-3);
+  --ps-dot-on: var(--rv-star-on, #f2ae00);
+}
+
+/* ---- layout */
+.ps-view { min-height: 0; }
+.ps {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas: "bar" "stage" "dock";
+  height: calc(100vh - var(--header-h, 0px));
+  height: calc(100dvh - var(--header-h, 0px));
+  min-height: 420px;
+  background: var(--bg);
+}
+.ps-bar {
+  grid-area: bar;
+  display: flex; align-items: center; gap: 12px;
+  padding: 4px 16px 0 8px; min-height: 48px;
+}
+.ps-stage { grid-area: stage; position: relative; min-height: 0; display: flex; padding: 4px 8px 6px; overflow: clip; }
+.ps-board { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; }
+.ps-board > .board { flex: 1; }
+.ps-dock {
+  grid-area: dock;
+  display: grid; gap: 10px; align-content: start;
+  padding: 10px 16px calc(14px + env(safe-area-inset-bottom));
+  background: var(--surface); border-top: 1px solid var(--border);
+  box-shadow: 0 -6px 20px rgb(0 0 0 / 0.06);
+}
+.ps-loading { display: grid; place-items: center; min-height: 50vh; min-height: 50dvh; color: var(--text-muted); font-size: 1.1rem; font-weight: 650; }
+
+@media (min-width: 900px) {
+  .ps {
+    grid-template-columns: minmax(0, 1fr) clamp(300px, 30vw, 380px);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: "bar bar" "stage dock";
+    column-gap: var(--gutter, 16px);
+    padding: 0 var(--gutter, 16px) var(--gutter, 16px);
+  }
+  .ps-bar { padding-left: 0; padding-right: 4px; }
+  .ps-stage { padding: 0; }
+  .ps-dock {
+    align-self: stretch; align-content: center;
+    border: 1px solid var(--border); border-radius: var(--radius, 14px);
+    box-shadow: var(--shadow-sm); padding: 20px;
+  }
+}
+
+/* ---- the bar: rep dots (5) and Home */
+.ps-dots { display: flex; gap: 8px; margin: 0 0 0 auto; padding: 0; list-style: none; }
+.ps-dot {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: var(--ps-dot); box-shadow: inset 0 0 0 2px var(--border);
+}
+.ps-dot.is-current { background: transparent; box-shadow: inset 0 0 0 3px var(--accent); }
+.ps-dot.is-done { box-shadow: none; }
+.ps-dot.is-done:not([data-stars="0"]) { background: var(--ps-dot-on); }
+.ps-exit { flex: none; }
+
+/* ---- the dock: one line, big buttons */
+.ps-line { margin: 0; font-size: 1.1875rem; line-height: 1.45; font-weight: 750; }
+.ps-line[hidden] { display: none; }
+.ps-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.ps-actions:empty, .ps-reveal:empty { display: none; }
+.ps-actions .btn { min-height: 52px; font-size: 1.05rem; padding-left: 20px; padding-right: 20px; }
+.ps-actions .ps-pass { flex: 1 1 180px; min-height: 56px; font-size: 1.15rem; }
+.ps-actions .ps-again { flex: 0 1 auto; }
+/* Phones: the dock keeps its height from the first frame to the pass, so the pitch never jumps mid-rep (the reveal,
+   taller, is the one step). */
+@media (max-width: 899.98px) { .ps-dock { min-height: 184px; } }
+.ps:not([data-phase="reveal"]) .ps-reveal { display: none; } /* the shared reveal (js/ui/player/reveal.js) keeps its root */
+
+/* ---- over the pitch: the "You've got the ball" card and the outcome word */
+.ps-card, .ps-banner {
+  position: absolute; left: 50%; top: 50%; z-index: 3;
+  transform: translate(-50%, -50%);
+  max-width: calc(100% - 32px);
+  border-radius: 16px; text-align: center;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.35);
+}
+.ps-card[hidden], .ps-banner[hidden] { display: none; }
+.ps-card { background: var(--ps-card-bg); color: var(--ps-card-ink); padding: 18px 26px; cursor: pointer; animation: ps-pop 0.28s cubic-bezier(0.2, 0.8, 0.3, 1.2) both; }
+.ps-card-text { margin: 0; font-size: clamp(1.5rem, 5.5vw, 2.1rem); font-weight: 850; line-height: 1.15; letter-spacing: -0.01em; }
+.ps-banner {
+  top: 14px; transform: translateX(-50%); /* a broadcast strip at the top edge: it covers as little play as it can */
+  display: inline-flex; align-items: center; gap: 12px; white-space: nowrap;
+  padding: 12px 24px; font-size: clamp(1.6rem, 6vw, 2.3rem); font-weight: 900; line-height: 1.1;
+  background: var(--ps-good-bg); color: var(--ps-good-ink); border: 3px solid var(--ps-good-ink);
+  animation: ps-drop 0.25s cubic-bezier(0.2, 0.8, 0.3, 1.25) both;
+}
+.ps-banner[data-tone="warn"] { background: var(--ps-warn-bg); color: var(--ps-warn-ink); border-color: var(--ps-warn-ink); }
+.ps-banner[data-tone="bad"] { background: var(--ps-bad-bg); color: var(--ps-bad-ink); border-color: var(--ps-bad-ink); }
+.ps-banner-shape { font-size: 1.1em; line-height: 1; }
+@keyframes ps-pop { from { opacity: 0; transform: translate(-50%, -50%) scale(0.85); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+@keyframes ps-drop { from { opacity: 0; transform: translate(-50%, -10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+/* ---- pitch markers (board.js setMarkers with ps-* classes) */
+.ps-view .mk.ps-mk--good, .ps-view .mk-label.ps-mk--good { --mk: var(--ps-good); }
+.ps-view .mk.ps-mk--warn, .ps-view .mk-label.ps-mk--warn { --mk: var(--ps-warn); }
+.ps-view .mk.ps-mk--bad, .ps-view .mk-label.ps-mk--bad { --mk: var(--ps-bad); }
+/* Lanes: solid = good, dashed = risky, dotted = cut out (the pattern carries the meaning with the colour). */
+.ps-view .mk-segment.ps-lane { stroke-width: 0.55; }
+.ps-view .mk-segment.ps-line--solid { stroke-dasharray: none; }
+.ps-view .mk-segment.ps-line--dashed { stroke-dasharray: 1.4 0.9; }
+.ps-view .mk-segment.ps-line--dotted { stroke-dasharray: 0.01 1.1; stroke-width: 0.7; stroke-linecap: round; }
+.ps-view .mk-arrow.ps-run line { stroke-width: 0.4; stroke-dasharray: 0.9 0.6; }
+/* The preview: a white dotted line from the ball to the teammate you picked. */
+.ps-view .mk-segment.ps-preview { --mk: #ffffff; stroke-width: 0.6; stroke-dasharray: 0.01 1.2; stroke-linecap: round; animation: ps-march 0.8s linear infinite; }
+@keyframes ps-march { to { stroke-dashoffset: -1.21; } }
+/* The defender in the way: a coral dashed ring; after "Cut out!" it flashes. */
+.ps-view .mk-ring.ps-blocker { stroke-width: 0.45; stroke-dasharray: 0.9 0.55; }
+.ps-view .mk-ring.ps-flash { stroke-width: 0.7; animation: ps-flash 0.45s ease-in-out 4 alternate; }
+@keyframes ps-flash { from { opacity: 1; } to { opacity: 0.15; } }
+.ps-view .mk-label.ps-intercept { font-size: calc(2.2px * var(--board-label-k, 1)); font-weight: 900; }
+.ps-view .mk-segment.ps-xline { stroke-width: 0.35; stroke-dasharray: 0.9 0.7; opacity: 0.9; }
+/* Option labels over the teammates: bold, with a dark edge so they read on the grass in both themes. */
+.ps-view .mk-label.ps-opt { font-size: calc(1.6px * var(--board-label-k, 1)); font-weight: 900; stroke: rgb(0 0 0 / 0.72); stroke-width: 0.5px; }
+.ps-view .mk-label.ps-opt--best, .ps-view .mk-label.ps-opt.is-yours { font-size: calc(1.85px * var(--board-label-k, 1)); }
+
+/* ---- a plain reveal and Full time, used only if the shared Player screens fail to load */
+.ps-fb-reveal { display: grid; gap: 6px; }
+.ps-fb-stars { margin: 0; font-size: 1.6rem; color: var(--ps-dot-on); letter-spacing: 0.1em; }
+.ps-fb-word { margin: 0; font-size: 1.3rem; font-weight: 850; }
+.ps-fb-line { margin: 0; font-size: 1.125rem; line-height: 1.5; }
+.ps-fb-why { display: grid; gap: 4px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); }
+.ps-fb-why[hidden] { display: none; }
+.ps-fb-why p { margin: 0; }
+.ps-fb-why-title { font-weight: 800; }
+.ps-fb-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
+.ps-fb-actions .btn { min-height: 52px; flex: 1 1 auto; }
+.ps-fb-full { max-width: 480px; margin: 0 auto; padding: 32px 16px; display: grid; gap: 12px; text-align: center; }
+
+/* ---- reduced motion: no pops, no flashing, no marching (the ring stays, still) */
+@media (prefers-reduced-motion: reduce) {
+  .ps-card, .ps-banner, .ps-view .mk-ring.ps-flash, .ps-view .mk-segment.ps-preview { animation: none !important; }
+}
+:root[data-reduced-motion="true"] :is(.ps-card, .ps-banner, .ps-view .mk-ring.ps-flash, .ps-view .mk-segment.ps-preview) { animation: none !important; }

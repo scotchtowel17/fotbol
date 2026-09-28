@@ -1,7 +1,9 @@
 // Learning-content checks: data/principles.json, curriculum.json, tutorial.json, resources.json.
 // Beyond shape, these pin the content to docs/RESEARCH.md: section 8 rows (names, levels,
 // releases, sources), the section 5.5 rule map, the 9.2 module lists and the verified links
-// in section 10. Tutorial steps are also checked for tactical sense in the canonical frame.
+// in section 10. The passing principles (PA1-PA15) are pinned to docs/research/passing.md
+// section 2 (releases, sources) and its section 7 links instead. Tutorial steps are also
+// checked for tactical sense in the canonical frame.
 
 import { test, assert, loadJSON, isNode } from './harness.js';
 import { FAMILIES, LEARNABLE_ROLES, ROLE_INFO, ROLES, BACK_LINE, parsePlayerId } from '../js/engine/roles.js';
@@ -16,12 +18,13 @@ async function loadText(repoPath) {
   return res.text();
 }
 
-const [principleData, curriculum, tutorial, resources, research] = await Promise.all([
+const [principleData, curriculum, tutorial, resources, research, passingResearch] = await Promise.all([
   loadJSON('data/principles.json'),
   loadJSON('data/curriculum.json'),
   loadJSON('data/tutorial.json'),
   loadJSON('data/resources.json'),
   loadText('docs/RESEARCH.md'),
+  loadText('docs/research/passing.md'),
 ]);
 const principles = principleData.principles;
 const byId = Object.fromEntries(principles.map((p) => [p.id, p]));
@@ -40,7 +43,10 @@ const PREFIX = {
   F: [8, 'foundations', '8.1'], B: [12, 'in_possession', '8.2'], P: [13, 'in_possession', '8.3'],
   T: [4, 'transition', '8.4'], D: [9, 'out_of_possession', '8.5'], U: [8, 'team_shape', '8.6'],
   R: [5, 'role', '8.7'], G: [4, 'goalkeeper', '8.8'], S: [7, 'set_piece', '8.9'],
+  PA: [15, 'passing', 'research/passing.md §2'],
 };
+const prefixOf = (id) => id.replace(/\d+$/, '');
+const TOTAL = Object.values(PREFIX).reduce((n, [count]) => n + count, 0);
 const RELEASES = ['v1', 'v1.1', 'v2', 'v3'];
 
 /** Never linked from the app: marked confidential (U17 plan), or carries betting content (RESEARCH 2.4, 2.7). */
@@ -89,29 +95,69 @@ function verifiedSourceUrls(md) {
 
 const ROWS = researchRows(research);
 const VERIFIED = verifiedSourceUrls(research);
+
+/** docs/research/passing.md section 2 rows → { id: { release, sources: source keys } }. */
+function passingRows(md) {
+  const rows = {};
+  const body = md.slice(md.indexOf('\n## 2.'), md.indexOf('\n## 3.'));
+  for (const line of body.split('\n')) {
+    if (!/^\| PA\d+ \|/.test(line)) continue;
+    const cells = line.split(/(?<!\\)\|/).slice(1, -1).map((c) => c.trim()); // '\|' inside a cell is a literal bar
+    const keys = cells[5].split(/[,;]/).map((c) => c.replace(/\([^)]*\)/g, '').replace(/\\?\*/g, '').trim().split(/\s+/)[0])
+      .filter((k) => k && !/^P\d+$/.test(k)); // "ODP P6, P7": the ODP manual's principle numbers
+    rows[cells[0]] = { release: cells[4].split(/\s/)[0], sources: [...new Set(keys)] };
+  }
+  return rows;
+}
+/** URLs in passing.md section 7 (every page there was opened), without the abstract-only ones. */
+function passingUrls(md) {
+  const body = md.slice(md.indexOf('\n## 7. Sources'));
+  const ok = new Set();
+  for (const line of body.split('\n')) {
+    if (/abstract only|confidential/i.test(line)) continue;
+    for (const [url] of line.matchAll(/https?:\/\/[^\s<>]+/g)) ok.add(url);
+  }
+  return ok;
+}
+const PASSING_ROWS = passingRows(passingResearch);
+const PASSING_VERIFIED = passingUrls(passingResearch);
 const LEARNABLE_FAMILIES = new Set(LEARNABLE_ROLES.map((r) => ROLE_INFO[r].family));
 
 function checkLink(url, where) {
   assert.match(url, /^https:\/\//, `${where}: ${url} is not https`);
   assert.ok(!DO_NOT_LINK.includes(url), `${where}: ${url} must not be linked`);
-  assert.ok(VERIFIED.has(url), `${where}: ${url} is not a verified source in RESEARCH section 10`);
+  if (/^PA\d+$/.test(where)) assert.ok(PASSING_VERIFIED.has(url), `${where}: ${url} is not a source in research/passing.md section 7`);
+  else assert.ok(VERIFIED.has(url), `${where}: ${url} is not a verified source in RESEARCH section 10`);
 }
 
 // ---------- principles ----------
 
-test('principles: 70 rows with unique, contiguous IDs and the right category', () => {
+test('principles: 85 rows (70 from RESEARCH section 8, PA1-PA15 passing) with unique, contiguous IDs and the right category', () => {
   assert.equal(principleData.version, 1);
-  assert.equal(principles.length, 70);
-  assert.equal(new Set(principles.map((p) => p.id)).size, 70, 'duplicate principle id');
+  assert.equal(principles.length, TOTAL);
+  assert.equal(new Set(principles.map((p) => p.id)).size, TOTAL, 'duplicate principle id');
   for (const [prefix, [count, category, section]] of Object.entries(PREFIX)) {
-    const ids = principles.filter((p) => p.id[0] === prefix).map((p) => p.id);
+    const ids = principles.filter((p) => prefixOf(p.id) === prefix).map((p) => p.id);
     assert.deepEqual(ids, Array.from({ length: count }, (_, i) => `${prefix}${i + 1}`), `${prefix} ids`);
     for (const id of ids) {
       assert.equal(byId[id].category, category, `${id} category`);
       assert.equal(byId[id].section, section, `${id} section`);
     }
   }
-  for (const p of principles) assert.match(p.id, /^[FBPTDURGS][1-9]\d?$/);
+  for (const p of principles) assert.match(p.id, /^(?:[FBPTDURGS]|PA)[1-9]\d?$/);
+});
+
+test('principles: PA1-PA15 releases and source keys match research/passing.md section 2', () => {
+  assert.equal(Object.keys(PASSING_ROWS).length, 15, 'passing.md section 2 should have 15 rows');
+  assert.ok(PASSING_VERIFIED.size > 20, 'parsed the passing.md section 7 source list');
+  for (const [id, row] of Object.entries(PASSING_ROWS)) {
+    const p = byId[id];
+    assert.ok(p, `${id} missing from principles.json`);
+    assert.equal(p.release, row.release, `${id} release`);
+    assert.deepEqual(p.sources, row.sources, `${id} sources`);
+    assert.ok([1, 2, 3].includes(p.level), `${id} level ${p.level}`);
+    assert.ok(Array.isArray(p.related) && p.related.every((r) => byId[r]), `${id} related`);
+  }
 });
 
 test('principles: names, levels, releases and sources match RESEARCH section 8', () => {

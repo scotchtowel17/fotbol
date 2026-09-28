@@ -2,15 +2,18 @@
 // 'rewards', events awarded with the learner's local day, what they earn handed to the celebrations
 // (app.celebrate, js/ui/celebrate.js), and the chosen kit applied app-wide as CSS custom properties.
 //
-//   award(app, { type: 'rep', scenarioId, role, grade, score })       → gained (saved, then celebrated)
+//   award(app, { type: 'rep', scenarioId, role, score })              → gained (saved, then celebrated)
+//     a rep's stars follow its score (rewards.js starsForScore); Player mode may also pass the `stars` it showed,
+//     Coach mode also passes its grade (used only when there is no score). XP comes from stars and improvement only.
 //   award(app, event, { celebrate: false })                           → gained, shown later by the caller
 //   loadRewards(app), saveRewards(app, state), refreshRewards(app)    (refresh after an import or a reset)
+//   daysThisWeek(app)                                                 → days played this week, 0-7 (R35: only fills up)
 //   onRewards(fn) → unsubscribe                                       (the header pill, the home card)
 //
 // Everything that touches the store or the document goes through `app` or a guarded global, so the pure
 // helpers (todayLocal, mergeGains, cleanGains, kitVars, youLabel, totalStars) run under node --test.
 
-import { normalizeRewards, applyEvent, paletteById, baseScenarioId, rankFor, BADGES_BY_ID, KIT_PALETTES } from '../rewards.js';
+import { normalizeRewards, applyEvent, paletteById, baseScenarioId, rankFor, weekDaysPlayed, BADGES_BY_ID, KIT_PALETTES } from '../rewards.js';
 
 export const REWARDS_KEY = 'rewards';
 /** Window event fired whenever the stored rewards change (detail: { state }). */
@@ -27,6 +30,12 @@ export function todayLocal(now = new Date()) {
 
 /** The stored rewards, sanitised (a blocked or damaged store reads as a fresh start). */
 export const loadRewards = (app) => normalizeRewards(app?.store?.get?.(REWARDS_KEY, null));
+
+/**
+ * Days played this week (R35, KID_REDESIGN §3): the training days of this Monday-to-Sunday week in the player's local
+ * time, 0-7. It only ever fills up within a week and never shows a broken streak (rewards.js weekDaysPlayed).
+ */
+export const daysThisWeek = (app, now = new Date()) => weekDaysPlayed(loadRewards(app), todayLocal(now));
 
 /**
  * Store the rewards, apply the kit and tell listeners (unless `notify: false`: the caller tells them later with
@@ -65,7 +74,7 @@ function emit(state) {
  * caller shows the gains and calls refreshRewards(): a drill reveals a rep's rewards with beat 2, never before.
  * A failure here must never break a drill: it logs and returns empty gains.
  * @param {object} app
- * @param {object} event  see js/rewards.js applyEvent
+ * @param {object} event  see js/rewards.js applyEvent (a rep: { type: 'rep', scenarioId, role, score, stars?, grade? })
  * @param {{ celebrate?: boolean, grade?: string|null, host?: Element|null, card?: boolean, now?: Date }} [opts]
  *   grade: for the burst and the sounds (a rep passes its own); host / card: where the celebration shows (celebrate.js)
  * @returns {object} gained (plus `firstTry` on a rep: the first attempt ever at that drill)

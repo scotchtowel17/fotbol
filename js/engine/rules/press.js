@@ -99,18 +99,18 @@ export default {
       cue: (v) => `Who should close ${v.who} down, and from which side?`,
     },
     kid: {
-      name: 'Close down the ball',
-      ok: () => 'Great pressure, you are close and blocking the way to goal.',
+      name: 'Go to the ball',
+      ok: () => 'Good, you are close and blocking the way to our goal.',
       fail: (v) => ({
         far: `Get closer to ${v.whoKid}, about two steps away.`,
         close: "Stop about two steps away so they can't dribble past you.",
         'wrong-side': `Get between ${v.whoKid} and our goal first.`,
         line: `Stand between ${v.whoKid} and the middle of our goal.`,
-        'show-inside': 'Stand on the inside so they have to go down the sideline.',
+        'show-inside': 'Stand on the inside so they have to go toward the sideline.',
         inside: `Come from the middle side of ${v.whoKid}, so they have to go wide.`,
         'too-round': 'Not so far inside, stay between them and our goal.',
       })[v.issue] ?? `Get close to ${v.whoKid} and block the way to goal.`,
-      cue: () => 'Who has the ball, and who should close them down?',
+      cue: () => 'Who has the ball, and who should go to them?',
     },
   },
   cue(ctx) {

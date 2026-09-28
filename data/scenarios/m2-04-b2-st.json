@@ -1,14 +1,14 @@
 {
   "id": "m2-04-b2-st",
   "title": "Their line steps up: stay onside",
-  "titleKid": "Their defenders step up: stay onside",
+  "titleKid": "Their defenders come forward: stay onside",
   "brief": "Your #8 is closed down and plays the ball back to your #6.",
   "briefKid": "Your midfielder is being chased and passes the ball back.",
   "question": "Their back line is stepping up. Where do you go?",
-  "questionKid": "Their defenders are stepping up. Where do you go?",
+  "questionKid": "Their defenders are coming forward. Where do you go?",
   "takeaway": {
     "standard": "Stay on the last defender's shoulder as their line moves: when they step up, you come back with them so you stay onside and keep pinning them.",
-    "kid": "Their defenders step up? Step back with them so you are never offside."
+    "kid": "Their defenders come forward? Move back with them, so you stay onside."
   },
   "module": "M2",
   "moment": "in_possession",

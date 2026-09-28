@@ -80,7 +80,7 @@
       "id": "dropped-too-deep",
       "region": { "type": "circle", "x": 29, "y": 56, "r": 4 },
       "text": "You dropped behind your back line, which keeps their forwards onside; get level with your centre-back instead.",
-      "textKid": "Too deep! Stand in line with your other defenders."
+      "textKid": "Too far back! Stand in line with your other defenders."
     }
   ],
   "difficulty": -1,

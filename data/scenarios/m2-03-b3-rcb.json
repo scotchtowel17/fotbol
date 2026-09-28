@@ -3,9 +3,9 @@
   "title": "Give your full-back a way out",
   "titleKid": "Give your teammate a way out",
   "brief": "Your keeper plays it out to your full-back, and their winger closes in.",
-  "briefKid": "Your keeper passes to your teammate by the sideline, and their winger runs at them.",
+  "briefKid": "Your keeper passes wide to a teammate. Their winger runs at them.",
   "question": "Your full-back is trapped near the touchline. Where do you go?",
-  "questionKid": "Your teammate is stuck by the sideline. Where do you go to help?",
+  "questionKid": "Your teammate is stuck by the sideline. Where do you go?",
   "takeaway": {
     "standard": "When a teammate is pinned on the touchline, offer a pass behind and inside them, at an angle and with no opponent in the lane, so there is always a way out.",
     "kid": "Teammate stuck by the sideline? Offer a pass back and inside, to you."

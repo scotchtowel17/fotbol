@@ -37,7 +37,7 @@
         },
         "success": {
           "standard": "Got it. Up the pitch means toward their goal; deeper means toward ours.",
-          "kid": "Great! Up means toward their goal. Back means toward ours."
+          "kid": "Great! Forward means toward their goal. Back means toward ours."
         }
       }
     },
@@ -67,7 +67,7 @@
         },
         "success": {
           "standard": "That's the final third. Most chances come from here, so attackers want the ball in it and defenders want to keep it out.",
-          "kid": "Yes! That's their third, where we try to score."
+          "kid": "Yes! That's their end, where we try to score."
         },
         "hint": {
           "standard": "Go past the second line across the pitch, toward their keeper.",
@@ -115,7 +115,7 @@
       "title": "The ball decides your job",
       "text": {
         "standard": "When they have the ball, our nearest player presses it (the first defender), the next one covers behind at an angle (the second defender) and everyone else keeps the team compact and balanced (third defenders). When we have it, the carrier attacks, nearby players support and the rest give width and depth.",
-        "kid": "Nearest player presses. The next one backs them up. Everyone else holds the shape."
+        "kid": "One goes to the ball. One backs them up. The rest hold their spot."
       },
       "principles": ["F1"],
       "setup": {
@@ -143,7 +143,7 @@
         },
         "success": {
           "standard": "Right: the right back is nearest, so they press. The right centre-back covers behind at an angle, and you, on the far side, are a third defender who tucks in.",
-          "kid": "Yes! Nearest player presses. The next one backs them up."
+          "kid": "Yes! The nearest player goes to the ball. The next one backs them up."
         },
         "hint": {
           "standard": "Look for our player closest to the ball, standing between it and our goal.",
@@ -157,7 +157,7 @@
       "title": "Goal-side",
       "text": {
         "standard": "Goal-side means between your opponent and your own goal. From there you can see the ball and your player, step in front to intercept, and a simple pass in behind can't beat you.",
-        "kid": "Goal-side means standing between your player and our goal."
+        "kid": "Always stay between your player and our goal."
       },
       "principles": ["D5"],
       "setup": {

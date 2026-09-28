@@ -14,14 +14,22 @@
   <link rel="stylesheet" href="css/play.css">
   <link rel="stylesheet" href="css/pass.css">
   <script>
-    // Apply saved display settings before first paint so there is no theme flash.
+    // Apply saved display settings before first paint so there is no theme flash, and pick the header the route
+    // shows (js/main.js resolveRoute + js/ui/player/shell.js chromeFor) so the wrong one never flashes.
     // Storage can be blocked (private windows): any error just keeps the defaults.
     try {
       var s = JSON.parse(localStorage.getItem('fotbol:settings') || '{}') || {};
+      var p = JSON.parse(localStorage.getItem('fotbol:player') || '{}') || {};
       var d = document.documentElement.dataset;
       if (s.theme === 'light' || s.theme === 'dark') d.theme = s.theme;
       if (s.reducedMotion === true) d.reducedMotion = 'true';
-      if (s.wording === 'kid') d.wording = 'kid';
+      var coach = s.mode === 'coach';
+      var detail = typeof s.detail === 'boolean' ? s.detail : s.wording !== 'kid';
+      d.appMode = coach ? 'coach' : 'player';
+      d.wording = coach && detail ? 'standard' : 'kid'; // Player mode always uses simple words
+      var m = (location.hash.replace(/^#\/?/, '').split('/')[0] || 'home').toLowerCase();
+      d.chrome = m === 'home' ? (coach ? 'coach' : p.onboarded === true ? 'player' : 'none')
+        : /^(kickoff|play|pass|matchday)$/.test(m) ? 'none' : m === 'card' ? 'player' : 'coach';
     } catch (e) { /* defaults */ }
   </script>
   <script type="module" src="js/main.js"></script>
@@ -29,8 +37,12 @@
 <body>
   <a class="skip-link" href="#app" id="skip-link">Skip to content</a>
 
+  <!-- Player mode's top bar (js/ui/player/shell.js builds it) -->
+  <header class="pm-bar" id="player-bar"></header>
+
+  <!-- Coach mode's header -->
   <header class="app-header">
-    <a class="wordmark" href="#/home" aria-label="fotbol home">
+    <a class="wordmark" href="#/coach" aria-label="fotbol Coach home">
       <svg class="wordmark-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
         <rect width="32" height="32" rx="8" fill="#0e7440"/>
         <rect x="4" y="6.5" width="24" height="19" rx="1.5" fill="none" stroke="#fff" stroke-opacity=".85" stroke-width="1.5"/>
@@ -50,6 +62,11 @@
         <li><a href="#/progress" data-nav="progress">Progress</a></li>
       </ul>
     </nav>
+
+    <a class="btn btn--secondary coach-back" id="coach-back" href="#/" aria-label="Back to Player mode">
+      <span class="coach-back-long">Back to Player mode</span>
+      <span class="coach-back-short" aria-hidden="true">Player mode</span>
+    </a>
 
     <div class="settings">
       <button id="settings-toggle" class="btn btn--ghost btn--icon" type="button"

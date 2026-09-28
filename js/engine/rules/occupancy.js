@@ -101,10 +101,10 @@ export default {
     },
     kid: {
       name: 'Find your own space',
-      ok: () => 'Nice, you found your own space!',
+      ok: () => 'Good, you found your own space.',
       fail: (v) => (v.part === 'line'
-        ? 'You are in a flat line with teammates, so step forward or back.'
-        : 'Too many teammates are in your lane, so move to an empty one.'),
+        ? 'You are in a flat line with teammates, so move forward or back.'
+        : 'Too many teammates are in your strip, so move sideways into space.'),
       cue: () => 'Where are your teammates standing?',
     },
   },

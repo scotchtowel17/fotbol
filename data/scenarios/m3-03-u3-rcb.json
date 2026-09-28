@@ -1,14 +1,14 @@
 {
   "id": "m3-03-u3-rcb",
   "title": "Step up on the back pass",
-  "titleKid": "They pass back: step up",
+  "titleKid": "They pass back: move forward",
   "brief": "Their #8 has the ball with their back to goal and is under pressure.",
   "briefKid": "Their midfielder has the ball with their back to our goal.",
   "question": "The ball has gone all the way back. What does your back line do?",
-  "questionKid": "They passed it all the way back. What do you and your defenders do?",
+  "questionKid": "They passed it all the way back. What do you do?",
   "takeaway": {
     "standard": "When the ball goes backwards, the whole back line steps up together: it squeezes the space between the lines and leaves their forwards offside.",
-    "kid": "When they pass backwards, step up with your defenders."
+    "kid": "When they pass back, move forward with your defenders."
   },
   "module": "M3",
   "moment": "out_of_possession",
@@ -77,7 +77,7 @@
       "id": "stayed-deep",
       "region": { "type": "circle", "x": 36.5, "y": 44, "r": 5 },
       "text": "You stayed deep while the rest of the line stepped up, so you keep their forwards onside and leave a big gap in front of you.",
-      "textKid": "Your defenders stepped up without you. Step up with them."
+      "textKid": "Your defenders moved forward without you. Move forward with them."
     }
   ],
   "difficulty": -1,

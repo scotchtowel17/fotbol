@@ -131,15 +131,15 @@ export default {
     },
     kid: {
       name: 'Stay close together',
-      ok: () => 'Good, you are close to your teammates with no big holes.',
+      ok: () => 'Good, you are close to your teammates with no big gaps.',
       fail: (v) => ({
         'far-line': `Move closer to ${v.refKid}, the gap is too big.`,
-        'close-line': v.unit === 'back' ? `Drop a little behind ${v.refKid}.` : `Step a little in front of ${v.refKid}.`,
-        gap: `Slide toward ${v.refKid}, there is a big hole between you.`,
+        'close-line': v.unit === 'back' ? `Stay a little further behind ${v.refKid}.` : `Stay a little further in front of ${v.refKid}.`,
+        gap: `Slide toward ${v.refKid}, there is a big gap between you.`,
         crowd: `Give ${v.refKid} a little more room.`,
         crossed: `Don't swap places with ${v.refKid}, stay next to them.`,
       })[v.issue] ?? 'Stay close to your teammates.',
-      cue: () => 'Where is the biggest hole between you and your teammates?',
+      cue: () => 'Where is the biggest gap between you and your teammates?',
     },
   },
   cue(ctx) {

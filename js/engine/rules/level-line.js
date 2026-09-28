@@ -57,10 +57,10 @@ export default {
       name: 'Stay in line',
       ok: () => 'Good, you are in line with your other defenders.',
       fail: (v) => ({
-        deep: 'Step up so you are in line with your other defenders.',
-        high: 'Drop back so you are in line with your other defenders.',
+        deep: 'Move forward, in line with your other defenders.',
+        high: 'Move back, in line with your other defenders.',
       })[v.issue] ?? 'Stay in line with your other defenders.',
-      cue: () => 'Where is the rest of your back line?',
+      cue: () => 'Where are your other defenders standing?',
     },
   },
   cue(ctx) {

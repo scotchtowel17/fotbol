@@ -16,7 +16,7 @@
       "ruleIds": [],
       "summary": {
         "standard": "Where the ball is decides what you should be doing. Defending, the nearest player presses, the next one covers and everyone else keeps the shape; attacking, the carrier goes forward, nearby players support and the rest give width and depth.",
-        "kid": "The ball tells you your job: press it, back up, or hold shape."
+        "kid": "The ball tells you your job: go to it, back up, or hold your spot."
       },
       "ruleOfThumb": "Rank players by distance to the ball. Defending: the nearest is the 1st defender (press or delay); the next teammate who is goal-side and within about 15 m (default) is the 2nd defender (cover); everyone else is a 3rd defender (balance, compactness). Attacking: the carrier is the 1st attacker; teammates within 12 m (default) of the ball are 2nd attackers (support); the rest are 3rd attackers (width, depth). The published 9.15 m radius comes from 3v3 games, so 12 m is our 11v11 guess.",
       "why": "If two players go to the ball and nobody covers, one pass beats both of them, so knowing your job instantly keeps the team organised.",
@@ -74,7 +74,7 @@
       "ruleIds": [],
       "summary": {
         "standard": "When your team has the ball, the whole block moves further up the pitch; when you lose it, the block moves back toward your own goal.",
-        "kid": "Got the ball? Everyone moves up. Lost it? Everyone drops back."
+        "kid": "Got the ball? Everyone moves forward. Lost it? Everyone moves back."
       },
       "ruleOfThumb": "On top of your ball-based spot, shift about 6 m (default) toward their goal in possession and about 4 m (default) toward your own goal out of possession.",
       "why": "Pushing up puts more players near their goal and squeezes space; dropping back protects the space behind you when the other team can play forward.",
@@ -257,7 +257,7 @@
       "id": "B2",
       "name": "Depth: pin their back line",
       "short": "Pin their back line",
-      "kidName": "Pin Them Back",
+      "kidName": "Stay Up Front",
       "category": "in_possession",
       "section": "8.2",
       "who": "The #9, and the far winger",
@@ -458,7 +458,7 @@
       "id": "B9",
       "name": "Salida lavolpiana against a front two",
       "short": "Six drops between CBs",
-      "kidName": "Drop In, Make Three",
+      "kidName": "Come Back, Make Three",
       "category": "in_possession",
       "section": "8.2",
       "who": "The #6, centre-backs and full-backs",
@@ -468,7 +468,7 @@
       "ruleIds": [],
       "summary": {
         "standard": "Against two pressing strikers, the #6 drops between the centre-backs to make a back three, the centre-backs split wide and the full-backs push high.",
-        "kid": "Two strikers pressing? The #6 drops between the centre-backs to help."
+        "kid": "Two strikers chasing? The midfielder who stays back comes between the defenders."
       },
       "ruleOfThumb": "Only against a front two: the #6 drops between the CBs, the CBs split to about y 14 and y 54, and the full-backs push high and wide. Against a single striker, the #6 stays in front of the CBs.",
       "why": "Three builders against two pressers always leaves one player free to carry or pass forward.",
@@ -576,7 +576,7 @@
       "ruleIds": [],
       "summary": {
         "standard": "With the ball in midfield or the final third, get a teammate into the ball-side half-space between their midfield and defence, where their full-back and centre-back can't agree who should mark you.",
-        "kid": "Stand in the channel between the middle and the wing."
+        "kid": "Stand in the gap between the middle and the wing."
       },
       "ruleOfThumb": "With the ball in the middle or final third, one teammate stands in the ball-side half-space (y 13.84-24.84 or 43.16-54.16), level with or between the opponent's midfield and defensive lines. Their CB or FB must then choose between stepping out and staying.",
       "why": "The half-space gives you diagonal views of goal and of both sides of the pitch, and it sits between two defenders' zones.",
@@ -628,7 +628,7 @@
       "id": "P3",
       "name": "The #10 lives in zone 14 or a half-space",
       "short": "#10 finds zone 14",
-      "kidName": "Playmaker's Pocket",
+      "kidName": "Just Outside Their Box",
       "category": "in_possession",
       "section": "8.3",
       "who": "A #10 (in a 4-3-3, the #8 who pushes up)",
@@ -897,7 +897,7 @@
       "ruleIds": [],
       "summary": {
         "standard": "In settled possession in their half, get enough players ahead of the ball to threaten their goal.",
-        "kid": "When we attack their half, get lots of players ahead of the ball."
+        "kid": "When we attack, get lots of players ahead of the ball."
       },
       "ruleOfThumb": "In settled possession in the attacking half, at least 5 outfield players are ahead of the ball. Fewer than 4 ahead is flagged as a sterile attack.",
       "why": "With too few players ahead of the ball the defence can mark everyone and the attack goes nowhere.",
@@ -924,7 +924,7 @@
       "ruleIds": [],
       "summary": {
         "standard": "While your team attacks, a group of about five players stays at or behind the ball, positioned to stop a counter-attack the moment the ball is lost.",
-        "kid": "While we attack, some players stay back to stop a counter."
+        "kid": "While we attack, some players stay back to stop a fast break."
       },
       "ruleOfThumb": "About 5 players at or behind the ball, in a 3+2 or 2+3. Rest defenders are at least the opponent's forwards + 1. The upper pair blocks the central lanes near the ball; the lower line deals with long balls.",
       "why": "Most dangerous counters start the moment you lose the ball, and a prepared rest defence stops them before they begin.",
@@ -951,7 +951,7 @@
       "ruleIds": [],
       "summary": {
         "standard": "The moment you lose the ball, the nearest players press it straight away while teammates block the short passes; if it isn't won back within a few seconds, drop into shape.",
-        "kid": "Lost the ball? Press right away for a few seconds."
+        "kid": "Lost the ball? Chase it right away for a few seconds."
       },
       "ruleOfThumb": "The nearest player, within about 10 m (default), presses immediately; the next nearest block short passes and mark the outlets. It works best in the first 2-3 s; stop at about 5 s. If the press is bypassed or the ball isn't won, retreat into a compact block.",
       "why": "Right after a turnover the opponent is disorganised and often facing the wrong way, so it is the best moment to win the ball back.",
@@ -1272,7 +1272,7 @@
       "ruleIds": [],
       "summary": {
         "standard": "Jump to press together on a cue such as a back pass, a heavy touch or a receiver facing their own goal, and otherwise hold your shape.",
-        "kid": "Press together when they pass backwards or make a mistake."
+        "kid": "Chase together when they pass back or make a mistake."
       },
       "ruleOfThumb": "Triggers: a back pass, a heavy touch, a receiver facing their own goal, a pass to a full-back near the touchline, the keeper on the ball, a slow or looped pass, or a square pass across their back line. On the trigger, the nearest player engages, the next blocks the nearest option and the rest squeeze up. No trigger: hold your shape. Only jump if someone can cover behind you.",
       "why": "Pressing together at the right moment wins the ball high up the pitch, while pressing at random just gets you bypassed.",
@@ -1289,7 +1289,7 @@
       "id": "D9",
       "name": "Cover shadow and curved pressing runs",
       "short": "Use your cover shadow",
-      "kidName": "Shadow Block",
+      "kidName": "Curve Your Run",
       "category": "out_of_possession",
       "section": "8.5",
       "who": "The #9, a #10, wingers and pressing #8s",
@@ -1299,7 +1299,7 @@
       "ruleIds": [],
       "summary": {
         "standard": "While pressing, run on a curve so your body blocks the pass to the most dangerous player behind you, cutting out an option as you close the ball down.",
-        "kid": "Press so your body blocks a pass behind you."
+        "kid": "Curve your run to the ball so your body blocks the pass behind you."
       },
       "ruleOfThumb": "While pressing, stay within 1.5 m (default) of the line from the carrier to the most dangerous receiver behind you, somewhere 15-90% of the way along it. Curve your run so your shadow cuts the inside pass: for example, the #9 presses a CB from the inside to cut the pass to the other CB or the #6.",
       "why": "A presser who also blocks a passing lane does two jobs at once, so fewer players are needed to press.",
@@ -1361,7 +1361,7 @@
       "ruleIds": ["compact"],
       "summary": {
         "standard": "Move across the pitch together with even gaps between neighbours, and never swap places with the teammate beside you; hand runners over instead.",
-        "kid": "Slide across together and keep the same gaps between you."
+        "kid": "Slide across as a team and keep the same gaps between you."
       },
       "ruleOfThumb": "Neighbours keep roughly equal gaps: about 8-12 m near the ball and wider on the far side (a tolerance band, not a target; defaults). When shifting, never cross your nearest teammate; hand the runner over. No gap should be wide enough for a through ball.",
       "why": "Uneven gaps are where through balls go, and crossing over leaves your own space empty.",
@@ -1382,7 +1382,7 @@
       "id": "U3",
       "name": "Line height: step, hold or drop",
       "short": "Step, hold or drop",
-      "kidName": "Step Up or Drop",
+      "kidName": "Forward or Back",
       "category": "team_shape",
       "section": "8.6",
       "who": "The back line and goalkeeper",
@@ -1392,7 +1392,7 @@
       "ruleIds": [],
       "summary": {
         "standard": "The back line steps up when the ball goes backward or the carrier is pressed and facing away, holds while the ball is under pressure, and drops when the carrier is free to play forward.",
-        "kid": "Ball going back? Step up. Free player facing you? Drop back."
+        "kid": "Ball going back? Move forward. Free player facing you? Move back."
       },
       "ruleOfThumb": "Step up about 5 m (default) when the ball goes backward, or when the carrier is pressed and facing away. Hold when the ball is under pressure. Drop 5-10 m (default) when the carrier is unpressured and facing forward.",
       "why": "An unpressured passer facing forward can play in behind a high line, while stepping up at the right moment squeezes space and catches attackers offside.",
@@ -1409,7 +1409,7 @@
       "id": "U4",
       "name": "A level line, set by the CB nearest the ball",
       "short": "Hold a level line",
-      "kidName": "Hold the Line",
+      "kidName": "Stay in Line",
       "category": "team_shape",
       "section": "8.6",
       "who": "Centre-backs and full-backs",
@@ -1436,7 +1436,7 @@
       "id": "U5",
       "name": "Back-four shape with the ball wide",
       "short": "Back four, ball wide",
-      "kidName": "Back Four Slides Over",
+      "kidName": "Defenders Slide Across",
       "category": "team_shape",
       "section": "8.6",
       "who": "Full-backs and centre-backs",
@@ -1446,7 +1446,7 @@
       "ruleIds": ["tuck"],
       "summary": {
         "standard": "When the ball is wide, the near full-back engages, the near centre-back covers, the far centre-back narrows and the far full-back tucks in, forming a crescent or an L-shape.",
-        "kid": "Ball out wide? The back four slides over and closes the gaps."
+        "kid": "Ball out wide? The defenders slide across and close the gaps."
       },
       "ruleOfThumb": "The near FB engages the winger; the near CB covers diagonally; the far CB narrows toward the near CB; the far FB tucks in to within 10-15 m (default) of the far CB. A crescent (far FB deepest) or an L (far CB deepest) are both fine. No gap of more than 12 m (default) between neighbouring defenders near the ball.",
       "why": "Protecting the side of the box and the middle at once needs the back four to move as one shape, not as four individuals.",
@@ -1467,7 +1467,7 @@
       "id": "U6",
       "name": "Block height: high, mid, low",
       "short": "Know your block height",
-      "kidName": "High, Middle or Deep",
+      "kidName": "High, Middle or Low",
       "category": "team_shape",
       "section": "8.6",
       "who": "The whole team, including the goalkeeper",
@@ -1477,7 +1477,7 @@
       "ruleIds": [],
       "summary": {
         "standard": "A team defends in a high, mid or low block depending on where it sets its lines, and each block has its own heights for the defence and the front line.",
-        "kid": "We defend high up, in the middle, or deep near our box."
+        "kid": "We defend high up, in the middle, or low near our box."
       },
       "ruleOfThumb": "High: CBs near halfway (x about 45-52, sourced), strikers on their CBs and keeper. Mid: front line near halfway, back line at x about 25-35; block central passes and let them play wide. Low: back line near the edge of the box (x about 16-22), two narrow, compact banks. Every figure except the high-block one is a default.",
       "why": "Everyone has to defend at the same height, because one player in a different block breaks the whole shape.",
@@ -1508,7 +1508,7 @@
       "ruleIds": [],
       "summary": {
         "standard": "When the ball is in your defensive third, players away from the ball squeeze toward the centre, between the ball and goal, to protect the area where goals are scored.",
-        "kid": "Ball near our goal? Squeeze into the middle to protect it."
+        "kid": "Ball near our goal? Everyone moves into the middle to guard it."
       },
       "ruleOfThumb": "Ball in your defensive third: off-ball defenders shift toward the centre, between the ball and goal. The weak-side full-back tucks in to about the width of the box, at or inside the far-post line. Never leave the lane from the ball to the penalty spot open while guarding empty space out wide.",
       "why": "Most goals come from central areas close to goal, so that is the space you must fill first.",
@@ -1570,7 +1570,7 @@
       "ruleIds": [],
       "summary": {
         "standard": "The two centre-backs work as a pair: in possession they split wide to build, and out of possession one sets the line while the other covers, never too far apart.",
-        "kid": "Centre-backs: one goes to the ball, the other covers behind."
+        "kid": "Centre-backs: one goes to the ball, the other backs them up."
       },
       "ruleOfThumb": "In possession: split to about the width of the box when the #6 drops or at goal kicks, and carry the ball into space when not pressed. Out of possession: the CB nearest the ball sets the line (U4); the partner covers 3-6 m behind and inside (default); stay within about 12 m of each other (default); stay central on crosses.",
       "why": "A centre-back pair that drifts apart leaves a gap in the most dangerous channel, while a pair that covers each other can take risks.",
@@ -1591,7 +1591,7 @@
       "id": "R2",
       "name": "The fullback out of possession",
       "short": "Full-back defending",
-      "kidName": "Stop Wingers, Tuck In",
+      "kidName": "Stop Wingers, Come In",
       "category": "role",
       "section": "8.7",
       "who": "Full-backs",
@@ -1601,7 +1601,7 @@
       "ruleIds": [],
       "summary": {
         "standard": "With the ball on your side, engage the winger and show them outside with your centre-back covering; with the ball on the far side, tuck in toward your centre-back and stay level.",
-        "kid": "Ball on your side? Face the winger. Far side? Tuck in."
+        "kid": "Ball on your side? Face the winger. Far side? Come inside."
       },
       "ruleOfThumb": "Ball on your side: engage the winger goal-side and force them outside, with the CB covering. Ball on the far side: tuck in to within 10-15 m (default) of your CB and stay level with the line. Recovery runs go toward the near post first.",
       "why": "The full-back's position decides whether the back four has a gap on the far side or a winger running free on the near side.",
@@ -1628,7 +1628,7 @@
       "ruleIds": ["screen"],
       "summary": {
         "standard": "Out of possession the holding midfielder stays central, just in front of the centre-backs, blocking passes into the most dangerous attacker.",
-        "kid": "#6: stay in front of your centre-backs, in the middle."
+        "kid": "Defensive midfielder: stay in the middle, in front of your defenders."
       },
       "ruleOfThumb": "Out of possession, stay in the centre lane 5-10 m ahead of the CBs (HELIOS median 7.3 m, measured; up to 15 m allowed, default). Sit on or near the line from the ball to the most dangerous central attacker. Don't get pulled wider than the half-space unless you are covering.",
       "why": "The #6 blocks the passes that split the centre-backs, and without them the opponent can play straight through the middle.",
@@ -1686,7 +1686,7 @@
       "ruleIds": [],
       "summary": {
         "standard": "In possession, play on the last defender's shoulder; when pressing, lead the press and block the pass between their centre-backs; on crosses, attack the near post or the penalty spot.",
-        "kid": "Stay on the last defender, press first, attack the box on crosses."
+        "kid": "Stay on their last defender, chase first, and attack crosses in the box."
       },
       "ruleOfThumb": "In possession: on the last defender's shoulder, onside (B2); check short only to open space for a runner. Pressing: you are the first line of pressure; curve your run so your shadow cuts the CB-to-CB or CB-to-#6 pass (D9). Crosses: attack the near post or the penalty-spot zone (P10).",
       "why": "The #9 sets the height of the opponent's defence and the direction of your team's press.",
@@ -1825,7 +1825,7 @@
       "ruleIds": [],
       "summary": {
         "standard": "Size and line up the wall according to where the free kick is, anchored on the line to the near post, while the keeper covers the far side.",
-        "kid": "Free kick near our box? Build a wall about 9 metres from the ball."
+        "kid": "Free kick near our box? Build a wall ten big steps from the ball."
       },
       "ruleOfThumb": "Wall size: 5 when central within about 7 yd of the edge of the box; 4 at 20-25 yd, just off centre; 3 at 25-30 yd, wider; 2 when wide. Anchor it on the line from the ball to the near post, 9.15 m from the ball, extending toward the goal centre. The keeper covers the far half, starting between the goal centre and the far post, about 1 m (default) off the line. Attackers must stay at least 1 m from a wall of 3 or more.",
       "why": "A well-placed wall takes away the near side, so the keeper only has to cover one half of the goal.",
@@ -1993,7 +1993,7 @@
       "id": "S7",
       "name": "Youth 7v7 build-out line",
       "short": "Build-out line",
-      "kidName": "Drop Behind the Line",
+      "kidName": "Back Behind the Line",
       "category": "set_piece",
       "section": "8.9",
       "who": "Every player in 7v7 (U9-U10)",
@@ -2019,6 +2019,392 @@
         }
       ],
       "sources": ["USS17", "EPYSA"]
+    },
+    {
+      "id": "PA1",
+      "name": "Scan before you receive",
+      "short": "Scan first",
+      "kidName": "Look Around First",
+      "category": "passing",
+      "section": "research/passing.md §2",
+      "who": "Every player about to receive the ball",
+      "families": ["GK", "CB", "FB", "DM", "CM", "W", "ST"],
+      "level": 2,
+      "release": "v1",
+      "ruleIds": [],
+      "related": ["F6"],
+      "summary": {
+        "standard": "Check over your shoulders before the ball reaches you, so you already know your next pass when it arrives.",
+        "kid": "Look around before the ball gets to you."
+      },
+      "ruleOfThumb": "Take several looks in the last seconds before you receive: professionals average about 0.44 looks per second, about 3 in the last 10 s, and look most before a long forward pass (sourced). In the app the watch before the freeze is your look; the engine does not rate scanning.",
+      "why": "The picture you take before the ball arrives decides how quickly and how well you can pass it on.",
+      "commonMistake": "Watching only the ball, then having to stop and look up after it arrives.",
+      "learnMore": [
+        { "label": "The FA: take a picture (scanning)", "url": "https://www.thefa.com/bootroom/resources/coaching/take-a-picture" },
+        { "label": "Jordet et al. 2020: scanning by elite players (open access)", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7573254/" }
+      ],
+      "sources": ["J20", "J13", "FA-P", "ODP"]
+    },
+    {
+      "id": "PA2",
+      "name": "Play forward when it is on",
+      "short": "Play forward",
+      "kidName": "Play It Forward",
+      "category": "passing",
+      "section": "research/passing.md §2",
+      "who": "The player on the ball",
+      "families": ["CB", "FB", "DM", "CM", "W", "ST"],
+      "level": 1,
+      "release": "v1",
+      "ruleIds": [],
+      "related": [],
+      "summary": {
+        "standard": "Pick the forward pass when it is safe. If it is not on, go around by switching the play, or back.",
+        "kid": "If a forward pass is safe, play it."
+      },
+      "ruleOfThumb": "If a good (green) forward pass scores within 10 points of the best pass (default), a safe square or back pass is too safe: it grades B or C at most (its score is capped at 79, default).",
+      "why": "Every forward pass that keeps the ball takes the team nearer goal, while a sideways pass gives the defence time to get set.",
+      "commonMistake": "Passing sideways or back because it feels safe, even when a teammate ahead is free.",
+      "learnMore": [
+        { "label": "The FA England DNA: in possession", "url": "https://www.thefa.com/bootroom/resources/england-dna/how-we-play/in-possession" },
+        { "label": "US Youth Soccer ODP Player Manual (free PDF)", "url": "https://www.usyouthsoccer.org/wp-content/uploads/sites/160/2023/09/Player-Manual-US-Youth-Soccer-ODP.pdf" }
+      ],
+      "sources": ["GR", "DNA", "ODP", "BC"]
+    },
+    {
+      "id": "PA3",
+      "name": "Find the free player",
+      "short": "Free player",
+      "kidName": "Find the Free Player",
+      "category": "passing",
+      "section": "research/passing.md §2",
+      "who": "The player on the ball",
+      "families": ["CB", "FB", "DM", "CM", "W", "ST"],
+      "level": 1,
+      "release": "v1",
+      "ruleIds": [],
+      "related": ["B3"],
+      "summary": {
+        "standard": "Pass to the teammate with time and space, not to one squeezed between opponents.",
+        "kid": "Pass to a teammate with no one near."
+      },
+      "ruleOfThumb": "Pressure on the receiver comes from an oval that reaches 9 m in front of them and 3 m behind (sourced). Below 0.15 the receiver is free; 0.6 or more means under pressure (defaults).",
+      "why": "A free player can control the ball, look up and play on, while a tightly marked one is likely to lose it.",
+      "commonMistake": "Passing to the nearest teammate even though a defender is standing right next to them.",
+      "learnMore": [
+        { "label": "U.S. Soccer Coaching Curriculum (free PDF)", "url": "https://cdn1.sportngin.com/attachments/document/0020/5055/Full_U.S._Soccer_Coaching_Curriculum.pdf" },
+        { "label": "The FA England DNA: in possession", "url": "https://www.thefa.com/bootroom/resources/england-dna/how-we-play/in-possession" }
+      ],
+      "sources": ["USC", "FFA-CP", "LP12"]
+    },
+    {
+      "id": "PA4",
+      "name": "Pass through a clear lane",
+      "short": "Clear passing lane",
+      "kidName": "Pick a Clear Path",
+      "category": "passing",
+      "section": "research/passing.md §2",
+      "who": "The player on the ball",
+      "families": ["GK", "CB", "FB", "DM", "CM", "W", "ST"],
+      "level": 1,
+      "release": "v1",
+      "ruleIds": [],
+      "related": ["B3"],
+      "summary": {
+        "standard": "A pass needs a clear lane: no defender within reach of the line, and none who can get across before the ball arrives.",
+        "kid": "If a defender is in the way, don't pass there."
+      },
+      "ruleOfThumb": "The engine works out the chance that each defender cuts the pass out: a body block by anyone within about 1 m of the line (default), and a race to the ball at 5 m/s after a 0.7 s reaction (sourced). A lane safety of 0.8 or more is good and below 0.5 is cut out (defaults); the defender in the way is ringed.",
+      "why": "A pass that is cut out loses the ball, often with their players already running at your goal.",
+      "commonMistake": "Passing to a teammate who looks free while a defender stands in the lane between you.",
+      "learnMore": [
+        { "label": "U.S. Soccer Coaching Curriculum (free PDF)", "url": "https://cdn1.sportngin.com/attachments/document/0020/5055/Full_U.S._Soccer_Coaching_Curriculum.pdf" },
+        { "label": "US Youth Soccer ODP Player Manual (free PDF)", "url": "https://www.usyouthsoccer.org/wp-content/uploads/sites/160/2023/09/Player-Manual-US-Youth-Soccer-ODP.pdf" }
+      ],
+      "sources": ["USC", "RESEARCH", "SPEAR17"]
+    },
+    {
+      "id": "PA5",
+      "name": "Break lines with your pass",
+      "short": "Break lines",
+      "kidName": "Pass Past Them",
+      "category": "passing",
+      "section": "research/passing.md §2",
+      "who": "Defenders and midfielders on the ball",
+      "families": ["CB", "FB", "DM", "CM"],
+      "level": 2,
+      "release": "v1",
+      "ruleIds": [],
+      "related": ["P2"],
+      "summary": {
+        "standard": "Move the ball between and beyond their players, and count the opponents your pass takes out of the game.",
+        "kid": "Pass past their players, not in front of them."
+      },
+      "ruleOfThumb": "An opponent is taken out when they were nearer their own goal than the ball before the pass and are no longer after it (Impect's bypassed-opponents test). The engine names the line the pass gets through: their forwards, their midfield or their back line.",
+      "why": "Every opponent a pass gets past has to turn and run back before they can defend again.",
+      "commonMistake": "Passing in front of their midfield, where the receiver has opponents facing them.",
+      "learnMore": [
+        { "label": "FIFA Training Centre: playing forward centrally", "url": "https://www.fifatrainingcentre.com/en/practice/elite-sessions/in-possession/improving-the-ability-to-play-forward-centrally.php" },
+        { "label": "The FA England DNA: in possession", "url": "https://www.thefa.com/bootroom/resources/england-dna/how-we-play/in-possession" }
+      ],
+      "sources": ["DNA", "FF", "IMP", "REIN"]
+    },
+    {
+      "id": "PA6",
+      "name": "Switch play to the free side",
+      "short": "Switch play",
+      "kidName": "Find the Free Side",
+      "category": "passing",
+      "section": "research/passing.md §2",
+      "who": "Defenders and midfielders on the ball",
+      "families": ["CB", "FB", "DM", "CM", "W"],
+      "level": 2,
+      "release": "v1",
+      "ruleIds": [],
+      "related": ["B8"],
+      "summary": {
+        "standard": "When the ball side is crowded, move the ball across to the far side, where a teammate holds the width.",
+        "kid": "Crowded here? Send it to the free side."
+      },
+      "ruleOfThumb": "A switch goes at least 25 m across into the far half (default) and is safe (green). The drills crowd the ball side and leave your far full-back or winger free.",
+      "why": "Defenders slide toward the ball, so the far side is where the space and the free player are.",
+      "commonMistake": "Forcing the ball into the crowded side because it is the way you are facing.",
+      "learnMore": [
+        { "label": "FIFA Training Centre: switch of play", "url": "https://www.fifatrainingcentre.com/en/game/game-analysis/in-possession/switch-of-play.php" }
+      ],
+      "sources": ["ODP", "FS"]
+    },
+    {
+      "id": "PA7",
+      "name": "Play to the correct foot",
+      "short": "Correct foot",
+      "kidName": "Hit the Far Foot",
+      "category": "passing",
+      "section": "research/passing.md §2",
+      "who": "The player on the ball",
+      "families": ["CB", "FB", "DM", "CM", "W", "ST"],
+      "level": 3,
+      "release": "v2",
+      "ruleIds": [],
+      "related": [],
+      "summary": {
+        "standard": "Pass to the foot away from the defender when the receiver can turn, and to the near foot when they are pressed; lead a runner.",
+        "kid": "Pass to the foot far from the defender."
+      },
+      "ruleOfThumb": "The engine aims the pass 0.5-1 m away from the receiver's nearest marker (default) and shows the aim in the reveal. It is graded only from v2, which needs body shape.",
+      "why": "A pass to the safe foot lets the receiver shield the ball or turn away from the defender.",
+      "commonMistake": "Passing straight at the receiver's feet with a defender tight on that side.",
+      "learnMore": [
+        { "label": "Soccer Coach Weekly: back-foot and front-foot passing", "url": "https://www.soccercoachweekly.net/drills-and-games/drills/back-foot--front-foot-tactic" }
+      ],
+      "sources": ["SCW-B", "ODP", "LP12"]
+    },
+    {
+      "id": "PA8",
+      "name": "Pass into space ahead of a runner",
+      "short": "Pass into space",
+      "kidName": "Lead the Runner",
+      "category": "passing",
+      "section": "research/passing.md §2",
+      "who": "The player on the ball",
+      "families": ["CB", "FB", "DM", "CM", "W", "ST"],
+      "level": 2,
+      "release": "v1",
+      "ruleIds": [],
+      "related": ["P5"],
+      "summary": {
+        "standard": "Play into space when your runner will get there first; play to feet when the receiver is marked or coming short.",
+        "kid": "Runner in space? Pass in front of them."
+      },
+      "ruleOfThumb": "A pass into space is on when your runner wins the race to it (a share of 0.6 or more, default) and was level with or behind their last defender when you played it.",
+      "why": "A pass into space lets your teammate run onto the ball at full speed instead of stopping to receive it.",
+      "commonMistake": "Passing to where the runner is now, so they have to stop and wait for the ball.",
+      "learnMore": [
+        { "label": "England Football: two-player core football moves", "url": "https://learn.englandfootball.com/articles-and-resources/coaching/resources/2023/Two-player-core-football-moves" },
+        { "label": "US Youth Soccer ODP Player Manual (free PDF)", "url": "https://www.usyouthsoccer.org/wp-content/uploads/sites/160/2023/09/Player-Manual-US-Youth-Soccer-ODP.pdf" }
+      ],
+      "sources": ["EFL-2", "ODP"]
+    },
+    {
+      "id": "PA9",
+      "name": "Pick a receiver who can turn",
+      "short": "Receiver can turn",
+      "kidName": "Pick Who Can Turn",
+      "category": "passing",
+      "section": "research/passing.md §2",
+      "who": "The player on the ball",
+      "families": ["CB", "FB", "DM", "CM", "W", "ST"],
+      "level": 2,
+      "release": "v1",
+      "ruleIds": [],
+      "related": ["B7"],
+      "summary": {
+        "standard": "Prefer a teammate who can turn and face goal. A player with their back to goal and a marker tight behind will have to play it back.",
+        "kid": "Pick a teammate who can turn and face goal."
+      },
+      "ruleOfThumb": "The receiver can turn with 6 m or more of free run toward goal and pressure below 0.3; pressure of 0.6 or more means under pressure (defaults).",
+      "why": "A receiver who can turn keeps the attack moving forward, while one who must play it back slows it down.",
+      "commonMistake": "Passing into a teammate who has a defender right behind them and no way to turn.",
+      "learnMore": [
+        { "label": "The FA: developing receiving skills", "url": "https://www.thefa.com/bootroom/resources/coaching/in-possession-developing-receiving-skills" },
+        { "label": "Soccer Coach Weekly: the way players are facing", "url": "https://www.soccercoachweekly.net/drills-and-games/drills/soccer-attack-drill-for-the-way-players-are-facing" }
+      ],
+      "sources": ["ODP", "FA-R", "SCW-F"]
+    },
+    {
+      "id": "PA10",
+      "name": "Never pass across your own goal",
+      "short": "Not across goal",
+      "kidName": "Never Across Your Goal",
+      "category": "passing",
+      "section": "research/passing.md §2",
+      "who": "Defenders, the #6 and the keeper",
+      "families": ["GK", "CB", "FB", "DM"],
+      "level": 1,
+      "release": "v1",
+      "ruleIds": [],
+      "related": [],
+      "summary": {
+        "standard": "In your own third, never play a sideways pass across the front of your goal unless it is completely safe.",
+        "kid": "Never pass across the front of your own goal."
+      },
+      "ruleOfThumb": "The pass starts and ends in our own third, goes mostly sideways (at least 15 m across and more than 1.5 times as far across as forward), crosses the area in front of our goal, and its lane is not completely safe (below 0.9): the engine marks it as a danger (defaults).",
+      "why": "If a pass across your own goal is cut out, the opponent has the ball right in front of your goal.",
+      "commonMistake": "Playing the easy square pass to the other centre-back while their striker waits in between.",
+      "learnMore": [
+        { "label": "Coaching American Soccer: never play it across your own goal", "url": "https://coachingamericansoccer.com/tactics-and-teamwork/defending-soccer-goal-kicks/" },
+        { "label": "The Mastermind Site: playing out from the back", "url": "https://themastermindsite.com/2020/08/29/playing-out-from-the-back-the-basics/" }
+      ],
+      "sources": ["CAS", "MM", "BC"]
+    },
+    {
+      "id": "PA11",
+      "name": "Find the golden zone",
+      "short": "Pull it back",
+      "kidName": "Pull It Back",
+      "category": "passing",
+      "section": "research/passing.md §2",
+      "who": "Wide players and midfielders in the final third",
+      "families": ["FB", "CM", "W", "ST"],
+      "level": 3,
+      "release": "v1",
+      "ruleIds": [],
+      "related": ["P9", "P10"],
+      "summary": {
+        "standard": "In the final third, look for the space in front of their box, and from near the end line pull the ball back low toward the penalty spot.",
+        "kid": "At the end line, pull it back to the penalty spot."
+      },
+      "ruleOfThumb": "Our own value surface is highest in the space in front of their box and around the penalty spot (default). A pull-back from within about 17 m of the end line to a teammate near the middle scores highest (default); the golden zone yields about half of the shots and 82 % of the goals (sourced).",
+      "why": "A ball pulled back from the end line reaches a teammate facing goal while the defenders are running toward their own goal.",
+      "commonMistake": "Crossing high into a crowded box when a teammate is free at the edge of it.",
+      "learnMore": [
+        { "label": "Analytics FC: cut-backs and the golden zone", "url": "https://analyticsfc.co.uk/blog/2021/04/28/developing-new-metrics-cutbacks/" },
+        { "label": "Coaches' Voice: attacking in the final third", "url": "https://learning.coachesvoice.com/cv/in-focus-attacking-in-the-final-third-crossing-and-finishing/" }
+      ],
+      "sources": ["AFC", "CV"]
+    },
+    {
+      "id": "PA12",
+      "name": "Long passes need a clear lane",
+      "short": "Long pass risk",
+      "kidName": "Long Passes Are Hard",
+      "category": "passing",
+      "section": "research/passing.md §2",
+      "who": "Every player on the ball",
+      "families": ["GK", "CB", "FB", "DM", "CM", "W", "ST"],
+      "level": 2,
+      "release": "v1",
+      "ruleIds": [],
+      "related": [],
+      "summary": {
+        "standard": "The risk of a pass grows with its length and flight time, so play a long pass only when its lane is wide open.",
+        "kid": "Long passes are hard. Play them only when wide open."
+      },
+      "ruleOfThumb": "A youth ground pass is accurate about 96 % of the time at 25 m, 78 % at 40 m and 50 % at 50 m (defaults); below 85 %, about 34 m, the engine calls it a long pass.",
+      "why": "A long pass gives defenders more time to get across and is harder to play accurately, so more long passes are lost.",
+      "commonMistake": "Hitting a long ball to a distant teammate when a short, safe pass was on.",
+      "learnMore": [
+        { "label": "Hicheur et al. 2017: how fast young players pass (open access)", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC5617197/" },
+        { "label": "U.S. Soccer Coaching Curriculum (free PDF)", "url": "https://cdn1.sportngin.com/attachments/document/0020/5055/Full_U.S._Soccer_Coaching_Curriculum.pdf" }
+      ],
+      "sources": ["USC", "COI", "HIC"]
+    },
+    {
+      "id": "PA13",
+      "name": "Keep the ball when nothing is on",
+      "short": "Keep possession",
+      "kidName": "Keep It, Look Again",
+      "category": "passing",
+      "section": "research/passing.md §2",
+      "who": "The player on the ball",
+      "families": ["CB", "FB", "DM", "CM", "W", "ST"],
+      "level": 1,
+      "release": "v1",
+      "ruleIds": [],
+      "related": [],
+      "summary": {
+        "standard": "When no forward pass is on, keep possession with a safe pass sideways or back, then look to switch or go forward again.",
+        "kid": "Nothing forward? Keep the ball and look again."
+      },
+      "ruleOfThumb": "When the best pass is a safe square or back pass and no good forward pass scores within 10 points of it (default), keeping the ball is right and grades as the best pass.",
+      "why": "Losing the ball with a forced forward pass is worse than keeping it and trying again a moment later.",
+      "commonMistake": "Forcing a pass forward into a crowd when a simple pass back would keep the ball.",
+      "learnMore": [
+        { "label": "US Youth Soccer ODP Player Manual (free PDF)", "url": "https://www.usyouthsoccer.org/wp-content/uploads/sites/160/2023/09/Player-Manual-US-Youth-Soccer-ODP.pdf" },
+        { "label": "The FA England DNA: in possession", "url": "https://www.thefa.com/bootroom/resources/england-dna/how-we-play/in-possession" }
+      ],
+      "sources": ["ODP", "DNA"]
+    },
+    {
+      "id": "PA14",
+      "name": "Pass through a third player",
+      "short": "Third-player pass",
+      "kidName": "Pass Through a Friend",
+      "category": "passing",
+      "section": "research/passing.md §2",
+      "who": "Midfielders and forwards",
+      "families": ["DM", "CM", "W", "ST"],
+      "level": 3,
+      "release": "v2",
+      "ruleIds": [],
+      "related": ["P7"],
+      "summary": {
+        "standard": "When the pass to a runner is blocked, play it to a teammate who lays it off first time to the runner arriving on the defender's blind side.",
+        "kid": "Blocked? Pass to a friend who can set it up."
+      },
+      "ruleOfThumb": "From v2 the engine rates two passes in a row: the first must be safe, and the second is rated from the middle player's spot with the defenders a step behind. The combination is worth 0.9 of the two passes' value (default).",
+      "why": "Defenders watch the ball and the first receiver, so the third player arrives unmarked.",
+      "commonMistake": "Waiting for the direct pass to the runner to open instead of using a nearby teammate.",
+      "learnMore": [
+        { "label": "FIFA Training Centre: third-player combinations", "url": "https://www.fifatrainingcentre.com/en/game/game-analysis/in-possession/third-player-combinations.php" }
+      ],
+      "sources": ["F3", "USC", "RESEARCH"]
+    },
+    {
+      "id": "PA15",
+      "name": "Draw the defender, then pass",
+      "short": "Draw then pass",
+      "kidName": "Draw Them, Then Pass",
+      "category": "passing",
+      "section": "research/passing.md §2",
+      "who": "Players in a two-against-one",
+      "families": ["FB", "CM", "W", "ST"],
+      "level": 3,
+      "release": "v2",
+      "ruleIds": [],
+      "related": [],
+      "summary": {
+        "standard": "In a two-against-one, carry the ball at the defender until they commit to you, then release the pass to your free teammate.",
+        "kid": "Two of you, one of them? Draw them, then pass."
+      },
+      "ruleOfThumb": "Needs a carry option and timing, planned for v2: pass when the defender steps toward you and is within about 3 m (default).",
+      "why": "Once the defender commits to the ball, your teammate is free and cannot be caught in time.",
+      "commonMistake": "Passing too early, so the defender can simply move across to your teammate.",
+      "learnMore": [
+        { "label": "England Football: two-player core football moves", "url": "https://learn.englandfootball.com/articles-and-resources/coaching/resources/2023/Two-player-core-football-moves" }
+      ],
+      "sources": ["EFL-2", "BC"]
     }
   ]
 }

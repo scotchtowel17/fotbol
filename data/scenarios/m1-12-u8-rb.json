@@ -1,14 +1,14 @@
 {
   "id": "m1-12-u8-rb",
   "title": "Guard the back post",
-  "titleKid": "Cover the far post",
+  "titleKid": "Guard the far post",
   "brief": "Their winger is getting in behind on the other side of the pitch.",
   "briefKid": "Their winger is running with the ball on the other side.",
   "question": "A cross is coming from the far wing and their other winger is running in. Where do you go?",
   "questionKid": "A cross is coming from the other side. Where do you go?",
   "takeaway": {
     "standard": "On a cross from the far wing, tuck in to the back post, goal-side of the runner, so nobody gets a free header behind everyone.",
-    "kid": "When a cross comes from the other side, cover the far post."
+    "kid": "When a cross comes from the other side, guard the far post."
   },
   "module": "M1",
   "moment": "out_of_possession",

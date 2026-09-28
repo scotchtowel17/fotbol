@@ -62,8 +62,8 @@ export default {
     },
     kid: {
       name: "Don't play them onside",
-      ok: () => 'Good, you are on your line, so their runner is offside.',
-      fail: (v) => `Step up to your line, you are keeping ${v.whoKid} onside.`,
+      ok: () => 'Good, you are in line with your defenders, so their runner is offside.',
+      fail: (v) => `Move forward into line with your defenders, so ${v.whoKid} is offside.`,
       cue: () => 'Is anyone standing behind your line of defenders?',
     },
   },

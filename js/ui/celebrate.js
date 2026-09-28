@@ -17,6 +17,14 @@
 //
 // Pure helpers (celebrationModel, soundPlan, levelUpModel, levelModel, pillModel, starSlots, confettiPieces)
 // are exported for tests/celebrate.test.js; nothing touches the DOM at import time.
+//
+// Player mode (docs/KID_REDESIGN.md §4.3, §4.5, R29) has its own, quieter rules, used by js/ui/player/*:
+//   - every rep gets a short acknowledgement that is over in under 0.6 s: the stars pop, a tick each
+//     (PLAYER_CELEBRATE, playerStarPlan);
+//   - confetti and the fanfare only for a real milestone (the first 3 stars of a set, a level up, a gold sticker),
+//     and at most once per set: createBurstBudget() is the set's allowance, playerMilestone() names the milestone;
+//   - confettiBurst(app, { anchor }) is the burst itself (none under reduced motion).
+// Coach mode keeps createCelebrations() exactly as before.
 
 import { el, svg, button, icon, openModal } from './components.js';
 import { BADGES_BY_ID, levelFor, normalizeRewards, paletteById } from '../rewards.js';
@@ -35,6 +43,52 @@ export const CELEBRATE_DEFAULTS = Object.freeze({
   confettiMs: 1500, // [D] longest flight of a piece
   maxChips: 4, // [D] badge and sticker chips on one celebration; the rest is a "+N" chip (the trophy room has them all)
 });
+
+/** Player mode's per-rep acknowledgement (R29: under 0.6 s): the stars pop one after another, a tick each. */
+export const PLAYER_CELEBRATE = Object.freeze({
+  starDelayMs: 40, // [D] the first star pops this soon after the reveal...
+  starStepMs: 150, // [D] ...each next one this much later...
+  popMs: 240, // [D] ...and each pop lasts this long, so 3 stars are done in 40 + 2 x 150 + 240 = 580 ms
+  ackMaxMs: 600, // [S] R29: a good rep's acknowledgement is shorter than 0.6 s
+  burstsPerSet: 1, // [S] R29: a big celebration at most once a set
+});
+
+/** When each star of a Player-mode reveal pops and ticks (ms from the reveal). */
+export function playerStarPlan(stars, P = PLAYER_CELEBRATE) {
+  const n = Math.max(0, Math.min(3, Math.round(Number(stars)) || 0));
+  return Array.from({ length: n }, (_, i) => ({ name: 'star', at: P.starDelayMs + i * P.starStepMs, index: i }));
+}
+
+/** How long a Player-mode rep acknowledgement lasts (ms): the last star's pop ends then (0 for no stars). */
+export function playerAckMs(stars, P = PLAYER_CELEBRATE) {
+  const plan = playerStarPlan(stars, P);
+  return plan.length ? plan.at(-1).at + P.popMs : 0;
+}
+
+/**
+ * A set's allowance of big celebrations (confetti and a fanfare): `take()` says yes at most `n` times.
+ * One budget per set, shared by the reveal and Full time.
+ */
+export function createBurstBudget(n = PLAYER_CELEBRATE.burstsPerSet) {
+  let left = Math.max(0, Math.round(Number(n)) || 0);
+  return {
+    take() { if (left <= 0) return false; left--; return true; },
+    get left() { return left; },
+  };
+}
+
+/**
+ * The milestone a Player-mode moment celebrates, if any (pure): 'level-up' | 'gold' (a gold sticker) |
+ * 'three-stars' (the set's first 3-star rep) | null. Everything else gets the short acknowledgement only.
+ * @param {{ stars?: number, firstThreeOfSet?: boolean, gained?: object }} m
+ */
+export function playerMilestone({ stars = 0, firstThreeOfSet = false, gained = null } = {}) {
+  const g = cleanGains(gained);
+  if (g.levelUp) return 'level-up';
+  if (g.cards.some((c) => c.tier === 3)) return 'gold';
+  if (stars >= 3 && firstThreeOfSet) return 'three-stars';
+  return null;
+}
 
 export const RANK_ICONS = Object.freeze({ rookie: '🌱', academy: '⚽', 'first-team': '👕', captain: '🧢', legend: '🏆' });
 export const rankIcon = (rank) => RANK_ICONS[rank?.id ?? rank] ?? '⭐';
@@ -392,6 +446,33 @@ export function reducedMotion(app) {
 }
 
 /**
+ * A short confetti burst of DOM pieces (Web Animations) from `anchor` (an element; default: high in the middle of
+ * the screen), drawn into `host` (default: the body). None under reduced motion. The layer removes itself.
+ * @returns {{ layer: HTMLElement, stop(): void }|null}
+ */
+export function confettiBurst(app, { anchor = null, host = globalThis.document?.body, pieces = CELEBRATE_DEFAULTS.confettiPieces } = {}) {
+  if (reducedMotion(app) || !host || typeof host.animate !== 'function') return null;
+  const P = CELEBRATE_DEFAULTS;
+  const layer = el('div', { class: 'cb-confetti', 'aria-hidden': 'true' });
+  host.append(layer);
+  const r = anchor?.getBoundingClientRect?.();
+  const vw = globalThis.innerWidth || 800, vh = globalThis.innerHeight || 600;
+  const ox = r?.width ? r.left + Math.min(r.width / 2, 120) : vw / 2;
+  const oy = r?.height ? r.top + Math.min(r.height / 2, 40) : vh * 0.3;
+  for (const p of confettiPieces(pieces)) {
+    const piece = el('i', { class: p.round ? 'is-round' : null, style: { left: `${ox}px`, top: `${oy}px`, width: `${p.size}px`, height: `${p.round ? p.size : Math.round(p.size * 1.6)}px`, background: p.color } });
+    layer.append(piece);
+    piece.animate([
+      { transform: 'translate(0, 0) rotate(0deg)', opacity: 1 },
+      { transform: `translate(${Math.round(p.dx * 0.7)}px, ${p.dy}px) rotate(${Math.round(p.spin * 0.5)}deg)`, opacity: 1, offset: 0.45 },
+      { transform: `translate(${p.dx}px, ${p.dy + p.fall}px) rotate(${p.spin}deg)`, opacity: 0 },
+    ], { duration: p.duration, delay: p.delay, easing: 'cubic-bezier(0.2, 0.7, 0.4, 1)', fill: 'both' });
+  }
+  const timer = setTimeout(() => layer.remove(), P.confettiMs + 300);
+  return { layer, stop() { clearTimeout(timer); layer.remove(); } };
+}
+
+/**
  * @param {object} app  settings (wording, reducedMotion), data.principles, sound (js/ui/sound.js), navigate()
  * @returns {{ show(gained: object, opts?: { grade?: string|null, host?: Element|null, card?: boolean, quiet?: boolean }): void, destroy(): void }}
  */
@@ -521,23 +602,7 @@ export function createCelebrations(app) {
 
   // ---- confetti: a short burst of DOM pieces (Web Animations); none under reduced motion
   function confetti(anchor, host = doc.body) {
-    if (reducedMotion(app) || !host || typeof host.animate !== 'function') return;
-    const layer = el('div', { class: 'cb-confetti', 'aria-hidden': 'true' });
-    host.append(layer);
-    const r = anchor?.getBoundingClientRect?.();
-    const vw = globalThis.innerWidth || 800, vh = globalThis.innerHeight || 600;
-    const ox = r?.width ? r.left + Math.min(r.width / 2, 120) : vw / 2;
-    const oy = r?.height ? r.top + Math.min(r.height / 2, 40) : vh * 0.3;
-    for (const p of confettiPieces(P.confettiPieces)) {
-      const piece = el('i', { class: p.round ? 'is-round' : null, style: { left: `${ox}px`, top: `${oy}px`, width: `${p.size}px`, height: `${p.round ? p.size : Math.round(p.size * 1.6)}px`, background: p.color } });
-      layer.append(piece);
-      piece.animate([
-        { transform: 'translate(0, 0) rotate(0deg)', opacity: 1 },
-        { transform: `translate(${Math.round(p.dx * 0.7)}px, ${p.dy}px) rotate(${Math.round(p.spin * 0.5)}deg)`, opacity: 1, offset: 0.45 },
-        { transform: `translate(${p.dx}px, ${p.dy + p.fall}px) rotate(${p.spin}deg)`, opacity: 0 },
-      ], { duration: p.duration, delay: p.delay, easing: 'cubic-bezier(0.2, 0.7, 0.4, 1)', fill: 'both' });
-    }
-    later(() => layer.remove(), P.confettiMs + 300);
+    confettiBurst(app, { anchor, host, pieces: P.confettiPieces });
   }
 
   return {

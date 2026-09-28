@@ -61,8 +61,8 @@ export default {
     },
     kid: {
       name: 'Stay wide',
-      ok: () => 'Great, you stayed wide!',
-      fail: (v) => `Move ${m(v.d - v.max)} m wider, close to the sideline.`,
+      ok: () => 'Good, you stayed wide.',
+      fail: () => 'Move wider, close to the sideline.',
       cue: () => 'Who is keeping our team wide on your side?',
     },
   },

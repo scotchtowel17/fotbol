@@ -1,0 +1,380 @@
+// The Road (js/ui/player/road.js, data/road.json): docs/KID_REDESIGN.md §3 and §8.1.
+import { test, assert, loadJSON } from './harness.js';
+import * as R from '../js/ui/player/road.js';
+
+const rawRoad = await loadJSON('data/road.json');
+const road = R.normalizeRoad(rawRoad);
+const principlesFile = await loadJSON('data/principles.json');
+const principleIds = new Set((principlesFile.principles ?? principlesFile).map((p) => p.id));
+const index = (await loadJSON('data/scenarios/index.json')).scenarios;
+const fileOf = Object.fromEntries(index.map((e) => [e.id, e.file ?? `${e.id}.json`]));
+const scenarioCache = new Map();
+/** The scenario files from disk (Node) or the server (tests.html), cached. */
+const load = (id) => {
+  if (!scenarioCache.has(id)) scenarioCache.set(id, loadJSON(`data/scenarios/${fileOf[id] ?? `${id}.json`}`));
+  return scenarioCache.get(id);
+};
+
+/** An app with an in-memory store (and the road, as main.js sets app.data.road). */
+function fakeApp(initial = {}, withRoad = road) {
+  const mem = new Map(Object.entries(initial).map(([k, v]) => [k, JSON.stringify(v)]));
+  return {
+    mem,
+    data: { road: withRoad },
+    store: {
+      get: (k, fallback) => (mem.has(k) ? JSON.parse(mem.get(k)) : fallback),
+      set: (k, v) => { mem.set(k, JSON.stringify(v)); return true; },
+    },
+  };
+}
+const withStars = (group, stars = {}, plays = {}) => ({
+  ...R.pickGroup(null, group, road),
+  road: Object.fromEntries([...new Set([...Object.keys(stars), ...Object.keys(plays)])].map((id) => [id, { stars: stars[id] ?? 0, plays: plays[id] ?? (stars[id] ? 1 : 0) }])),
+});
+/** A stand-in for js/engine/spotdrill.js generateSpotDrill: a minimal scenario per seed, recording its calls. */
+function spotStub(calls = []) {
+  return (opts) => {
+    calls.push(opts);
+    return { id: `gen-${opts.seed}`, title: 'Generated', timeline: { ball: [] }, learner: { role: opts.role }, principles: [...opts.principles], source: { kind: 'generated' } };
+  };
+}
+function passStub(calls = []) {
+  return (opts) => {
+    calls.push(opts);
+    return { id: `pass-${opts.seed}`, kind: 'pass', learner: { role: opts.role }, principles: [...opts.principles] };
+  };
+}
+const ids = (reps) => reps.map((r) => r.scenario?.id ?? r.drill?.id);
+
+// ---------------------------------------------------------------- the data file
+
+const SPEC = {
+  defend: ['Defend together', [['close-down', 'spot', ['D1', 'D2']], ['back-up', 'spot', ['D3', 'D4']], ['goal-side', 'spot', ['D5', 'T3', 'U8']], ['defend-match', 'mix', []]]],
+  help: ['Help the ball', [['get-open', 'spot', ['B3', 'B4']], ['stay-wide', 'spot', ['B1', 'B6', 'B2']], ['between-lines', 'spot', ['P2', 'P1', 'B5']], ['crosses', 'spot', ['P10']], ['help-match', 'mix', []]]],
+  passing: ['Pass it right', [['free-player', 'pass', ['PA3', 'PA4']], ['play-forward', 'pass', ['PA2', 'PA5']], ['free-side', 'pass', ['PA6', 'PA8']], ['safe-back', 'pass', ['PA10', 'PA13']], ['pass-match', 'mix', []]]],
+  shape: ['Move as one', [['hold-line', 'spot', ['U4', 'U3', 'R1']], ['slide', 'spot', ['U2', 'U5', 'R2']], ['guard-middle', 'spot', ['R3', 'U7', 'T2']], ['high-mid-deep', 'spot', ['U6', 'U1']], ['shape-match', 'mix', []]]],
+};
+
+test('road: data/road.json has the spec\'s chapters, nodes, kinds and principles, in order', () => {
+  assert.deepEqual(rawRoad.chapters.map((c) => c.id), Object.keys(SPEC));
+  for (const c of rawRoad.chapters) {
+    const [title, nodes] = SPEC[c.id];
+    assert.equal(c.title, title, `${c.id} title`);
+    assert.deepEqual(c.nodes.map((n) => [n.id, n.kind, n.principles ?? []]), nodes, `${c.id} nodes`);
+    for (const n of c.nodes.filter((x) => x.kind === 'mix')) assert.equal(n.from, c.id, `${n.id} draws from its own chapter`);
+  }
+  assert.deepEqual(rawRoad.groups, { DEF: ['CB', 'FB'], MID: ['DM', 'CM'], WING: ['W'], STRIKER: ['ST'] });
+  assert.deepEqual(rawRoad.defaultRoles, { DEF: 'LB', MID: 'LCM', WING: 'LW', STRIKER: 'ST' });
+  assert.equal(rawRoad.matchday.unlockAfter, 'defend-match', 'Match day opens with chapter 1\'s Big Match');
+  assert.equal(rawRoad.chapters.find((c) => c.id === 'passing').opensAfter, 'close-down', '"Pass it right" also opens after chapter 1\'s first node');
+  assert.equal(rawRoad.chapters[0].nodes.at(-1).title, 'Big Match');
+  assert.deepEqual(road.chapters.map((c) => c.skill), ['Defend', 'Help', 'Pass', 'Shape'], 'the card\'s four skills');
+});
+
+test('road: titles are short and plain (4 words or fewer per node, no codes, no "kid")', () => {
+  const titles = new Set();
+  for (const c of rawRoad.chapters) {
+    assert.ok(c.title.split(/\s+/).length <= 4, c.title);
+    for (const n of c.nodes) {
+      assert.ok(n.title && n.title.split(/\s+/).length <= 4, `${n.id}: "${n.title}" is over 4 words`);
+      assert.ok(!titles.has(n.title), `${n.title} is used twice`);
+      titles.add(n.title);
+    }
+  }
+  for (const t of [...titles, ...rawRoad.chapters.map((c) => c.title)]) {
+    assert.doesNotMatch(t, /\b[A-Z]{1,2}\d{1,2}\b/, `${t}: no principle codes`);
+    assert.doesNotMatch(t, /\bkids?\b/i, t);
+    assert.doesNotMatch(t, /!/, t);
+  }
+});
+
+test('road: every principle is in data/principles.json (the pass ones once the engine adds PA1-PA15)', () => {
+  const hasPass = [...principleIds].some((id) => /^PA\d+$/.test(id));
+  for (const n of R.roadNodes(road).filter((x) => x.kind !== 'mix')) {
+    for (const id of n.principles) {
+      if (/^PA\d+$/.test(id) && !hasPass) continue;
+      assert.ok(principleIds.has(id), `${n.id}: unknown principle ${id}`);
+    }
+  }
+});
+
+test('road: every spot node has authored drills on its principles (a set never needs the generator alone)', () => {
+  for (const n of R.roadNodes(road).filter((x) => x.kind === 'spot')) {
+    const hits = index.filter((e) => (e.principles ?? []).some((p) => n.principles.includes(p)));
+    assert.ok(hits.length >= 1, `${n.id} has no authored scenario`);
+  }
+});
+
+// ---------------------------------------------------------------- normalising
+
+test('road: normalizeRoad drops junk, keeps order, and gives mix nodes their chapter\'s principles and rep kind', () => {
+  const r = R.normalizeRoad({
+    chapters: [
+      { id: 'a', title: 'A', nodes: [{ id: 'n1', kind: 'spot', title: 'One', principles: ['D1', 'D1', 7] }, { id: 'n1' }, { id: 'Bad Id' }, { id: 'first' }, { id: 'm', kind: 'mix', title: 'Mix' }] },
+      { id: 'b', title: 'B', nodes: [{ id: 'p1', kind: 'pass', principles: ['PA3'] }, { id: 'p2', kind: 'pass', principles: ['PA2'] }, { id: 'pm', kind: 'mix' }] },
+      { id: 'empty', nodes: [] }, null, { id: 'c', nodes: [{ id: 'z', kind: 'weird' }] },
+    ],
+  });
+  assert.deepEqual(r.chapters.map((c) => c.id), ['a', 'b', 'c']);
+  assert.deepEqual(R.roadNodes(r).map((n) => n.id), ['n1', 'm', 'p1', 'p2', 'pm', 'z'], 'duplicates, bad ids and the reserved "first" dropped');
+  assert.deepEqual(R.nodeById(r, 'n1').principles, ['D1']);
+  assert.deepEqual(R.nodeById(r, 'm').principles, ['D1']);
+  assert.equal(R.nodeById(r, 'm').repKind, 'spot');
+  assert.deepEqual(R.nodeById(r, 'pm').principles, ['PA3', 'PA2']);
+  assert.equal(R.nodeById(r, 'pm').repKind, 'pass');
+  assert.equal(R.nodeById(r, 'z').kind, 'spot', 'an unknown kind plays as spot');
+  assert.equal(R.nodeById(r, 'z').title, 'z');
+  assert.deepEqual(R.normalizeRoad(null).chapters, []);
+  assert.equal(R.normalizeRoad(null).matchday.unlockAfter, null);
+  assert.deepEqual(R.normalizeRoad({ defaultRoles: { DEF: 'ST' } }).defaultRoles.DEF, 'LB', 'a default role outside its group is ignored');
+});
+
+test('road: repKind and nodeHref send pass nodes (and their mix) to #/pass, the rest to #/play', () => {
+  assert.equal(R.repKind(road, 'free-player'), 'pass');
+  assert.equal(R.repKind(road, 'pass-match'), 'pass');
+  assert.equal(R.repKind(road, 'defend-match'), 'spot');
+  assert.equal(R.repKind(road, R.nodeById(road, 'crosses')), 'spot');
+  assert.equal(R.nodeHref(road, 'safe-back'), '#/pass/safe-back');
+  assert.equal(R.nodeHref(road, 'pass-match'), '#/pass/pass-match');
+  assert.equal(R.nodeHref(road, 'back-up'), '#/play/back-up');
+  assert.equal(R.nodeHref(road, 'nope'), '#/play');
+  // A raw (unnormalised) mix node works too.
+  assert.equal(R.repKind(rawRoad, rawRoad.chapters[2].nodes.at(-1)), 'pass');
+  assert.deepEqual(R.nodeById(road, 'defend-match').principles, ['D1', 'D2', 'D3', 'D4', 'D5', 'T3', 'U8']);
+  assert.equal(R.chapterOf(road, 'slide').id, 'shape');
+  assert.equal(R.chapterOf(road, 'nope'), null);
+});
+
+// ---------------------------------------------------------------- the profile
+
+test('road: normalizeProfile sanitises the stored profile; pickGroup sets the group, its starting role and onboarded', () => {
+  assert.deepEqual(R.normalizeProfile(undefined), { version: 1, group: null, role: null, onboarded: false, road: {} });
+  assert.deepEqual(R.normalizeProfile('junk'), R.createProfile());
+  const p = R.normalizeProfile({ group: 'DEF', role: 'LCM', onboarded: true, road: { 'close-down': { stars: 7, plays: 2.4 }, 'back-up': { stars: -1, plays: 0 }, 'Bad Id': { stars: 3 }, first: { stars: 3, plays: 1 }, x: 'junk' } });
+  assert.equal(p.role, 'LB', 'a role outside the group falls back to the group\'s starting role');
+  assert.deepEqual(p.road, { 'close-down': { stars: 3, plays: 2 } }, 'stars clamp to 0-3; empty, bad and onboarding entries go');
+  assert.equal(R.normalizeProfile({ onboarded: true }).onboarded, false, 'no group, not onboarded');
+  assert.equal(R.normalizeProfile({ group: 'DEF', role: 'RCB' }).role, 'RCB', 'any role of the group is kept');
+  for (const [g, role] of Object.entries(R.DEFAULT_ROLE)) {
+    const q = R.pickGroup(null, g, road);
+    assert.deepEqual([q.group, q.role, q.onboarded], [g, role, true]);
+  }
+  assert.equal(R.pickGroup({ group: 'DEF', role: 'RCB' }, 'DEF').role, 'RCB', 'the same group again keeps your role');
+  assert.equal(R.pickGroup(null, 'KEEPER').group, null);
+  assert.equal(R.groupOfRole('RB'), 'DEF');
+  assert.equal(R.groupOfRole('DM'), 'MID');
+  assert.equal(R.groupOfRole('GK'), null);
+});
+
+test('road: loadProfile and saveProfile use the store key "player"', () => {
+  const app = fakeApp();
+  assert.equal(R.loadProfile(app).onboarded, false);
+  assert.equal(R.saveProfile(app, R.pickGroup(null, 'WING')), true);
+  assert.ok(app.mem.has(R.PROFILE_KEY));
+  assert.equal(R.PROFILE_KEY, 'player');
+  assert.deepEqual([R.loadProfile(app).group, R.loadProfile(app).role], ['WING', 'LW']);
+  assert.equal(R.loadProfile({ store: { get: () => { throw new Error('blocked'); } } }).group ?? null, null, 'a broken store is not fatal');
+});
+
+// ---------------------------------------------------------------- stars, unlocks, next up
+
+test('road: setStarsFor averages the reps: 3 at 2.5, 2 at 1.8, 1 at 1, else 0', () => {
+  assert.equal(R.setStarsFor([]), 0);
+  assert.equal(R.setStarsFor([3, 3, 3, 2, 2]), 3); // 2.6
+  assert.equal(R.setStarsFor([3, 2, 3, 2, 3]), 3); // 2.6
+  assert.equal(R.setStarsFor([3, 3, 2, 2, 2]), 2); // 2.4
+  assert.equal(R.setStarsFor([2, 2, 2, 1, 2]), 2); // 1.8 exactly
+  assert.equal(R.setStarsFor([2, 2, 1, 1, 2]), 1); // 1.6
+  assert.equal(R.setStarsFor([1, 1, 1, 1, 1]), 1);
+  assert.equal(R.setStarsFor([0, 1, 0, 1, 2]), 0); // 0.8
+  assert.equal(R.setStarsFor([9, 9]), 3, 'rep stars are capped at 3');
+  assert.equal(R.setStarsFor(['x', null, 3]), 3, 'junk is ignored');
+});
+
+test('road: a node opens when the one before has a star; "Pass it right" also opens after chapter 1\'s first node', () => {
+  const fresh = R.pickGroup(null, 'DEF');
+  const open = (p) => R.roadNodes(road).filter((n) => R.isUnlocked(road, p, n.id)).map((n) => n.id);
+  assert.deepEqual(open(fresh), ['close-down']);
+  assert.deepEqual(open(withStars('DEF', { 'close-down': 1 })), ['close-down', 'back-up', 'free-player']);
+  assert.deepEqual(open(withStars('DEF', { 'close-down': 3, 'back-up': 2, 'goal-side': 1, 'defend-match': 1 })),
+    ['close-down', 'back-up', 'goal-side', 'defend-match', 'get-open', 'free-player']);
+  assert.ok(R.isUnlocked(road, withStars('DEF', { 'free-player': 1, 'play-forward': 1, 'free-side': 1, 'safe-back': 1, 'pass-match': 1 }), 'hold-line'), 'the chapter after "Pass it right" opens from its Match');
+  assert.ok(R.isUnlocked(road, withStars('DEF', {}, { slide: 1 }), 'slide'), 'a node you have played stays open');
+  assert.equal(R.isUnlocked(road, fresh, 'nope'), false);
+  assert.equal(R.isUnlocked(road, withStars('DEF', { 'close-down': 0 }, { 'close-down': 3 }), 'back-up'), false, 'plays without a star do not open the next node');
+});
+
+test('road: next up is the first open node with fewer than 3 stars, in order', () => {
+  assert.equal(R.nextNode(road, R.pickGroup(null, 'MID')).id, 'close-down');
+  assert.equal(R.nextNode(road, withStars('MID', { 'close-down': 1 })).id, 'close-down', 'one star: still next up');
+  assert.equal(R.nextNode(road, withStars('MID', { 'close-down': 3 })).id, 'back-up');
+  assert.equal(R.nextNode(road, withStars('MID', { 'close-down': 3, 'back-up': 3, 'goal-side': 3, 'defend-match': 3 })).id, 'get-open');
+  const all = Object.fromEntries(R.roadNodes(road).map((n) => [n.id, 3]));
+  assert.equal(R.nextNode(road, withStars('MID', all)).id, 'shape-match', 'everything at 3 stars: the last open node');
+  assert.equal(R.nextNode(R.normalizeRoad(null), R.createProfile()), null);
+});
+
+test('road: Match day opens when chapter 1\'s Big Match has a star', () => {
+  assert.equal(R.isMatchdayUnlocked(road, R.pickGroup(null, 'DEF')), false);
+  assert.equal(R.isMatchdayUnlocked(road, withStars('DEF', { 'close-down': 3, 'back-up': 3, 'goal-side': 3 })), false);
+  assert.equal(R.isMatchdayUnlocked(road, withStars('DEF', { 'defend-match': 1 })), true);
+  assert.equal(R.isMatchdayUnlocked(R.normalizeRoad(null), withStars('DEF', { 'defend-match': 3 })), false);
+});
+
+test('road: roadModel marks stars, open nodes and the current one, with each node\'s address', () => {
+  const m = R.roadModel(road, withStars('DEF', { 'close-down': 2 }));
+  assert.deepEqual(m.map((c) => [c.id, c.unlocked, c.current]), [['defend', true, true], ['help', false, false], ['passing', true, false], ['shape', false, false]]);
+  const cd = m[0].nodes[0];
+  assert.deepEqual([cd.stars, cd.unlocked, cd.current, cd.href], [2, true, true, '#/play/close-down']);
+  assert.equal(m[2].nodes[0].href, '#/pass/free-player');
+  assert.equal(m[0].stars, 2);
+  assert.equal(m[0].maxStars, 12);
+});
+
+test('road: recordSet keeps the best node stars, counts the play, and reports what it opened', () => {
+  const app = fakeApp({ player: R.pickGroup(null, 'DEF') });
+  const first = R.recordSet(app, 'close-down', [2, 1, 1, 2, 1]); // 1.4 → 1
+  assert.deepEqual([first.before, first.after, first.setStars, first.plays], [0, 1, 1, 1]);
+  assert.deepEqual(first.unlocked, ['back-up', 'free-player']);
+  assert.equal(first.matchday, false);
+  const worse = R.recordSet(app, 'close-down', [0, 0, 0, 0, 0]);
+  assert.deepEqual([worse.before, worse.after, worse.plays], [1, 1, 2], 'a worse set never takes stars away');
+  assert.deepEqual(worse.unlocked, []);
+  assert.deepEqual(R.loadProfile(app).road['close-down'], { stars: 1, plays: 2 });
+  for (const id of ['back-up', 'goal-side']) R.recordSet(app, id, [3, 3, 3, 3, 3]);
+  const big = R.recordSet(app, 'defend-match', [2, 2, 2, 2, 2]);
+  assert.equal(big.matchday, true, 'Match day opens with the Big Match');
+  assert.deepEqual(big.unlocked, ['get-open']);
+  const onboarding = R.recordSet(app, R.FIRST_SET, [3, 3, 3]);
+  assert.equal(onboarding.after, 0);
+  assert.equal(R.loadProfile(app).road.first, undefined, 'the onboarding set is not a Road node');
+  assert.equal(R.recordSet(app, 'not-a-node', [3]).plays, 0, 'unknown ids are not recorded while the road is loaded');
+  assert.equal(R.recordSet(app, 'Bad Id!', [3]).after, 0);
+  const offline = fakeApp({ player: R.pickGroup(null, 'DEF') }, R.normalizeRoad(null));
+  assert.deepEqual(R.recordSet(offline, 'back-up', [3, 3, 3]).after, 3, 'a road that failed to load still records the set');
+  assert.deepEqual(R.loadProfile(offline).road['back-up'], { stars: 3, plays: 1 });
+});
+
+// ---------------------------------------------------------------- building sets
+
+test('road: a spot set is 5 reps, your group first, mirrored to your side, then generated for your position', async () => {
+  const calls = [];
+  const profile = R.pickGroup(null, 'DEF'); // LB
+  const reps = await R.buildSet('close-down', { road, profile, index, load, seed: 11, generators: { spot: spotStub(calls) } });
+  assert.equal(reps.length, 5);
+  assert.ok(reps.every((r) => r.kind === 'spot' && r.scenario && r.nodeId === 'close-down'));
+  // Both close-down drills in the defenders' group are right-back drills: played as a left back, mirrored.
+  assert.deepEqual(ids(reps.slice(0, 2)).sort(), ['m1-05-d2-rb-m', 'm3-07-r2-rb-m']);
+  assert.ok(reps.slice(0, 2).every((r) => r.mirrored && r.scenario.learner.role === 'LB'));
+  assert.ok(reps.slice(2).every((r) => r.generated && r.scenario.learner.role === 'LB'), 'then generated drills for your position');
+  assert.ok(calls.length >= 3 && calls.every((c) => c.role === 'LB' && c.principles.join() === 'D1,D2'));
+  assert.equal(new Set(ids(reps)).size, 5, 'no drill twice');
+});
+
+test('road: sets are deterministic for a seed', async () => {
+  const profile = withStars('MID', { 'close-down': 2 });
+  const a = await R.buildSet('back-up', { road, profile, index, load, seed: 5, generators: { spot: spotStub() } });
+  const b = await R.buildSet('back-up', { road, profile, index, load, seed: 5, generators: { spot: spotStub() } });
+  assert.deepEqual(ids(a), ids(b));
+  const pa = await R.buildSet('pass-match', { road, profile, index, load, seed: 5, generators: { pass: passStub() } });
+  const pb = await R.buildSet('pass-match', { road, profile, index, load, seed: 5, generators: { pass: passStub() } });
+  assert.deepEqual(ids(pa), ids(pb));
+  const others = await Promise.all([1, 2, 3, 4].map((seed) => R.buildSet('pass-match', { road, profile, index, load, seed, generators: { pass: passStub() } })));
+  assert.ok(others.some((o) => ids(o).join() !== ids(pa).join()), 'another seed gives another set');
+});
+
+test('road: a set starts with one recall rep from an earlier node you have played', async () => {
+  const profile = withStars('DEF', { 'close-down': 1 });
+  const reps = await R.buildSet('back-up', { road, profile, index, load, seed: 3, generators: null });
+  assert.equal(reps.length, 5);
+  assert.equal(reps[0].recall, true);
+  assert.equal(reps[0].nodeId, 'close-down');
+  assert.ok(reps[0].scenario.principles.some((p) => ['D1', 'D2'].includes(p)));
+  assert.ok(reps.slice(1).every((r) => !r.recall && r.nodeId === 'back-up'));
+  const fresh = await R.buildSet('close-down', { road, profile: R.pickGroup(null, 'DEF'), index, load, seed: 3, generators: null });
+  assert.ok(fresh.every((r) => !r.recall), 'nothing played before: no recall rep');
+  const mix = await R.buildSet('defend-match', { road, profile: withStars('DEF', { 'close-down': 3, 'back-up': 3, 'goal-side': 3 }), index, load, seed: 3, generators: null });
+  assert.ok(mix.every((r) => !r.recall), 'a mix set is all recall already');
+});
+
+test('road: a mix set draws from its chapter\'s nodes in turn', async () => {
+  const reps = await R.buildSet('defend-match', { road, profile: R.pickGroup(null, 'DEF'), index, load, seed: 9, generators: { spot: spotStub() } });
+  assert.equal(reps.length, 5);
+  const from = new Set(reps.map((r) => r.nodeId));
+  assert.ok(from.size >= 3 && [...from].every((id) => ['close-down', 'back-up', 'goal-side'].includes(id)), [...from].join());
+});
+
+test('road: without a generator, a set is authored only (other positions, then mirrored twins, then repeats)', async () => {
+  const reps = await R.buildSet('close-down', { road, profile: R.pickGroup(null, 'WING'), index, load, seed: 2, generators: null });
+  assert.equal(reps.length, 5);
+  assert.ok(reps.every((r) => r.scenario.timeline && !r.generated));
+  const thin = await R.buildSet('crosses', { road, profile: R.pickGroup(null, 'DEF'), index, load, seed: 2, generators: null });
+  assert.equal(thin.length, 5, 'one authored drill still makes a set');
+  assert.ok(thin.some((r) => r.twin) && thin.some((r) => r.repeat));
+  // A generator that fails or gives nothing is the same as none.
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    const broken = await R.buildSet('close-down', { road, profile: R.pickGroup(null, 'WING'), index, load, seed: 2, generators: { spot: () => { throw new Error('boom'); } } });
+    assert.deepEqual(ids(broken), ids(reps));
+    const empty = await R.buildSet('close-down', { road, profile: R.pickGroup(null, 'WING'), index, load, seed: 2, generators: { spot: () => null } });
+    assert.deepEqual(ids(empty), ids(reps));
+  } finally { console.warn = warn; }
+});
+
+test('road: every spot and mix node builds 5 playable reps for every position group from authored drills alone', async () => {
+  const warn = console.warn;
+  try {
+    for (const group of R.GROUPS) {
+      for (const n of R.roadNodes(road).filter((x) => R.repKind(road, x) === 'spot')) {
+        const reps = await R.buildSet(n, { road, profile: withStars(group, { 'close-down': 1 }), index, load, seed: 1, generators: null });
+        assert.equal(reps.length, 5, `${group} ${n.id}`);
+        for (const r of reps) assert.ok(r.scenario?.timeline && r.scenario?.learner?.role, `${group} ${n.id}: ${r.scenario?.id}`);
+      }
+    }
+  } finally { console.warn = warn; }
+});
+
+test('road: a pass set is generated on the node\'s principles (authored pass drills first); none → an empty set', async () => {
+  const calls = [];
+  const profile = R.pickGroup(null, 'MID');
+  const reps = await R.buildSet('free-player', { road, profile, index, load, seed: 4, generators: { pass: passStub(calls) } });
+  assert.equal(reps.length, 5);
+  assert.ok(reps.every((r) => r.kind === 'pass' && r.drill && r.nodeId === 'free-player'));
+  assert.ok(calls.every((c) => c.role === 'LCM' && c.principles.join() === 'PA3,PA4'));
+  const mix = await R.buildSet('pass-match', { road, profile, index, load, seed: 4, generators: { pass: passStub() } });
+  assert.equal(new Set(mix.map((r) => r.nodeId)).size, 4, 'the pass Match takes each pass node in turn');
+  assert.deepEqual(await R.buildSet('free-player', { road, profile, index, load, seed: 4, generators: null }), []);
+  const withAuthored = [...index, { id: 'pa-demo', kind: 'pass', principles: ['PA4'], role: 'LCM' }];
+  const authored = await R.buildSet('free-player', { road, profile, index: withAuthored, load: async (id) => (id === 'pa-demo' ? { id, kind: 'pass' } : load(id)), seed: 4, generators: { pass: passStub() } });
+  assert.equal(authored[0].drill.id, 'pa-demo');
+  assert.equal(authored.length, 5);
+});
+
+test('road: the onboarding set is 3 easy reps for your group', async () => {
+  for (const group of R.GROUPS) {
+    const profile = R.pickGroup(null, group);
+    const reps = await R.buildFirstSet({ road, profile, index, load, seed: 1, generators: null });
+    assert.equal(reps.length, 3, group);
+    const fams = road.groups[group];
+    const families = { LB: 'FB', RB: 'FB', LCB: 'CB', RCB: 'CB', DM: 'DM', LCM: 'CM', RCM: 'CM', LW: 'W', RW: 'W', ST: 'ST' };
+    assert.ok(reps.every((r) => fams.includes(families[r.scenario.learner.role])), `${group}: ${ids(reps)}`);
+    assert.ok(reps.every((r) => r.nodeId === R.FIRST_SET));
+  }
+  const def = await R.buildFirstSet({ road, profile: R.pickGroup(null, 'DEF'), index, load, seed: 1, generators: null });
+  assert.equal(def[0].scenario.learner.role, 'LB', 'your own position first');
+});
+
+test('road: the seeded helpers are stable', () => {
+  assert.equal(R.hash32('fotbol'), R.hash32('fotbol'));
+  assert.notEqual(R.hash32('a'), R.hash32('b'));
+  const a = R.seededRandom(7), b = R.seededRandom(7);
+  const xs = Array.from({ length: 5 }, () => a());
+  assert.deepEqual(xs, Array.from({ length: 5 }, () => b()));
+  assert.ok(xs.every((x) => x >= 0 && x < 1));
+});
+
+test('road: the module has its visible words in STRINGS', () => {
+  assert.deepEqual(Object.keys(R.STRINGS.groups), R.GROUPS);
+  assert.deepEqual(Object.values(R.STRINGS.groups), ['Defender', 'Midfielder', 'Winger', 'Striker']);
+});

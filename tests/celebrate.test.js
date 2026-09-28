@@ -106,9 +106,9 @@ test('celebrate: the kit sets the board colours; classic is the stylesheet\'s de
     assert.equal(m[1].toLowerCase(), classic[key], `${prop} default = the classic palette`);
   }
   assert.deepEqual(kitVars(createRewards()), paletteVars(classic));
-  const s = { ...createRewards(), xp: LEVEL_XP[1], kit: { palette: 'sky', number: 7, nickname: 'Leo' } };
+  const s = { ...createRewards(), xp: LEVEL_XP[1], kit: { palette: 'sky', number: 7, nickname: 'Rocket' } };
   assert.equal(kitVars(s)['--kit-us'], KIT_PALETTES.find((p) => p.id === 'sky').shirt);
-  assert.equal(youLabel(s), 'Leo');
+  assert.equal(youLabel(s), 'Rocket');
   assert.equal(youLabel(createRewards()), 'YOU', 'no nickname: the board says YOU');
   assert.equal(shirtNumber(s, 4), 7, 'the kit\'s number wins');
   assert.equal(shirtNumber(createRewards(), 4), 4, 'else the position\'s');
@@ -116,7 +116,7 @@ test('celebrate: the kit sets the board colours; classic is the stylesheet\'s de
 
 test('celebrate: total stars add up the best of every drill (a mirror shares its record)', () => {
   let s = createRewards();
-  for (const [id, grade, score] of [['a', 'S', 95], ['a-m', 'B', 72], ['b', 'A', 85], ['c', 'D', 55]]) {
+  for (const [id, grade, score] of [['a', 'S', 95], ['a-m', 'B', 72], ['b', 'A', 85], ['c', 'D', 50]]) {
     s = applyEvent(s, { type: 'rep', scenarioId: id, role: 'LCB', grade, score }, { day: '2026-09-27' }).state;
   }
   assert.equal(totalStars(s), 3 + 2 + 0);

@@ -5,7 +5,7 @@
   "brief": "We have the ball in their half. Watch what happens next.",
   "briefKid": "We have the ball near their goal. Watch what happens.",
   "question": "They have won it and are breaking past you. Where do you go?",
-  "questionKid": "They won the ball and are running at our goal. Where do you go?",
+  "questionKid": "They won the ball and attack. Where do you go?",
   "takeaway": {
     "standard": "If the counter has already gone past you, don't chase the ball: drop into the middle in front of your centre-backs and slow the attack until help arrives.",
     "kid": "If you can't catch the ball, run back in front of your defenders."
@@ -93,13 +93,13 @@
       "id": "chased-the-ball",
       "region": { "type": "circle", "x": 55.5, "y": 40.5, "r": 2.5 },
       "text": "You chased the ball from behind; you won't catch it, and now nobody is screening in front of your centre-backs.",
-      "textKid": "You can't catch the ball from behind, so drop back into the middle."
+      "textKid": "You can't catch the ball from behind, so run back into the middle."
     },
     {
       "id": "dropped-into-the-back-line",
       "region": { "type": "circle", "x": 42.5, "y": 38, "r": 2.5 },
       "text": "You dropped all the way into your back line, so the space in front of it is free for them to play into.",
-      "textKid": "You are too deep, so stay a few steps in front of your defenders."
+      "textKid": "You are too far back. Stay a few steps in front of your defenders."
     }
   ],
   "difficulty": 1,

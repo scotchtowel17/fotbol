@@ -7,7 +7,11 @@
 // (tests/session.test.js). Stored keys, all under the store's 'fotbol:' prefix:
 //   skills   elo.createSkills() shape        (Elo per principle, per role, per scenario)
 //   history  HistoryEntry[] (newest last, capped at SESSION_DEFAULTS.historyMax)
-//   streak   { day: { current, best, last }, reps: { current, best } }
+//   streak   { day: { current, best, last, days }, reps: { current, best } }
+//            day = days played this week (R35; KID_REDESIGN §6.3), not a streak that can break: days holds the distinct
+//            training days of the Monday-to-Sunday week of `last`, current = how many (0-7), best = the most in one week.
+//            It only fills up within a week and starts again on Monday. loadStreak() also folds in the rewards'
+//            training days, so Coach mode shows the same count as Player mode (rewards.js weekDaysPlayed).
 //   live     { best: { [role]: { score, grade, seed, at } } }
 // A reset and an import also cover 'tutorial', 'explore' and 'rewards' (RESET_KEYS, IMPORT_KEYS).
 
@@ -15,7 +19,7 @@ import { createSkills, pickNext, mastery, principleTheta, roleTheta, predict, EL
 import { gradeOf } from '../engine/score.js';
 import { ROLE_INFO, LEARNABLE_ROLES, familyOf, sideOf, mirrorRole } from '../engine/roles.js';
 import { dist } from '../engine/geometry.js';
-import { normalizeRewards } from '../rewards.js';
+import { normalizeRewards, weekStart } from '../rewards.js';
 
 export const SESSION_DEFAULTS = Object.freeze({
   reps: 6, // [S] task spec: a drill session is 6 reps, then a summary
@@ -120,34 +124,67 @@ export function dayDiff(a, b) {
 }
 
 export function emptyStreak() {
-  return { day: { current: 0, best: 0, last: null }, reps: { current: 0, best: 0 } };
+  return { day: { current: 0, best: 0, last: null, days: [] }, reps: { current: 0, best: 0 } };
 }
 
+/**
+ * A stored streak record, cleaned. An old record (a day streak, from before days played this week) keeps its last
+ * training day as this week's first; its "best" counted days in a row, which is not comparable, so it starts again.
+ */
 export function normalizeStreak(raw) {
   const e = emptyStreak();
   if (!isObj(raw)) return e;
+  const last = weekStart(raw.day?.last) ? raw.day.last : null;
+  const week = last ? weekStart(last) : null;
+  const stored = Array.isArray(raw.day?.days) ? raw.day.days : null;
+  const days = week ? [...new Set([...(stored ?? []), last])].filter((d) => weekStart(d) === week).sort() : [];
+  const best = stored ? Math.min(7, Math.max(0, Math.round(num(raw.day?.best)))) : 0;
   return {
-    day: { current: num(raw.day?.current), best: num(raw.day?.best), last: typeof raw.day?.last === 'string' ? raw.day.last : null },
+    day: { current: days.length, best: Math.max(best, days.length), last, days },
     reps: { current: num(raw.reps?.current), best: num(raw.reps?.best) },
   };
 }
 
-export const loadStreak = (store) => normalizeStreak(store?.get?.(STORE_KEYS.streak, null));
+/**
+ * The week record with one more training day: a day of the same week joins it, a later week starts afresh, a day of
+ * an earlier week (a clock that went back) changes nothing. Never goes down within a week.
+ */
+function withDay(rec, day) {
+  const week = weekStart(day);
+  if (!week) return rec;
+  const current = rec.last ? weekStart(rec.last) : null;
+  let days, last;
+  if (current === week) { days = [...new Set([...rec.days, day])].sort(); last = day > rec.last ? day : rec.last; }
+  else if (!current || week > current) { days = [day]; last = day; }
+  else return rec;
+  return { current: days.length, best: Math.max(rec.best, days.length), last, days };
+}
+
+/**
+ * The stored streaks, with the rewards' training days (the 'rewards' key, js/rewards.js state.days) folded in: any
+ * training (a drill, Live, Explore, Player mode) counts toward the week, and `best` is the most days in any one week.
+ */
+export function loadStreak(store) {
+  const s = normalizeStreak(store?.get?.(STORE_KEYS.streak, null));
+  const days = Object.keys(normalizeRewards(store?.get?.('rewards', null)).days).sort();
+  let rec = s.day;
+  for (const d of days) rec = withDay(rec, d);
+  const perWeek = new Map();
+  for (const d of days) perWeek.set(weekStart(d), (perWeek.get(weekStart(d)) ?? 0) + 1);
+  return { ...s, day: { ...rec, best: Math.max(rec.best, ...perWeek.values()) } };
+}
 export const saveStreak = (store, streak) => !!store?.set?.(STORE_KEYS.streak, streak);
 
 /**
- * Update streaks for one rep (pure). Day streak: +1 on the day after the last practice day, kept on
- * the same day, back to 1 after a gap. Rep streak (drill reps only, pass score): +1 at or above
- * goodScore, else back to 0.
+ * Update the record for one rep or run (pure). Days played this week: the day joins its week (R35: it only fills up;
+ * a new week starts again at 1, and nothing is ever "broken"). Rep streak (drill reps only, pass score): +1 at or
+ * above goodScore, else back to 0.
  * @param {object} streak
- * @param {{ day: string, score?: number, rep?: boolean }} r  rep: false for a live run (day streak only)
+ * @param {{ day: string, score?: number, rep?: boolean }} r  rep: false for a live run (days only)
  */
 export function updateStreak(streak, { day, score, rep = true }, P = SESSION_DEFAULTS) {
   const s = normalizeStreak(streak);
-  const gap = s.day.last ? dayDiff(s.day.last, day) : NaN;
-  // Same day: kept; the next day: +1; a clock that went backwards: kept; a gap or a first practice: 1.
-  const dayCurrent = gap === 0 || gap < 0 ? Math.max(1, s.day.current) : gap === 1 ? s.day.current + 1 : 1;
-  const out = { day: { current: dayCurrent, best: Math.max(s.day.best, dayCurrent), last: gap < 0 ? s.day.last : day }, reps: { ...s.reps } };
+  const out = { day: withDay(s.day, day), reps: { ...s.reps } };
   if (rep && Number.isFinite(score)) {
     out.reps.current = score >= P.goodScore ? s.reps.current + 1 : 0;
     out.reps.best = Math.max(s.reps.best, out.reps.current);
@@ -155,13 +192,21 @@ export function updateStreak(streak, { day, score, rep = true }, P = SESSION_DEF
   return out;
 }
 
-/** The day streak as it stands today: 0 once a whole day has been missed. */
-export function currentDayStreak(streak, today) {
+/**
+ * Days played this week as it stands on `today` (R35): the training days of today's Monday-to-Sunday week, 0-7; 0 once
+ * a new week has begun. The same count as Player mode's (rewards.js weekDaysPlayed) for a record from loadStreak().
+ */
+export function weekDays(streak, today) {
   const s = normalizeStreak(streak);
-  if (!s.day.last) return 0;
-  const gap = dayDiff(s.day.last, today);
-  return gap === 0 || gap === 1 ? s.day.current : 0;
+  const week = weekStart(today);
+  return week ? s.day.days.filter((d) => weekStart(d) === week).length : 0;
 }
+
+/**
+ * The old name of weekDays(), kept for the Drill summary and the Progress page: what they show is now days played this
+ * week (it no longer drops to 0 after a missed day). Their labels should say "this week", not "in a row".
+ */
+export const currentDayStreak = weekDays;
 
 /** A live best as stored, or null when it is unreadable (it must have a finite score and a grade). */
 function cleanLiveBest(b) {

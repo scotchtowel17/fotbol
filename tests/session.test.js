@@ -2,7 +2,7 @@
 import { test, assert, loadJSON } from './harness.js';
 import {
   SESSION_DEFAULTS, STORE_KEYS, normalizeSkills, loadSkills, saveSkills, loadHistory, appendHistory,
-  dayKey, dayDiff, emptyStreak, updateStreak, currentDayStreak, loadStreak, loadLive, recordLiveBest,
+  dayKey, dayDiff, emptyStreak, normalizeStreak, updateStreak, weekDays, currentDayStreak, loadStreak, saveStreak, loadLive, recordLiveBest,
   parseDrillRoute, playAs, candidatesFor, pickScenario, moduleProgress, autoModule, weakestPrinciple,
   inRegion, misconceptionAt, wordingOf, longestRun, summarizeSession, summarizeLive, levelFor, roleAbilities,
   learningCurve, parseProgressFile, exportFileName, orientationFor, IMPORT_KEYS, RESET_KEYS, liveHash, drillSessionKey,
@@ -66,30 +66,64 @@ test('history: appended newest last and capped at 500', () => {
   assert.deepEqual(loadHistory(store), [{ score: 5 }], 'bad entries are dropped');
 });
 
-test('streaks: days in a row, a missed day resets, reps at grade B or better', () => {
+test('days played this week: a missed day costs nothing, the count only fills up, and a new week starts on Monday (R35)', () => {
   assert.equal(dayKey(new Date(2026, 0, 5, 23, 59)), '2026-01-05');
   assert.equal(dayDiff('2026-02-28', '2026-03-01'), 1);
   assert.equal(dayDiff('2026-01-01', '2026-01-01'), 0);
+  // 2026-03-02 is a Monday.
   let s = emptyStreak();
-  s = updateStreak(s, { day: '2026-03-01', score: 80 });
-  assert.deepEqual(s, { day: { current: 1, best: 1, last: '2026-03-01' }, reps: { current: 1, best: 1 } });
-  s = updateStreak(s, { day: '2026-03-01', score: 72 });
-  assert.equal(s.day.current, 1, 'same day');
+  s = updateStreak(s, { day: '2026-03-02', score: 80 });
+  assert.deepEqual(s, { day: { current: 1, best: 1, last: '2026-03-02', days: ['2026-03-02'] }, reps: { current: 1, best: 1 } });
+  s = updateStreak(s, { day: '2026-03-02', score: 72 });
+  assert.equal(s.day.current, 1, 'the same day counts once');
   assert.equal(s.reps.current, 2);
-  s = updateStreak(s, { day: '2026-03-02', score: 40 });
-  assert.equal(s.day.current, 2, 'next day');
+  s = updateStreak(s, { day: '2026-03-04', score: 40 });
+  assert.equal(s.day.current, 2, 'a missed day in between costs nothing');
   assert.equal(s.reps.current, 0, 'a miss ends the rep streak');
   assert.equal(s.reps.best, 2);
-  s = updateStreak(s, { day: '2026-03-02', score: 95, rep: false });
+  s = updateStreak(s, { day: '2026-03-04', score: 95, rep: false });
   assert.equal(s.reps.current, 0, 'a live run does not touch the rep streak');
-  assert.equal(currentDayStreak(s, '2026-03-03'), 2, 'still alive the next day');
-  assert.equal(currentDayStreak(s, '2026-03-04'), 0, 'gone after a missed day');
-  s = updateStreak(s, { day: '2026-03-05', score: 90 });
-  assert.deepEqual(s.day, { current: 1, best: 2, last: '2026-03-05' });
-  assert.deepEqual(updateStreak(s, { day: '2026-03-04', score: 90 }).day.last, '2026-03-05', 'a clock that went back keeps the last day');
+  assert.equal(weekDays(s, '2026-03-05'), 2, 'still 2 on a day off');
+  assert.equal(weekDays(s, '2026-03-08'), 2, 'and on Sunday');
+  assert.equal(weekDays(s, '2026-03-09'), 0, 'a new week starts on Monday: nothing is broken');
+  assert.equal(currentDayStreak, weekDays, 'the old name is kept for the Drill summary and the Progress page');
+  s = updateStreak(s, { day: '2026-03-08', score: 90 });
+  assert.equal(s.day.current, 3);
+  s = updateStreak(s, { day: '2026-03-10', score: 90 });
+  assert.deepEqual(s.day, { current: 1, best: 3, last: '2026-03-10', days: ['2026-03-10'] }, 'the next week starts at 1; the best week stays');
+  assert.deepEqual(updateStreak(s, { day: '2026-03-06', score: 90 }).day, s.day, 'a clock that went back to last week changes nothing');
+  assert.deepEqual(updateStreak(s, { day: 'junk', score: 90 }).day, s.day, 'a bad day changes nothing');
+  // Stored records: damaged ones read as empty; an old day streak keeps its last day as this week's first.
   const store = memStore();
   store.set(STORE_KEYS.streak, { day: { current: 'x' } });
   assert.deepEqual(loadStreak(store), emptyStreak());
+  assert.deepEqual(normalizeStreak({ day: { current: 5, best: 9, last: '2026-03-04' }, reps: { current: 1, best: 4 } }).day,
+    { current: 1, best: 1, last: '2026-03-04', days: ['2026-03-04'] }, 'an old "days in a row" best is not a week count');
+  assert.deepEqual(normalizeStreak({ day: { best: 3, last: '2026-03-04', days: ['2026-03-02', '2026-02-27', 'x', '2026-03-02'] } }).day,
+    { current: 2, best: 3, last: '2026-03-04', days: ['2026-03-02', '2026-03-04'] }, 'only real days of the week of the last one, once each');
+});
+
+test('days played this week: Coach mode counts the same days as Player mode (the rewards\' training days)', async () => {
+  const { createRewards, applyEvent, weekDaysPlayed } = await import('../js/rewards.js');
+  const store = memStore();
+  let rewards = createRewards();
+  // Player mode and Explore train on Monday and Tuesday; a Coach drill on Thursday.
+  for (const day of ['2026-03-02', '2026-03-03']) rewards = applyEvent(rewards, { type: 'rep', scenarioId: 'x', role: 'LB', score: 60 }, { day }).state;
+  rewards = applyEvent(rewards, { type: 'explore-s' }, { day: '2026-03-03' }).state;
+  store.set('rewards', rewards);
+  saveStreak(store, updateStreak(emptyStreak(), { day: '2026-03-05', score: 80 }));
+  rewards = applyEvent(rewards, { type: 'rep', scenarioId: 'y', role: 'LB', score: 80 }, { day: '2026-03-05' }).state;
+  store.set('rewards', rewards);
+  const s = loadStreak(store);
+  assert.equal(weekDays(s, '2026-03-06'), 3);
+  assert.equal(weekDays(s, '2026-03-06'), weekDaysPlayed(rewards, '2026-03-06'), 'the same count in both modes');
+  assert.equal(s.day.best, 3);
+  // A week with more training days on record sets the best.
+  for (const day of ['2026-02-23', '2026-02-24', '2026-02-25', '2026-02-26']) rewards = applyEvent(rewards, { type: 'explore-s' }, { day }).state;
+  store.set('rewards', rewards);
+  assert.equal(loadStreak(store).day.best, 4, 'the most days in any one week');
+  assert.equal(weekDays(loadStreak(store), '2026-03-06'), 3, 'earlier weeks never add to this one');
+  assert.equal(weekDays(loadStreak(memStore()), '2026-03-06'), 0);
 });
 
 test('live bests: per role, assisted runs never count', () => {
@@ -406,7 +440,8 @@ test('import: rewards travel with the progress, sanitised on the way in; a reset
   assert.equal(r.xp, rewards.xp);
   assert.equal(r.kit.palette, 'classic', 'a kit this level has not unlocked is refused');
   assert.equal(r.kit.number, 7);
-  assert.equal(r.kit.nickname, 'bMiab', 'the nickname is cleaned');
+  assert.equal(r.kit.nickname, '', 'a nickname that is not on the pick-list is dropped');
+  assert.equal(parseProgressFile(JSON.stringify({ 'fotbol:rewards': { kit: { nickname: 'the wall' } } })).data['fotbol:rewards'].kit.nickname, 'The Wall');
   assert.ok(r.badges['first-s']);
   const b = memStore();
   for (const k of IMPORT_KEYS) b.remove(k);

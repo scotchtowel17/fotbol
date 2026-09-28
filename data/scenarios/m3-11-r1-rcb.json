@@ -3,7 +3,7 @@
   "title": "One steps, one covers",
   "titleKid": "One goes, one backs up",
   "brief": "Your #6 has gone to press, and their #9 is dropping off your back line to ask for the ball.",
-  "briefKid": "Your midfielder went to the ball, and their striker comes short for a pass.",
+  "briefKid": "Your midfielder went to the ball. Their striker comes for a pass.",
   "question": "Your partner has stepped out to their #9. Where do you go?",
   "questionKid": "Your partner went to their striker. Where do you go?",
   "takeaway": {
@@ -99,7 +99,7 @@
       "id": "stayed-level",
       "region": { "type": "circle", "x": 40.5, "y": 41, "r": 3 },
       "text": "You stayed level with your partner and wide of them, so if their #9 turns your partner there is nobody behind to cover; drop and slide across behind them.",
-      "textKid": "Don't stay level with your partner. Drop behind them to help."
+      "textKid": "Don't stay level with your partner. Move behind them to help."
     },
     {
       "id": "stepped-with-partner",

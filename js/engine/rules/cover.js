@@ -97,10 +97,10 @@ export default {
     },
     kid: {
       name: 'Back up your teammate',
-      ok: () => 'Nice, you are backing up your teammate at an angle.',
+      ok: () => 'Good, you are backing up your teammate at an angle.',
       fail: (v) => ({
-        level: 'Drop a few steps behind your teammate who is pressing.',
-        tight: 'Give your teammate a little more room in front of you.',
+        level: 'Move a few steps behind your teammate who went to the ball.',
+        tight: 'Stay a few more steps behind your teammate.',
         deep: 'Move closer behind your teammate so you can help fast.',
         behind: 'Stand at an angle behind your teammate, not straight behind.',
         outside: 'Stand on the inside of your teammate, nearer the middle.',

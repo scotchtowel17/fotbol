@@ -3,12 +3,12 @@
   "title": "Screen the pass into the #9",
   "titleKid": "Block the pass to their striker",
   "brief": "Their #9 has dropped into the space in front of your centre-backs.",
-  "briefKid": "Their striker has come short, into the space in front of your defenders.",
+  "briefKid": "Their striker comes into the space in front of your defenders.",
   "question": "They have moved the ball across. Which pass do you need to block now?",
   "questionKid": "They moved the ball across. Which pass do you block now?",
   "takeaway": {
     "standard": "As the #6, stay in front of your centre-backs and move with the ball so you are always standing in the passing line into their #9.",
-    "kid": "Stand in the path of the pass to their striker, in front of your defenders."
+    "kid": "Stand in the path of the pass to their striker."
   },
   "module": "M3",
   "moment": "out_of_possession",

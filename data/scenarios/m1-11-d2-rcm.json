@@ -5,10 +5,10 @@
   "brief": "Their centre-back is looking to go wide to their full-back.",
   "briefKid": "Their defender is looking to pass out wide.",
   "question": "Their full-back has it on the touchline. Where do you go?",
-  "questionKid": "Their defender has the ball by the side line. Where do you go?",
+  "questionKid": "Their defender has the ball by the sideline. Where do you go?",
   "takeaway": {
     "standard": "When you are the nearest to a full-back on the touchline, step out and press from the inside so the only way on is down the line.",
-    "kid": "If you're nearest the ball by the side line, press from the middle side."
+    "kid": "Nearest the ball by the sideline? Go to it from the middle side."
   },
   "module": "M1",
   "moment": "out_of_possession",
@@ -67,7 +67,7 @@
       "id": "pressed-from-the-touchline-side",
       "region": { "type": "circle", "x": 47.5, "y": 63, "r": 1.5 },
       "text": "You came at them from the touchline side, which lets them cut inside toward the middle of the pitch.",
-      "textKid": "Coming from the side line lets them cut inside, so come from the middle side."
+      "textKid": "Coming from the sideline lets them cut inside. Come from the middle side."
     },
     {
       "id": "stayed-in-the-middle",

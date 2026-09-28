@@ -89,14 +89,14 @@ export default {
     },
     kid: {
       name: 'Find the gap',
-      ok: () => 'You found the gap between their lines!',
+      ok: () => 'Good, you found the gap behind their midfielders.',
       fail: (v) => {
-        if (v.part === 'free') return 'Move away from the nearest defender into free space.';
+        if (v.part === 'free') return 'Move away from the nearest player, into free space.';
         return v.where === 'deep'
-          ? `Move ${m(v.lo - v.x)} m forward, past their midfielders.`
-          : `Come ${m(v.x - v.hi)} m back, in front of their defenders.`;
+          ? 'Move forward, past their midfielders.'
+          : 'Come back, just in front of their defenders.';
       },
-      cue: () => 'Where is the space between their midfielders and defenders?',
+      cue: () => 'Where is the gap behind their midfielders?',
     },
   },
 

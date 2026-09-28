@@ -3,6 +3,12 @@
 //   const sound = createSound({ enabled: () => app.settings.sound });
 //   sound.play('whistle');   // a drill freezes
 //   sound.play('star', { index: 0..2 }), sound.play('good'), sound.play('cheer'), sound.play('levelup')
+//   sound.play('groan')      // Player mode "Who's open?": the pass is cut out (a crowd's low "ooh")
+//   sound.play('lift')       // Player mode "Who's open?": the pass breaks a line (a short crowd lift)
+//
+// Player-mode rules (docs/KID_REDESIGN.md §5, R32): short event sounds only; nothing plays during Watch or Decide
+// (the whistle marks the freeze); a sound never carries meaning on its own (the screen always says it too); the one
+// mute setting (settings.sound) silences everything.
 //
 // The AudioContext is created on the first user gesture (browsers refuse to start one earlier) and only while
 // sound is on. Every call is wrapped: a browser without WebAudio, a blocked context or a failed node never
@@ -15,11 +21,13 @@ export const SOUND_DEFAULTS = Object.freeze({
   good: Object.freeze({ notes: Object.freeze([1046.5, 1568]), gap: 0.11, length: 0.55, gain: 0.3 }), // [D] C6 then G6
   cheer: Object.freeze({ length: 1.7, swell: 0.4, gain: 0.34 }), // [D]
   levelup: Object.freeze({ notes: Object.freeze([523.25, 659.25, 783.99, 1046.5]), step: 0.09, hold: 0.45, gain: 0.22 }), // [D] C5 E5 G5 C6
+  groan: Object.freeze({ length: 0.8, from: 620, to: 260, gain: 0.3, tone: 0.1 }), // [D] a falling crowd "ooh" (filter sweeps down)
+  lift: Object.freeze({ length: 0.95, from: 600, to: 1500, swell: 0.35, gain: 0.3 }), // [D] a short rising crowd swell
 });
 
-export const SOUND_NAMES = Object.freeze(['whistle', 'star', 'good', 'cheer', 'levelup']);
+export const SOUND_NAMES = Object.freeze(['whistle', 'star', 'good', 'cheer', 'levelup', 'groan', 'lift']);
 
-const GESTURES = ['pointerdown', 'keydown', 'touchend'];
+const GESTURES = ['pointerdown', 'pointerup', 'keydown', 'touchend', 'click'];
 
 /**
  * @param {{ enabled?: () => boolean, volume?: number, win?: object }} [opts]
@@ -53,8 +61,12 @@ export function createSound({ enabled = () => true, volume = SOUND_DEFAULTS.volu
   }
 
   const onGesture = () => {
+    // A touch's pointerdown comes before the browser counts it as a gesture (that is its pointerup or touchend):
+    // starting the context then only earns a console warning and a suspended context, so wait for the real one.
+    const ua = win?.navigator?.userActivation;
+    if (ua && !ua.isActive && !ua.hasBeenActive) return;
     gestured = true;
-    if (unlock()) for (const t of GESTURES) win?.removeEventListener?.(t, onGesture, true);
+    if (unlock() && ctx?.state !== 'suspended') for (const t of GESTURES) win?.removeEventListener?.(t, onGesture, true);
   };
   for (const t of GESTURES) win?.addEventListener?.(t, onGesture, { capture: true, passive: true });
 
@@ -177,6 +189,38 @@ export function createSound({ enabled = () => true, volume = SOUND_DEFAULTS.volu
       noiseBurst(t0, { length: C.length, freq: 2100, q: 1.4, out: voices });
       flutter.start(t0);
       flutter.stop(t0 + C.length + 0.05);
+    },
+    // A crowd's disappointed "ooh": voice-band noise whose filter falls, with a soft low tone falling under it.
+    groan(t0) {
+      const G = P.groan;
+      const out = ctx.createGain();
+      out.gain.setValueAtTime(0.0001, t0);
+      out.gain.linearRampToValueAtTime(G.gain, t0 + 0.08);
+      out.gain.linearRampToValueAtTime(G.gain * 0.7, t0 + G.length * 0.6);
+      out.gain.linearRampToValueAtTime(0.0001, t0 + G.length);
+      out.connect(master);
+      const { filter } = noiseBurst(t0, { length: G.length, freq: G.from, q: 2.2, out });
+      filter.frequency.exponentialRampToValueAtTime?.(G.to, t0 + G.length);
+      const osc = ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(G.from / 2.5, t0);
+      osc.frequency.exponentialRampToValueAtTime?.(G.to / 2.5, t0 + G.length);
+      const env = envelope(t0, { peak: G.tone, attack: 0.06, hold: G.length * 0.4, release: G.length * 0.5 });
+      osc.connect(env.node);
+      env.node.connect(master);
+      osc.start(t0);
+      osc.stop(env.end + 0.02);
+    },
+    // A short crowd lift (a line broken): noise that swells while its band rises, then falls away.
+    lift(t0) {
+      const L = P.lift;
+      const out = ctx.createGain();
+      out.gain.setValueAtTime(0.0001, t0);
+      out.gain.linearRampToValueAtTime(L.gain, t0 + L.swell);
+      out.gain.linearRampToValueAtTime(0.0001, t0 + L.length);
+      out.connect(master);
+      const { filter } = noiseBurst(t0, { length: L.length, freq: L.from, q: 0.9, out });
+      filter.frequency.exponentialRampToValueAtTime?.(L.to, t0 + L.swell + 0.1);
     },
     // A quick rising arpeggio, the last note held.
     levelup(t0) {

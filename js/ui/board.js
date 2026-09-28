@@ -17,6 +17,19 @@
 //
 // Pure helpers (pickOrientation, project, keyDelta, pitchMarkings, describeSpot...) are
 // exported for tests; nothing here touches the DOM at import time.
+//
+// Player mode (docs/KID_REDESIGN.md §8.1) opts into a few extras; Coach mode never calls them, so it looks
+// and behaves as before:
+//   createBoard(el, { labels: 'number' })   unique shirt numbers on the tokens (ROLE_INFO num), plain names for screen readers
+//   board.setSpotlight(ids | null)          everything but YOU, the ball and these tokens dimmed to 40 %
+//   board.enableTargets({ ids, onTap, onPreview }) / disableTargets()
+//                                           big (≥ 44 px) tap targets on tokens: first tap previews, a second tap confirms
+//   board.showHintHand({ from, to })        the worked-example hand drags YOU, then YOU snaps back (a Promise; instant
+//                                           under reduced motion)
+//   board.setAid({ kind: 'glow', target } | { kind: 'heat', level } | null)
+//                                           a warm/cold ring on YOU (glow: brighter and warmer as YOU nears `target`)
+//   enableDrag({ ..., tapToMove: id, onArm })  a tap on the pitch moves that token there (tap-YOU-then-a-spot still works)
+// Every draggable token is at least minHitPx (44 CSS px) wide to hit, however small it is drawn (R10).
 
 import {
   LENGTH, WIDTH, HALF_X, MID_Y, GOAL_DEPTH, PENALTY_AREA, GOAL_AREA, PENALTY_SPOT_DIST,
@@ -27,6 +40,12 @@ import { ROLE_INFO, parsePlayerId } from '../engine/roles.js';
 import { fieldImage } from './heatmap.js';
 
 export const BOARD_DEFAULTS = Object.freeze({
+  minHitPx: 44, // [S] WCAG 2.2 2.5.5 (R10): a token you can drag or tap is at least this wide to hit, however small it is drawn
+  aidFar: 15, // [D] metres: the glow aid is at its faintest this far from its target (and brightens as YOU gets closer)...
+  aidBands: Object.freeze({ hot: 2.5, warm: 6, cool: 11 }), // [D] ...and warms through these bands (metres from the target)
+  hint: Object.freeze({ inMs: 350, dragMs: 1100, holdMs: 500, backMs: 260, outMs: 260 }), // [D] the worked-example hand's beats
+  handSize: 4.2, // [D] metres the hand is drawn tall at life size (it grows with the tokens on a small board)...
+  handMinPx: 56, // [D] ...and never less than this many CSS px tall (a big board draws the pitch small per metre)
   margin: 3, // [S] ARCHITECTURE §5.8: viewBox margin around the pitch, metres
   portraitMaxWidth: 600, // [S] ARCHITECTURE §5.8: 'auto' goes vertical in a portrait container narrower than this (CSS px)
   tokenRadius: 1.8, // [D] metres at life size; a small board draws tokens bigger (minTokenPx)
@@ -180,6 +199,92 @@ export function tokenName(id, learnerId) {
   return `${team === 'us' ? 'Teammate' : 'Opponent'}: ${label}`;
 }
 
+/** Player mode's shirt numbers (docs/KID_REDESIGN.md §5): one per position, the same for both teams. */
+export const SHIRT_NUMBERS = Object.freeze(Object.fromEntries(Object.entries(ROLE_INFO).map(([role, info]) => [role, info.num])));
+
+/**
+ * The text on a token: its role code ('role', Coach mode: LCB, 6, 9...) or its shirt number ('number', Player mode:
+ * GK 1, RB 2, LB 3, LCB 4, RCB 5, DM 6, RW 7, LCM 8, ST 9, RCM 10, LW 11). The ball has none.
+ */
+export function tokenLabel(id, mode = 'role') {
+  if (id === BALL_ID || typeof id !== 'string') return '';
+  const { role } = parsePlayerId(id);
+  if (mode === 'number') return SHIRT_NUMBERS[role] === undefined ? '' : String(SHIRT_NUMBERS[role]);
+  return ROLE_INFO[role]?.short ?? role;
+}
+
+/** Player mode's accessible name for a token: no role codes, just "You", "Teammate, number 4", "Opponent, number 9". */
+export function simpleTokenName(id, learnerId) {
+  if (id === BALL_ID) return 'Ball';
+  if (id === learnerId) return 'You';
+  const { team, role } = parsePlayerId(id);
+  const n = SHIRT_NUMBERS[role];
+  return `${team === 'us' ? 'Teammate' : 'Opponent'}${n === undefined ? '' : `, number ${n}`}`;
+}
+
+/** Player mode's plain-words position (no metres, no lanes): "in our half, on the left", "near their goal, in the middle". */
+export function describeSpotSimple(p) {
+  if (!Number.isFinite(p?.x) || !Number.isFinite(p?.y)) return '';
+  const end = p.x <= PENALTY_AREA.depth ? 'near our goal' : p.x >= LENGTH - PENALTY_AREA.depth ? 'near their goal' : p.x < HALF_X ? 'in our half' : 'in their half';
+  const side = p.y < WIDTH / 3 ? 'on the left' : p.y > (2 * WIDTH) / 3 ? 'on the right' : 'in the middle';
+  return `${end}, ${side}`;
+}
+
+/** Radius (metres) a token can be hit within: at least its drawn radius, and at least minHitPx / 2 CSS px across on a small board. */
+export function hitRadius(pxPerM, drawnM, P = BOARD_DEFAULTS) {
+  const min = pxPerM > 0 ? P.minHitPx / 2 / pxPerM : 0;
+  return Math.max(drawnM > 0 ? drawnM : 0, min);
+}
+
+/** The glow aid's band for a distance (metres) from its target: 'hot' | 'warm' | 'cool' | 'cold'. */
+export function aidLevel(d, P = BOARD_DEFAULTS) {
+  if (!Number.isFinite(d)) return 'cold';
+  const B = P.aidBands;
+  return d <= B.hot ? 'hot' : d <= B.warm ? 'warm' : d <= B.cool ? 'cool' : 'cold';
+}
+
+/** How bright the glow aid is (0 far away .. 1 on the target), linear over aidFar metres; rounded to 0.05 (fewer redraws). */
+export function aidStrength(d, P = BOARD_DEFAULTS) {
+  if (!Number.isFinite(d)) return 0;
+  const k = Math.max(0, Math.min(1, 1 - d / P.aidFar));
+  return Math.round(k * 20) / 20;
+}
+
+const easeInOut = (u) => (u < 0.5 ? 2 * u * u : 1 - (-2 * u + 2) ** 2 / 2);
+const lerpV = (a, b, u) => ({ x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u });
+
+/** Total length (ms) of the worked-example hand. */
+export const hintTotalMs = (H = BOARD_DEFAULTS.hint) => H.inMs + H.dragMs + H.holdMs + H.backMs + H.outMs;
+
+/**
+ * The worked-example hand at `ms` (pure): where the hand and YOU are drawn, how visible the hand is and whether it
+ * presses. Beats: the hand appears on YOU and presses (in), drags YOU to `to` (drag), holds there (hold), YOU snaps
+ * back to `from` while the hand lifts (back), and the hand fades (out).
+ * @returns {{ hand: {x:number,y:number}, token: {x:number,y:number}, opacity: number, pressed: boolean, done: boolean }}
+ */
+export function hintPose(ms, from, to, H = BOARD_DEFAULTS.hint) {
+  const t = Math.max(0, Number(ms) || 0);
+  const a = H.inMs, b = a + H.dragMs, c = b + H.holdMs, d = c + H.backMs, e = d + H.outMs;
+  if (t < a) return { hand: { ...from }, token: { ...from }, opacity: Math.min(1, t / Math.max(1, a * 0.6)), pressed: t > a * 0.6, done: false };
+  if (t < b) { const p = lerpV(from, to, easeInOut((t - a) / H.dragMs)); return { hand: p, token: { ...p }, opacity: 1, pressed: true, done: false }; }
+  if (t < c) return { hand: { ...to }, token: { ...to }, opacity: 1, pressed: true, done: false };
+  if (t < d) return { hand: { ...to }, token: lerpV(to, from, easeInOut((t - c) / H.backMs)), opacity: 1 - 0.4 * ((t - c) / H.backMs), pressed: false, done: false };
+  if (t < e) return { hand: { ...to }, token: { ...from }, opacity: 0.6 * (1 - (t - d) / H.outMs), pressed: false, done: false };
+  return { hand: { ...to }, token: { ...from }, opacity: 0, pressed: false, done: true };
+}
+
+/** True when the device or the page (settings: data-reduced-motion) asks for reduced motion. */
+function prefersReducedMotion(win) {
+  try {
+    if (win?.document?.documentElement?.dataset?.reducedMotion === 'true') return true;
+    return !!win?.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  } catch {
+    return false;
+  }
+}
+
+const isVec = (p) => Number.isFinite(p?.x) && Number.isFinite(p?.y);
+
 /**
  * IFAB pitch markings in world coordinates, as plain shape specs (pure; used by drawPitch).
  * @returns {{ tag: string, cls: string, attrs: object }[]}
@@ -241,14 +346,18 @@ export function drawPitch(parent, { margin = BOARD_DEFAULTS.margin, stripes = BO
 /**
  * Create a board inside `container` (which should give it a size; the SVG keeps its aspect ratio).
  * @param {HTMLElement} container
- * @param {{ orientation?: 'auto'|'horizontal'|'vertical', params?: object, youLabel?: string }} [opts]
+ * @param {{ orientation?: 'auto'|'horizontal'|'vertical', params?: object, youLabel?: string, labels?: 'role'|'number',
+ *   youNumber?: number|null }} [opts]
  *   youLabel: the tag over the learner (default 'YOU'; the app passes the learner's nickname); render() can change it
+ *   labels: what the tokens show by default: role codes (Coach mode) or unique shirt numbers (Player mode, §5)
+ *   youNumber: in number mode, the number on YOUR token (a chosen kit number; default: the position's number)
  */
-export function createBoard(container, { orientation = 'auto', params, youLabel = 'YOU' } = {}) {
+export function createBoard(container, { orientation = 'auto', params, youLabel = 'YOU', labels = 'role', youNumber = null } = {}) {
   const P = { ...BOARD_DEFAULTS, ...params };
   const doc = container.ownerDocument;
   const win = doc.defaultView;
   const uid = `board${Math.random().toString(36).slice(2, 8)}`;
+  const defaultLabels = labels === 'number' ? 'number' : 'role';
 
   const root = doc.createElement('div');
   root.className = 'board';
@@ -272,10 +381,17 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
   svgEl(doc, 'circle', { class: 'ghost-ring', r: P.tokenRadius + 0.5 }, ghostEl);
   svgEl(doc, 'circle', { class: 'ghost-dot', r: 0.35 }, ghostEl);
 
+  // The aid ring on YOU (setAid) sits under the markers; it is its own group, so setMarkers never clears it.
+  const aidLayer = svgEl(doc, 'g', { class: 'board-aid-layer' }, world);
+  world.insertBefore(aidLayer, markersW);
+  const aidEl = svgEl(doc, 'circle', { class: 'board-aid', display: 'none' }, aidLayer);
+
   const view = svgEl(doc, 'g', { class: 'board-view' }, svg);
   const overlayLabels = svgEl(doc, 'g', { class: 'board-overlay-labels' }, view);
   const tokenLayer = svgEl(doc, 'g', { class: 'board-tokens' }, view);
+  const targetLayer = svgEl(doc, 'g', { class: 'board-targets' }, view);
   const markerLabels = svgEl(doc, 'g', { class: 'board-marker-labels' }, view);
+  const handLayer = svgEl(doc, 'g', { class: 'board-hand-layer', 'aria-hidden': 'true' }, view);
 
   container.appendChild(root);
 
@@ -289,15 +405,28 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
   let lscale = 1; // pitch and marker labels likewise (CSS --board-label-k)
   let ghostAt = null;
   let you = youTag(youLabel); // { text, width } of the learner's tag
-  let opts = { learnerId: null, highlight: [], labels: 'role', dimOthers: false };
+  let opts = { learnerId: null, highlight: [], labels: defaultLabels, dimOthers: false };
+  let labelMode = defaultLabels; // 'role' | 'number': what the token text says ('none' hides it with a class)
+  let youNum = Number.isInteger(youNumber) ? youNumber : null; // number mode: YOUR shirt number, else the position's
   let lastRenderAt = -Infinity;
   const tokens = new Map(); // id → token record (players and the ball)
   let overlays = { thirds: false, lanes: false, zone14: false, offsideLine: null, backLine: null };
   let markers = [];
   let boundRings = []; // { el, id } rings that follow a token
-  const drag = { enabled: false, ids: new Set(), onMove: null, onEnd: null };
+  const drag = { enabled: false, ids: new Set(), onMove: null, onEnd: null, tapToMove: null, onArm: null };
   let active = null; // current pointer gesture
   let armed = null; // id selected by a tap (two-tap move)
+  let spotlight = null; // Set of ids drawn at full strength (setSpotlight), or null: everyone
+  const targets = { enabled: false, ids: [], onTap: null, onPreview: null, labelFor: null, previewed: null, els: new Map() };
+  let aid = null; // { kind: 'glow', target } | { kind: 'heat', level } (setAid)
+  let aidKey = '';
+  let handRun = null; // the running worked-example hand: { finish() }
+
+  /** Accessible name and plain position of a token, in the board's wording (number mode: no codes, no metres). */
+  const nameOf = (id) => (labelMode === 'number' ? simpleTokenName(id, opts.learnerId) : tokenName(id, opts.learnerId));
+  const spotText = (p) => (labelMode === 'number' ? describeSpotSimple(p) : describeSpot(p));
+  const labelOf = (id) => (labelMode === 'number' && id === opts.learnerId && youNum !== null ? String(youNum) : tokenLabel(id, labelMode));
+  const codeClass = (s) => (s.length > 2 ? 'token-code token-code--long' : s.length < 2 ? 'token-code token-code--one' : 'token-code');
 
   // ---- tokens
   /** Write the current learner tag (text and pill width) into a token's tag group. */
@@ -329,15 +458,18 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
       svgEl(doc, 'path', { class: 'ball-patch', d: `M0 ${f3(-k)}L${f3(k * 0.95)} ${f3(-k * 0.31)}L${f3(k * 0.59)} ${f3(k * 0.81)}L${f3(-k * 0.59)} ${f3(k * 0.81)}L${f3(-k * 0.95)} ${f3(-k * 0.31)}Z` }, g);
       svgEl(doc, 'circle', { class: 'token-focus', r: P.ballRadius + 1 }, g);
     } else {
-      const { role } = parsePlayerId(id);
       const R = P.tokenRadius;
+      // Invisible: how far a press still counts as on this token (sized in syncHit), so the token's box is the size of
+      // what you can hit (at least minHitPx across).
+      t.hit = svgEl(doc, 'circle', { class: 'token-hit', r: R, fill: 'none', stroke: 'none' }, g);
       svgEl(doc, 'circle', { class: 'token-glow', r: R + 1.5 }, g);
       svgEl(doc, 'circle', { class: 'token-ring', r: R + 0.75 }, g);
       svgEl(doc, 'circle', { class: 'token-carrier', r: R + 0.45 }, g);
       svgEl(doc, 'circle', { class: 'token-body', r: R }, g);
-      const short = ROLE_INFO[role]?.short ?? role;
-      const codeClass = short.length > 2 ? 'token-code token-code--long' : short.length < 2 ? 'token-code token-code--one' : 'token-code';
-      svgEl(doc, 'text', { class: codeClass, 'text-anchor': 'middle', dy: '0.36em' }, g).textContent = short;
+      const text = labelOf(id);
+      t.code = svgEl(doc, 'text', { class: codeClass(text), 'text-anchor': 'middle', dy: '0.36em' }, g);
+      t.code.textContent = text;
+      t.label = text;
       const tag = svgEl(doc, 'g', { class: 'token-you', transform: `translate(0 ${f3(-(R + 2.2))})` }, g);
       svgEl(doc, 'rect', { y: -1.05, height: 2.1, rx: 1.05 }, tag);
       svgEl(doc, 'text', { 'text-anchor': 'middle', dy: '0.36em' }, tag);
@@ -354,13 +486,36 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
 
   function placeToken(t, p) {
     t.pos = { x: p.x, y: p.y };
-    const v = project(p, orient);
-    const tx = `translate(${v.x.toFixed(2)}px, ${v.y.toFixed(2)}px)${scale === 1 ? '' : ` scale(${scale})`}`;
+    const tx = transformAt(p);
     if (tx !== t.tx) { t.g.style.transform = tx; t.tx = tx; }
     if (drag.ids.has(t.id)) {
-      const aria = `${tokenName(t.id, opts.learnerId)}, ${describeSpot(p)}`;
+      const aria = `${nameOf(t.id)}, ${spotText(p)}`;
       if (aria !== t.aria) { t.g.setAttribute('aria-label', aria); t.aria = aria; }
     }
+  }
+
+  /** The CSS transform that draws a token (or anything token-sized) at world point p. */
+  function transformAt(p) {
+    const v = project(p, orient);
+    return `translate(${v.x.toFixed(2)}px, ${v.y.toFixed(2)}px)${scale === 1 ? '' : ` scale(${scale})`}`;
+  }
+
+  /** Keep a token's text in step with the label mode (role codes or shirt numbers). Cached: cheap per render. */
+  function syncLabel(t) {
+    if (!t.code) return;
+    const text = labelOf(t.id);
+    if (text === t.label) return;
+    t.label = text;
+    t.code.textContent = text;
+    t.code.setAttribute('class', codeClass(text));
+  }
+
+  /** Spotlight: tokens outside it are drawn at 40 % (the learner and the ball are always lit). */
+  function syncSpot(t) {
+    const off = !!spotlight && t.id !== BALL_ID && t.id !== opts.learnerId && !spotlight.has(t.id);
+    if (off === !!t.unlit) return;
+    t.unlit = off;
+    t.g.classList.toggle('is-unlit', off);
   }
 
   function setFlags(t, flags) {
@@ -371,7 +526,16 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     t.flags = key;
   }
 
+  /** A draggable token's hit circle covers minHitPx on a small board (in the token's own, scaled units). */
+  function syncHit(t) {
+    if (!t.hit) return;
+    const on = drag.enabled && drag.ids.has(t.id);
+    const r = on ? f3(hitRadius(pxm, (P.tokenRadius + 0.5) * scale, P) / (scale || 1)) : P.tokenRadius;
+    if (t.hit.getAttribute('r') !== String(r)) t.hit.setAttribute('r', r);
+  }
+
   function syncDraggable(t) {
+    syncHit(t);
     const on = drag.enabled && drag.ids.has(t.id);
     if (on) {
       t.g.setAttribute('tabindex', '0');
@@ -402,14 +566,19 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
 
   // ---- render
   function render(frame, nextOpts = {}) {
-    opts = { learnerId: null, highlight: [], labels: 'role', dimOthers: false, ...nextOpts };
+    opts = { learnerId: null, highlight: [], labels: defaultLabels, dimOthers: false, ...nextOpts };
     if (nextOpts.youLabel !== undefined) setYouLabel(nextOpts.youLabel);
+    if (nextOpts.youNumber !== undefined) youNum = Number.isInteger(nextOpts.youNumber) ? nextOpts.youNumber : null;
+    if (opts.labels === 'role' || opts.labels === 'number') labelMode = opts.labels; // 'none' keeps the text, hidden
     const now = win?.performance?.now?.() ?? Date.now();
     root.classList.toggle('is-live', now - lastRenderAt < P.liveMs);
     lastRenderAt = now;
     root.classList.toggle('no-labels', opts.labels === 'none');
+    root.classList.toggle('is-numbered', labelMode === 'number');
     if (!frame) {
       for (const t of tokens.values()) t.g.setAttribute('display', 'none');
+      placeTargets();
+      updateAid();
       return;
     }
 
@@ -430,6 +599,8 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
       if (p.id === armed) flags.push('is-armed');
       if (p.id === dragging) flags.push('is-dragging');
       setFlags(t, flags);
+      syncLabel(t);
+      syncSpot(t);
     }
     if (frame.ball) {
       seen.add(BALL_ID);
@@ -449,6 +620,15 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     }
     ensureStacking();
     updateBoundRings();
+    placeTargets();
+  }
+
+  // ---- spotlight (Player mode: YOU, the ball and a few key players lit; the rest at 40 %)
+  /** @param {string[]|Set<string>|null} ids  tokens to keep at full strength (YOU and the ball always are); null = all */
+  function setSpotlight(ids = null) {
+    spotlight = ids && typeof ids[Symbol.iterator] === 'function' && typeof ids !== 'string' ? new Set(ids) : null;
+    root.classList.toggle('has-spotlight', !!spotlight);
+    for (const t of tokens.values()) syncSpot(t);
   }
 
   // ---- ghost, zone, heatmap
@@ -588,7 +768,9 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
   function drawMarker(m) {
     if (!m || typeof m !== 'object') return;
     const tone = TONES.has(m.tone) ? m.tone : m.type === 'arrow' ? 'fix' : m.type === 'label' ? 'info' : 'cue';
-    const cls = (base) => `mk ${base} tone-${tone}`;
+    // Extra (optional): m.cls adds classes of the caller's own (Player mode styles its rings and labels with them).
+    const extra = typeof m.cls === 'string' && /^[\w\s-]+$/.test(m.cls) ? ` ${m.cls.trim()}` : '';
+    const cls = (base) => `mk ${base} tone-${tone}${extra}`;
     switch (m.type) {
       case 'arrow': {
         const { from, to } = m;
@@ -626,19 +808,21 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
         if (m.id) boundRings.push({ el, id: m.id, r });
         else if (at) { el.setAttribute('cx', f3(at.x)); el.setAttribute('cy', f3(at.y)); }
         else el.remove();
-        if (m.label && at) drawLabel({ x: at.x, y: at.y }, m.label, tone, r);
+        if (m.label && at) drawLabel({ x: at.x, y: at.y }, m.label, tone, r, extra);
         return;
       }
       case 'label':
-        if (m.at && m.text) drawLabel(m.at, m.text, tone);
+        // Extra (optional): lift raises the text by that many metres, or by a drawn token ('token': clears a
+        // token or the best-spot ring at that point, whatever the board's token scale).
+        if (m.at && m.text) drawLabel(m.at, m.text, tone, m.lift === 'token' ? (P.tokenRadius + 0.6) * scale : Number.isFinite(m.lift) ? m.lift : 0, extra);
         return;
       default:
     }
   }
 
-  function drawLabel(at, text, tone, lift = 0) {
+  function drawLabel(at, text, tone, lift = 0, extra = '') {
     const v = project(at, orient);
-    const t = svgEl(doc, 'text', { class: `mk-label tone-${tone}`, x: f3(v.x), y: f3(v.y - lift - 0.8), 'text-anchor': 'middle' }, markerLabels);
+    const t = svgEl(doc, 'text', { class: `mk-label tone-${tone}${extra}`, x: f3(v.x), y: f3(v.y - lift - 0.8), 'text-anchor': 'middle' }, markerLabels);
     t.textContent = String(text);
     keepInView(t, v.x);
   }
@@ -678,6 +862,199 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
       const rr = f3(r * scale);
       if (el.getAttribute('r') !== String(rr)) el.setAttribute('r', rr);
     }
+    updateAid();
+  }
+
+  // ---- the aid ring on YOU (Player mode): 'glow' warms and brightens as YOU nears its target; 'heat' shows a given level
+  /** @param {{ kind: 'glow', target: {x:number,y:number} } | { kind: 'heat', level: 'hot'|'warm'|'cool'|'cold' } | null} next */
+  function setAid(next = null) {
+    if (next?.kind === 'glow' && isVec(next.target)) aid = { kind: 'glow', target: { x: next.target.x, y: next.target.y } };
+    else if (next?.kind === 'heat' && ['hot', 'warm', 'cool', 'cold'].includes(next.level)) aid = { kind: 'heat', level: next.level };
+    else aid = null;
+    updateAid();
+  }
+
+  function updateAid() {
+    const t = aid && opts.learnerId ? tokens.get(opts.learnerId) : null;
+    if (!t?.pos || t.g.getAttribute('display') === 'none') {
+      if (aidKey !== 'off') { aidEl.setAttribute('display', 'none'); aidKey = 'off'; }
+      return;
+    }
+    const d = aid.kind === 'glow' ? Math.hypot(t.pos.x - aid.target.x, t.pos.y - aid.target.y) : NaN;
+    const level = aid.kind === 'glow' ? aidLevel(d, P) : aid.level;
+    const k = aid.kind === 'glow' ? aidStrength(d, P) : 1;
+    const r = f3((P.tokenRadius + 1.3) * scale);
+    const key = `${f3(t.pos.x)},${f3(t.pos.y)},${r},${level},${k},${aid.kind}`;
+    if (key === aidKey) return;
+    aidKey = key;
+    aidEl.removeAttribute('display');
+    aidEl.setAttribute('cx', f3(t.pos.x));
+    aidEl.setAttribute('cy', f3(t.pos.y));
+    aidEl.setAttribute('r', r);
+    aidEl.setAttribute('class', `board-aid aid-${aid.kind} aid-${level}`);
+    aidEl.style.setProperty('--aid-k', String(k));
+  }
+
+  // ---- targets (Player mode "Who's open?"): big tap targets on tokens; the first tap previews, a second tap confirms
+  /** Radius (metres) of a target: at least minHitPx across, and a little more than the drawn token. */
+  const targetRadius = () => hitRadius(pxm, (P.tokenRadius + 0.9) * scale, P);
+
+  function drawTargets() {
+    targetLayer.replaceChildren();
+    targets.els.clear();
+    if (!targets.enabled) return;
+    for (const id of targets.ids) {
+      const label = targets.labelFor?.(id) || (labelMode === 'number' ? simpleTokenName(id, opts.learnerId) : tokenName(id, opts.learnerId));
+      const g = svgEl(doc, 'g', { class: 'board-target', 'data-id': id, role: 'button', tabindex: '0', 'aria-label': label, 'aria-pressed': 'false' }, targetLayer);
+      svgEl(doc, 'circle', { class: 'target-hit' }, g);
+      svgEl(doc, 'circle', { class: 'target-ring' }, g);
+      targets.els.set(id, g);
+    }
+    placeTargets();
+    previewTarget(targets.previewed, false);
+  }
+
+  /** Targets follow their tokens (render) and the board's scale (relayout). */
+  function placeTargets() {
+    if (!targets.enabled) return;
+    const r = f3(targetRadius() / (scale || 1)); // in the token's own (scaled) units, so the transform's scale applies
+    for (const [id, g] of targets.els) {
+      const t = tokens.get(id);
+      const visible = t?.pos && t.g.getAttribute('display') !== 'none';
+      if (!visible) { g.setAttribute('display', 'none'); continue; }
+      g.removeAttribute('display');
+      const tx = transformAt(t.pos);
+      if (g.style.transform !== tx) g.style.transform = tx;
+      for (const c of g.children) if (c.getAttribute('r') !== String(r)) c.setAttribute('r', r);
+    }
+  }
+
+  /** The target nearest `w` within its radius (by distance: a touch browser may retarget a tap). */
+  function targetAt(w) {
+    if (!targets.enabled || !isVec(w)) return null;
+    let best = null, bd = targetRadius();
+    for (const id of targets.ids) {
+      const t = tokens.get(id);
+      if (!t?.pos || t.g.getAttribute('display') === 'none') continue;
+      const d = Math.hypot(t.pos.x - w.x, t.pos.y - w.y);
+      if (d <= bd) { bd = d; best = id; }
+    }
+    return best;
+  }
+
+  function previewTarget(id, notify = true) {
+    const next = id && targets.ids.includes(id) ? id : null;
+    const changed = next !== targets.previewed;
+    targets.previewed = next;
+    for (const [tid, g] of targets.els) {
+      const on = tid === next;
+      g.classList.toggle('is-previewed', on);
+      g.setAttribute('aria-pressed', String(on));
+    }
+    root.classList.toggle('has-preview', !!next);
+    if (notify && changed) targets.onPreview?.(next);
+  }
+
+  /** A tap (or Enter / Space) on a target: preview it, or confirm it when it is already previewed. */
+  function tapTarget(id) {
+    if (!targets.enabled || !targets.ids.includes(id)) return;
+    if (targets.previewed === id) { targets.onTap?.(id); return; }
+    previewTarget(id, true);
+  }
+
+  /**
+   * @param {{ ids: string[], onTap?: (id: string) => void, onPreview?: (id: string|null) => void, labelFor?: (id: string) => string }} opts
+   *   labelFor (optional): the accessible name of each target (default: "Teammate, number 8" in number mode)
+   */
+  function enableTargets({ ids = [], onTap = null, onPreview = null, labelFor = null } = {}) {
+    targets.enabled = true;
+    targets.ids = [...new Set(ids)].filter((id) => typeof id === 'string' && id !== BALL_ID);
+    targets.onTap = onTap;
+    targets.onPreview = onPreview;
+    targets.labelFor = labelFor;
+    if (!targets.ids.includes(targets.previewed)) targets.previewed = null;
+    root.classList.add('has-targets');
+    drawTargets();
+  }
+
+  function disableTargets() {
+    targets.enabled = false;
+    targets.ids = [];
+    targets.onTap = targets.onPreview = targets.labelFor = null;
+    targets.previewed = null;
+    if (active?.kind === 'target') active = null;
+    root.classList.remove('has-targets', 'has-preview');
+    drawTargets();
+  }
+
+  // ---- the worked-example hand (Player mode, first rep): it drags YOU to `to`, then YOU snaps back to `from`
+  function drawHand() {
+    // A pointing hand, fingertip at (0, 0), about 4.2 units tall; white with a dark edge so it reads on the grass.
+    const g = svgEl(doc, 'g', { class: 'board-hand' }, handLayer);
+    const tall = Math.max(P.handSize * scale, pxm > 0 ? P.handMinPx / pxm : 0) / (scale || 1); // in token units
+    const s = tall / 24;
+    const inner = svgEl(doc, 'g', { class: 'board-hand-in', transform: `scale(${f3(s)}) translate(-9 -1)` }, g);
+    svgEl(doc, 'circle', { class: 'board-hand-press', cx: 9, cy: 1.5, r: 3.2 }, inner);
+    svgEl(doc, 'path', {
+      class: 'board-hand-shape',
+      d: 'M7.4 2.6a1.6 1.6 0 0 1 3.2 0v7.1l.3-.1a1.5 1.5 0 0 1 2.9.6l.2-.1a1.5 1.5 0 0 1 2.8.8l.2-.1a1.4 1.4 0 0 1 2.6.8v4.9'
+        + 'c0 3.6-2.5 6.2-6 6.2h-1.4c-2 0-3.5-.9-4.6-2.4L3.2 15a1.6 1.6 0 0 1 2.4-2.1l1.8 1.8z',
+    }, inner);
+    return g;
+  }
+
+  /**
+   * The worked example: a hand presses YOU, drags YOU from `from` to `to`, holds, and YOU snaps back to `from`.
+   * The board is controlled, so YOUR spot never changes (only how it is drawn for a moment); input is ignored meanwhile.
+   * Under reduced motion (device or settings) it draws nothing and resolves at once: the caller shows the answer still.
+   * @param {{ from: {x:number,y:number}, to: {x:number,y:number} }} opts
+   * @returns {Promise<void>} resolves when the hand is gone (also if the page is hidden, or the board is destroyed)
+   */
+  function showHintHand({ from, to } = {}) {
+    handRun?.finish();
+    if (!isVec(from) || !isVec(to) || prefersReducedMotion(win) || !win?.requestAnimationFrame) return Promise.resolve();
+    return new Promise((resolve) => {
+      const H = P.hint;
+      const t = opts.learnerId ? tokens.get(opts.learnerId) : null;
+      const g = drawHand();
+      root.classList.add('is-hinting');
+      setArmed(null);
+      const clock = () => win.performance?.now?.() ?? Date.now();
+      const start = clock();
+      let raf = 0, timer = 0, over = false;
+      const finish = () => {
+        if (over) return;
+        over = true;
+        win.cancelAnimationFrame?.(raf);
+        clearTimeout(timer);
+        g.remove();
+        if (t) {
+          t.g.style.transition = '';
+          t.tx = '';
+          if (t.pos) placeToken(t, t.pos); // back on the real spot
+        }
+        root.classList.remove('is-hinting');
+        handRun = null;
+        resolve();
+      };
+      const step = () => {
+        if (over) return;
+        const pose = hintPose(clock() - start, from, to, H);
+        g.style.transform = transformAt(pose.hand);
+        g.style.opacity = String(Math.round(pose.opacity * 100) / 100);
+        g.classList.toggle('is-pressed', pose.pressed);
+        if (t?.pos) {
+          t.g.style.transition = 'none';
+          t.g.style.transform = transformAt(pose.token);
+        }
+        if (pose.done) { finish(); return; }
+        raf = win.requestAnimationFrame(step);
+      };
+      step();
+      // Animation frames stall in a hidden tab: never keep the caller waiting.
+      timer = setTimeout(finish, hintTotalMs(H) + 1500);
+      handRun = { finish };
+    });
   }
 
   // ---- layout: orientation, the viewBox (whole pitch, or a focus window on a small board) and the token scale
@@ -719,7 +1096,8 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     root.style.setProperty('--board-label-k', String(kl));
     // Re-project (and re-scale) without animating tokens across the pitch.
     root.classList.add('no-anim');
-    for (const t of tokens.values()) if (t.pos) { t.tx = ''; placeToken(t, t.pos); }
+    for (const t of tokens.values()) { syncHit(t); if (t.pos) { t.tx = ''; placeToken(t, t.pos); } }
+    placeTargets();
     if (ghostAt) {
       ghostEl.style.transition = 'none';
       setGhost(ghostAt);
@@ -756,16 +1134,22 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     return { x: inv.a * clientX + inv.c * clientY + inv.e, y: inv.b * clientX + inv.d * clientY + inv.f };
   }
 
-  /** The draggable token nearest `w` within the grab radius (never less than the drawn token and its glow).
-   *  Decided by distance, not by the event target: a touch browser may retarget a tap near a focusable token to it. */
+  /** The draggable token nearest `w` within the grab radius (never less than the drawn token and its glow, nor
+   *  minHitPx across on a small board). Decided by distance, not by the event target: a touch browser may retarget
+   *  a tap near a focusable token to it. */
   function draggableAt(w) {
     if (!Number.isFinite(w?.x)) return null;
-    let best = null, bd = Math.max(P.grabRadius, (P.tokenRadius + 1.5) * scale);
+    let best = null, bd = Math.max(P.grabRadius, hitRadius(pxm, (P.tokenRadius + 1.5) * scale, P));
     for (const id of drag.ids) {
       const t = tokens.get(id);
       if (!t?.pos || t.g.getAttribute('display') === 'none') continue;
       const d = Math.hypot(t.pos.x - w.x, t.pos.y - w.y);
       if (d <= bd) { bd = d; best = id; }
+    }
+    if (!best && drag.tapToMove) {
+      // Player mode: the learner's YOU tag is part of the learner (it is what a child aims for).
+      const t = opts.learnerId && drag.ids.has(opts.learnerId) ? tokens.get(opts.learnerId) : null;
+      if (t && t.g.getAttribute('display') !== 'none' && onYouTag(t, w)) best = t.id;
     }
     return best;
   }
@@ -778,6 +1162,22 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     return Math.hypot(t.pos.x - w.x, t.pos.y - w.y) <= r;
   }
 
+  /** With tap-to-move on: is a tap at `w` a tap ON token `id` (its drawn body, and at least minHitPx across)? */
+  function hitsToken(id, w) {
+    const t = tokens.get(id);
+    if (!t?.pos || !Number.isFinite(w?.x)) return false;
+    const drawn = (id === BALL_ID ? P.ballRadius + 0.7 : P.tokenRadius + 0.5) * scale;
+    return Math.hypot(t.pos.x - w.x, t.pos.y - w.y) <= hitRadius(pxm, drawn, P) || onYouTag(t, w);
+  }
+
+  /** Is `w` on the learner's YOU tag (the pill over the token)? It is part of YOU: pressing it picks YOU up. */
+  function onYouTag(t, w) {
+    if (!t?.pos || t.id !== opts.learnerId || !Number.isFinite(w?.x)) return false;
+    const v = project(t.pos, orient), q = project(w, orient);
+    const cy = v.y - (P.tokenRadius + 2.2) * scale; // the tag's centre, straight up the screen from the token
+    return Math.abs(q.x - v.x) <= (you.width / 2 + 0.4) * scale && Math.abs(q.y - cy) <= 1.6 * scale;
+  }
+
   function moveTo(id, p, final) {
     const t = tokens.get(id);
     if (t) placeToken(t, p);
@@ -787,6 +1187,7 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
   }
 
   function setArmed(id) {
+    const was = armed;
     if (armed && tokens.has(armed)) {
       const t = tokens.get(armed);
       t.g.classList.remove('is-armed');
@@ -799,15 +1200,25 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
       tokens.get(id).g.classList.add('is-armed');
       tokens.get(id).g.setAttribute('aria-pressed', 'true');
     }
+    if (was !== armed) drag.onArm?.(armed);
   }
 
   function onPointerDown(e) {
-    if (!drag.enabled || active || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    if (active || handRun || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    if (!drag.enabled && !targets.enabled) return;
     const w = toWorld(e.clientX, e.clientY);
+    // Targets first (Player mode "Who's open?"); a press elsewhere with no drag on is a tap that clears the preview.
+    const tid = targets.enabled ? targetAt(w) : null;
+    if (tid || !drag.enabled) {
+      active = { kind: 'target', id: tid, pointerId: e.pointerId, pointerType: e.pointerType, x0: e.clientX, y0: e.clientY };
+      try { svg.setPointerCapture(e.pointerId); } catch { /* synthetic events */ }
+      if (tid) e.preventDefault();
+      return;
+    }
     const id = draggableAt(w);
     const t = id ? tokens.get(id) : null;
     active = {
-      id, pointerId: e.pointerId, pointerType: e.pointerType, x0: e.clientX, y0: e.clientY, dragging: false, last: null,
+      kind: 'drag', id, pointerId: e.pointerId, pointerType: e.pointerType, x0: e.clientX, y0: e.clientY, dragging: false, last: null,
       // Every drag is relative: the token keeps its offset from where it was picked up, so it never jumps.
       grab: t?.pos ? { x: t.pos.x - w.x, y: t.pos.y - w.y } : { x: 0, y: 0 },
       liftFrom: null, // time the touch lift started (after touchLiftAfterPx of travel)
@@ -840,7 +1251,7 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
   }
 
   function onPointerMove(e) {
-    if (!active || e.pointerId !== active.pointerId || !active.id) return;
+    if (!active || e.pointerId !== active.pointerId || !active.id || active.kind === 'target') return;
     if (!active.dragging) {
       if (Math.hypot(e.clientX - active.x0, e.clientY - active.y0) < P.dragSlopPx) return;
       active.dragging = true;
@@ -860,6 +1271,11 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     const a = active;
     active = null;
     try { svg.releasePointerCapture(e.pointerId); } catch { /* already released */ }
+    if (a.kind === 'target') {
+      if (e.type === 'pointercancel' || Math.hypot(e.clientX - a.x0, e.clientY - a.y0) >= P.dragSlopPx) return;
+      if (a.id) tapTarget(a.id); else previewTarget(null, true);
+      return;
+    }
     if (a.dragging) {
       const t = tokens.get(a.id);
       t?.g.classList.remove('is-dragging');
@@ -874,10 +1290,16 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     // the armed token there. Decided by distance, so a short move works on touch screens too.
     const w = toWorld(e.clientX, e.clientY);
     if (!armed) {
-      if (a.id) setArmed(a.id);
+      // Tap-to-move (Player mode): a tap on the token arms it as before; a tap anywhere else moves it straight there.
+      const direct = drag.tapToMove && drag.ids.has(drag.tapToMove) ? drag.tapToMove : null;
+      if (a.id && (!direct || hitsToken(a.id, w))) { setArmed(a.id); return; }
+      if (direct) {
+        const p = clampToPitch(w);
+        if (Number.isFinite(p.x)) moveTo(direct, p, true);
+      }
       return;
     }
-    if (onToken(armed, w)) { setArmed(null); return; }
+    if (onToken(armed, w) || (drag.tapToMove && onYouTag(tokens.get(armed), w))) { setArmed(null); return; }
     if (a.id && a.id !== armed && onToken(a.id, w)) { setArmed(a.id); return; }
     const p = clampToPitch(w);
     const id = armed;
@@ -886,9 +1308,15 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
   }
 
   function onKeyDown(e) {
+    const tg = e.target?.closest?.('.board-target');
+    if (tg && targets.enabled) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tapTarget(tg.dataset.id); }
+      else if (e.key === 'Escape') previewTarget(null, true);
+      return;
+    }
     const g = e.target?.closest?.('.token');
     const id = g?.dataset.id;
-    if (!id || !drag.enabled || !drag.ids.has(id)) return;
+    if (!id || handRun || !drag.enabled || !drag.ids.has(id)) return;
     if (e.key === 'Escape') { setArmed(null); return; }
     const d = keyDelta(e.key, orient, e.shiftKey, P);
     if (!d) return;
@@ -898,12 +1326,20 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     moveTo(id, clampToPitch({ x: from.x + d.x, y: from.y + d.y }), true);
   }
 
-  function enableDrag({ ids = [], onMove = null, onEnd = null } = {}) {
+  /**
+   * @param {{ ids: string[], onMove?: Function, onEnd?: Function, tapToMove?: string|null, onArm?: (id: string|null) => void }} opts
+   *   tapToMove (extra, Player mode): with nothing armed, a tap on the pitch away from that token moves it there
+   *   (a tap on it still arms it for tap-then-tap); onArm (extra): told when a token is armed or disarmed by a tap
+   */
+  function enableDrag({ ids = [], onMove = null, onEnd = null, tapToMove = null, onArm = null } = {}) {
     drag.enabled = true;
     drag.ids = new Set(ids);
     drag.onMove = onMove;
     drag.onEnd = onEnd;
+    drag.tapToMove = typeof tapToMove === 'string' ? tapToMove : null;
+    drag.onArm = onArm;
     root.classList.add('is-drag-enabled');
+    root.classList.toggle('is-tap-to-move', !!drag.tapToMove);
     if (armed && !drag.ids.has(armed)) setArmed(null);
     for (const t of tokens.values()) syncDraggable(t);
   }
@@ -912,9 +1348,11 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     drag.enabled = false;
     drag.ids = new Set();
     drag.onMove = drag.onEnd = null;
-    active = null;
+    drag.tapToMove = null;
+    if (active?.kind !== 'target') active = null;
     setArmed(null);
-    root.classList.remove('is-drag-enabled', 'is-dragging');
+    drag.onArm = null;
+    root.classList.remove('is-drag-enabled', 'is-dragging', 'is-tap-to-move');
     for (const t of tokens.values()) syncDraggable(t);
   }
 
@@ -950,7 +1388,20 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     get orientation() { return orient; },
     /** Extra: how much bigger than life tokens are drawn (1 on a big board). */
     get tokenScale() { return scale; },
+    /** Extra: CSS px per metre as drawn (0 before the board is measured). */
+    get pxPerMetre() { return pxm; },
+    // Player mode (docs/KID_REDESIGN.md §8.1): see the file header.
+    setSpotlight,
+    enableTargets,
+    disableTargets,
+    /** Extra: preview a target from outside (a "Pass" button confirms it; null clears), without calling onPreview. */
+    previewTarget: (id) => previewTarget(id, false),
+    /** Extra: the target previewed now, or null. */
+    get previewed() { return targets.previewed; },
+    showHintHand,
+    setAid,
     destroy() {
+      handRun?.finish();
       ro?.disconnect();
       win?.removeEventListener('resize', onResize);
       svg.removeEventListener('pointerdown', onPointerDown);

@@ -8,7 +8,7 @@
   "questionKid": "Their winger is running at our goal. Where do you go?",
   "takeaway": {
     "standard": "Once they get into your third the block drops low: the midfield forms a second narrow bank just in front of the defenders, around the edge of the box.",
-    "kid": "Near our goal, drop back and make a tight wall in front of your defenders."
+    "kid": "Near our goal, come back and make a wall in front of your defenders."
   },
   "module": "M3",
   "moment": "out_of_possession",
@@ -76,13 +76,13 @@
       "id": "stayed-up-for-the-counter",
       "region": { "type": "circle", "x": 42, "y": 41, "r": 6 },
       "text": "You stayed up the pitch, so there is a huge gap in front of your defenders for their #8 to receive in.",
-      "textKid": "Too far up! Drop back and help in front of your defenders."
+      "textKid": "Too far forward! Come back and help in front of your defenders."
     },
     {
       "id": "dropped-into-the-back-line",
       "region": { "type": "circle", "x": 22, "y": 36, "r": 3 },
       "text": "You dropped right into the back line; stay a few metres in front of it so the midfield bank screens the edge of the box.",
-      "textKid": "Too deep! Stay a few steps in front of your defenders."
+      "textKid": "Too far back! Stay a few steps in front of your defenders."
     }
   ],
   "difficulty": 0,

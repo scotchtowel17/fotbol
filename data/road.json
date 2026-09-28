@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "$comment": "The Road (docs/KID_REDESIGN.md §3): Player mode's chapters of nodes. Each node is a set of 5 reps about one to three principles; 'mix' nodes draw from their chapter ('from'). A chapter's 'opensAfter' opens its first node early; 'skill' names its rating on the player card; 'icon' marks it on the Road when its title is not shown. Helpers and set building: js/ui/player/road.js. Node titles: 4 words or fewer, simple words (principles' kidName where it fits).",
+  "groups": { "DEF": ["CB", "FB"], "MID": ["DM", "CM"], "WING": ["W"], "STRIKER": ["ST"] },
+  "defaultRoles": { "DEF": "LB", "MID": "LCM", "WING": "LW", "STRIKER": "ST" },
+  "matchday": { "unlockAfter": "defend-match" },
+  "chapters": [
+    { "id": "defend", "title": "Defend together", "skill": "Defend", "icon": "shield", "nodes": [
+      { "id": "close-down", "kind": "spot", "title": "Close Them Down", "icon": "press", "principles": ["D1", "D2"] },
+      { "id": "back-up", "kind": "spot", "title": "Back Up Your Buddy", "icon": "cover", "principles": ["D3", "D4"] },
+      { "id": "goal-side", "kind": "spot", "title": "Between Them and Goal", "icon": "shield", "principles": ["D5", "T3", "U8"] },
+      { "id": "defend-match", "kind": "mix", "title": "Big Match", "icon": "trophy", "from": "defend" }
+    ] },
+    { "id": "help", "title": "Help the ball", "skill": "Help", "icon": "open", "nodes": [
+      { "id": "get-open", "kind": "spot", "title": "Get Open", "icon": "open", "principles": ["B3", "B4"] },
+      { "id": "stay-wide", "kind": "spot", "title": "Stay Wide", "icon": "wide", "principles": ["B1", "B6", "B2"] },
+      { "id": "between-lines", "kind": "spot", "title": "Pop Up Between Lines", "icon": "gap", "principles": ["P2", "P1", "B5"] },
+      { "id": "crosses", "kind": "spot", "title": "Split Up for Crosses", "icon": "cross", "principles": ["P10"] },
+      { "id": "help-match", "kind": "mix", "title": "Cup Match", "icon": "trophy", "from": "help" }
+    ] },
+    { "id": "passing", "title": "Pass it right", "skill": "Pass", "icon": "pass", "opensAfter": "close-down", "nodes": [
+      { "id": "free-player", "kind": "pass", "title": "Find the Free Player", "icon": "free", "principles": ["PA3", "PA4"] },
+      { "id": "play-forward", "kind": "pass", "title": "Play It Forward", "icon": "forward", "principles": ["PA2", "PA5"] },
+      { "id": "free-side", "kind": "pass", "title": "Find the Free Side", "icon": "switch", "principles": ["PA6", "PA8"] },
+      { "id": "safe-back", "kind": "pass", "title": "Keep It Safe", "icon": "safe", "principles": ["PA10", "PA13"] },
+      { "id": "pass-match", "kind": "mix", "title": "Derby Day", "icon": "trophy", "from": "passing" }
+    ] },
+    { "id": "shape", "title": "Move as one", "skill": "Shape", "icon": "line", "nodes": [
+      { "id": "hold-line", "kind": "spot", "title": "Stay in Line", "icon": "line", "principles": ["U4", "U3", "R1"] },
+      { "id": "slide", "kind": "spot", "title": "Slide as a Team", "icon": "slide", "principles": ["U2", "U5", "R2"] },
+      { "id": "guard-middle", "kind": "spot", "title": "Pack the Middle", "icon": "middle", "principles": ["R3", "U7", "T2"] },
+      { "id": "high-mid-deep", "kind": "spot", "title": "High, Middle or Low", "icon": "block", "principles": ["U6", "U1"] },
+      { "id": "shape-match", "kind": "mix", "title": "The Final", "icon": "trophy", "from": "shape" }
+    ] }
+  ]
+}

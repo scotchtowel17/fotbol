@@ -30,6 +30,9 @@ js/engine/                 PURE (no DOM, no fetch)
   scene.js                 autoFrame(): place all 22 players for a ball position/possession; learnerBase()
   timeline.js              frameAt(scenario, t): ball-scripted scenario playback; learnerBaseAt()
   sequence.js              Live mode: seeded 45-60 s sequences (generateSequence) and an incremental playback cursor (§5.11)
+  passing.js               the on-ball decision: rate every pass (rateOptions), grade a choice, say why (§5.14)
+  passdrill.js             "Who's open?" pass drills: generate, check, mirror; pass moments in Live sequences (§5.14)
+  spotdrill.js             generated "Find your spot" drills in the scenario format, kept by the drill gates (§5.15)
   scenario.js              validate / mirror (left↔right) / normalise scenarios
   context.js               buildContext(frame, learner): duties, lines, pressure, block height, marks
   rules/<id>.js            one principle rule per file; rules/index.js exports RULES
@@ -130,7 +133,7 @@ HELIOS role number → our role: 1 GK, 2 LCB, 3 RCB, 4 LB, 5 RB, 6 DM, 7 LCM, 8 
 
 ### 4.1 Content data
 
-- `data/principles.json` = `{ version, $comment, principles: [...] }`. Each principle: `id, name, short, category, section` (RESEARCH subsection), `who, families, level, release, ruleIds, summary{standard,kid}, ruleOfThumb, why, commonMistake, learnMore[{label,url}], sources`. `name`, `level`, `release` and `sources` follow the RESEARCH §8 table (tested). `ruleIds` follow the RESEARCH 5.5 map and agree both ways with the rule registry (tested).
+- `data/principles.json` = `{ version, $comment, principles: [...] }`. Each principle: `id, name, short, category, section` (RESEARCH subsection), `who, families, level, release, ruleIds, summary{standard,kid}, ruleOfThumb, why, commonMistake, learnMore[{label,url}], sources`. `name`, `level`, `release` and `sources` follow the RESEARCH §8 table (tested). `ruleIds` follow the RESEARCH 5.5 map and agree both ways with the rule registry (tested). The passing principles PA1-PA15 (category `passing`, section `research/passing.md §2`, `ruleIds: []`: passing.js rates them, §5.14) follow [research/passing.md](research/passing.md) §2 instead (release and source keys, tested), link only to its §7 sources, and add `related` (the F/B/P rows they mirror, e.g. PA4 → B3).
 - `data/curriculum.json` = `{ version, $comment, moduleUnlockStars, levels: [{level, name, kidName, mix, scaffold, timer, unlockStars, description{standard,kid}}], session{...}, modules: [{ id, kind: 'tutorial'|'drills', title, subtitle, description{standard,kid}, principles, roles, unlock, tutorial?, scenarios: [], levels: [{level, focus{standard,kid}}], interleave: [{pair, label{standard,kid}}], pitchChallenge{standard,kid} }] }`. A drill module's `scenarios` lists exactly the indexed scenarios whose `scenario.module` is that module, in teaching order (easy to hard), and `roles` exactly the role families those scenarios play (both tested in `tests/scenarios-content.test.js`). The app selects drills from the index by `scenario.module` (session.js `candidatesFor`), so the list is the curriculum's record, not a second source of truth.
 - `data/tutorial.json` = `{ version, $comment, module: 'M0', title, intro{standard,kid}, outro{standard,kid}, steps: [{ id, topic, title, text{standard,kid}, principles, setup{ ball, possession, carrierId?, learnerRole, learnerStart?, overlays{thirds,lanes,zone14,offsideLine: boolean}, highlight, overrides? }, task{ type, to|target|answer, prompt{standard,kid}, success{standard,kid}, hint? } }] }`. `setup` means the same as the autoFrame options; `overlays.offsideLine` is a boolean, so the UI computes the line (their second-last player) before calling `board.setOverlays`.
 - `data/resources.json` is an array of `{ id, title, url, kind: 'book'|'website'|'video'|'course'|'curriculum'|'app', group: 'start-here'|'beginner'|'intermediate'|'advanced'|'video', level, audience, why, free, verified, note? }` in display order.
@@ -592,6 +595,11 @@ export function hashSeed(seed) → uint32;  mulberry32(a) → () => [0, 1);  cre
  *  module 'live', phase 'open_play', principles ['F2','F1','F3'], every player auto, answer.mode 'engine',
  *  source { kind: 'generated', generator: 'fotbol sequence v1', seed }. Ball keys: 'pass' when the ball is struck, 'carry' at the
  *  start of a carry; a tackle keys possession 'none' with a null carrier, then the winner. The learner never has the ball.
+ *  Every pass (a turnover's aside, which is meant to be cut out) is chosen on the frame the viewer will see: the free playback of
+ *  what has been written so far (states, blends and committed pressers as createPlayback; settle and separation as they are, not
+ *  averaged), rated with passing.js rateOptions (their passes on swapTeams), a softmax over U at passTemperature times the length
+ *  and forward preferences; a pass rated cut out is never played (with none safe the carrier runs with it; boxed in, the least
+ *  bad pass). research/passing.md §5.4; tests/passdrill.test.js holds it (at most 5 % of passes would be cut out).
  *  PURE: no Math.random, no clock. */
 export function generateSequence({ seed, duration = 45, role, formations, params }) → Scenario
 /** ballEvents without 'carry', plus every possession change as 'turnover': Live scores a sample only when
@@ -702,6 +710,92 @@ SOUND_NAMES = ['whistle', 'star', 'good', 'cheer', 'levelup']   // synthesised (
 ```
 
 Hooks (each a small named function in its mode, so the presentation can change without touching them): Drill `rewardRep` (when a rep is judged: the rep with its played id, `-m` included, then a `mastery` event for each of its principles whose `elo.mastery` with the updated skills beats `cardTier`; `celebrate: false`) and `rewardSlot` (beat 2: the row under the grade, and the header pill catches up; beat 1 never gives the grade away), `rewardSession` and `sessionRewards` (the summary: the session bonus, then XP this session, stars won, the level bar and the badges and stickers of the session; an unfinished session keeps its gains); Live `rewardRun` (a run played to the end without the best spot on show); Explore `rewardFind` (a counted S spot, in the reveal); Learn `rewardCompletion` (once per completion). A drill freezing plays the whistle. The header's level pill (main.js) links to `#/trophies`; Home shows the player card; Progress links to the trophy room.
+
+### 5.14 passing.js and passdrill.js (the on-ball decision: "Who's open?")
+
+The formulas, the numbers (every one in `PASS_DEFAULTS`, tagged) and the prototype are in [research/passing.md](research/passing.md) §4. Canonical frame, us on the ball; rate their passes on `swapTeams(frame)`. Static frames: no velocities, no body shape.
+
+```js
+// js/engine/passing.js: PURE
+export const PASS_DEFAULTS   // physics [S] (ballSpeed 15, reactionTime 0.7, maxSpeed 5, sigma 0.45), body block, youth execution, pressure oval [S], value, labels [D]
+export function rateOptions(frame, carrierId = frame.carrierId, params) → PassRating   // about 0.5 ms for 13 options (tested < 2 ms)
+// PassRating = { carrierId, ball, vBall, lines: { front, mid, back, secondLast } /* their lines, median x */, offsideX /* = rules/offside.js offsideLineX (tested) */,
+//                options: PassOption[] /* score, then U, descending */, best /* = options[0] */, fwdOn /* a good forward pass within forwardWindow of the best */, params }
+// PassOption = { id: 'us-LCM' | 'us-LW@space', targetId, kind: 'feet'|'space', point, aim /* PA7 far-foot point */, receiverAt, len,
+//   direction: 'forward'|'square'|'back', pSafe /* = pExec x pLane x pWin */, pLane, pExec, pWin, blocker: { id, pInt, at, via: 'block'|'run' } | null,
+//   receiverPressure /* 0..1 */, presserId, room, bypassed, lineBroken: 'front'|'mid'|'back'|null, offside, acrossOwnGoal, value, valueGain, U,
+//   score /* 0..100 int */, colour: 'green'|'amber'|'red', label: 'best'|'good'|'risky'|'cut-out'|'offside'|'danger', critical,
+//   tags: [{ tag, principle, kind: 'problem'|'strength'|'direction', weight, who?, kidWho?, whoId? /* blocker, presser or rival */, to, kidTo /* receiver */, n? }] }
+export function gradePass(rating, choiceId, { accept = [] } = {}) → { score, grade /* score.js gradeOf */, stars, outcome: 'completed'|'risky'|'cut-out'|'offside'|'danger', isBest, option } | null
+export function explainPass(rating, choiceId, { wording = 'kid', accept = [], focus = [] } = {})
+  → { headline, line, yours: { text, principleId, tag }, best: { text, principleId, tag, id } | null, more: [{ text, principleId, tag }] /* ≤ 2 */,
+      cue: { text, highlight /* a rule-cue object, §5.5 */, principleId }, grade } | null
+export function starsForScore(score), STAR_BANDS   // 3 ≥ 90, 2 ≥ 75, 1 ≥ 55 (KID_REDESIGN §6.3; equal to js/rewards.js starsForScore, tested once it exists)
+export const PASS_TAGS /* tag → { principles, kind, weight, text: { standard, kid } } */, PASS_FALLBACK, PASS_HEADLINES, PASS_CUES
+export function allPassTexts(wording) → [{ key, text }]   // every sentence the reveal can show, names filled in (tests/copy.test.js reads it)
+export function value, valueOpp, lossCost, execProb, laneRisk, raceAt, pressureAt, roomAt, goalAngle, oppLines, swapTeams, kidName, optionOf
+```
+
+- **Score:** `100 - (U_best - U) / pointValue` (1 point = 0.1 % of a goal), clipped to 0-100; a good (green) option never below 60, a cut-out (red) one at most 45, a critical one (offside now, or a pass across the front of our own goal, PA10) at most 30.
+- **Labels:** the top option `best`; critical ones `offside` / `danger`; `cut-out` when pSafe < 0.5; `good` when pSafe ≥ 0.8 and the receiver's pressure < 0.6; else `risky`. `colour` keeps green/amber/red for the best too (a risky best says "Risky, but worth it.").
+- **Grading:** S for the best, a good option within `bestMargin` (5) of it, or an `accept` id; anything else at most 89; a safe square or back pass while a good forward pass was on (`too-safe`, PA2) at most 79; stars by `starsForScore`. The outcome is the most likely one: we grade the decision, not a dice roll.
+- **Words:** simple (kid) lines are at most 14 words (tag sentences at most 12), name players by position words ("their midfielder", "your winger"), and never use codes or sides; standard lines name players with `rules/_util.js nameOf`. `headline` is the consequence (Cut out! / Risky! / Line broken! / Safe pass. / Offside! / Danger!). `yours` explains the choice (why it is best, or its main problem, or its strength); `best` the best one when the choice was not as good; a good choice with the same reason as the best says what made the best better. `focus` (a drill's `principles`) makes the best's line lead with a reason that teaches one of them. `cue.highlight`: the blocker, presser or rival as `{ type: 'player', id }`, the offside line or the line broken as `{ type: 'line-x', x }`, else the pass as a segment.
+
+```js
+// js/engine/passdrill.js: PURE, deterministic (sequence.js createRng, no Math.random)
+export const PASSDRILL_DEFAULTS, PASS_LESSONS
+export function generatePassDrill({ seed, role, principles = [], formations, catalogue, direction = 'auto', params, trace }) → PassDrill | null
+export function generatePassSet({ seed, count = 5, role, principles, formations, catalogue, params }) → PassDrill[]   // 3 of every 5 with a forward best
+export function checkPassDrill(drill, { formations, principles, params, mirror = true })
+  → { errors } | { errors: [], frame, rating, best, margin, choices, decoys, forward, lessons, problems }   // problems empty = a good drill
+export function validatePassDrill(drill, { principles }) → string[];   passDrillGates(rating, { accept, keyed, params }) → { problems, margin, choices, decoys }
+export function passDrillFrame(drill, t, { formations }) → Frame      // = frameAt(drill, t, { formations, learnerId: null })
+export function passDrillPlayback(drill, { formations }) → { frameAt(t) }   // createPlayback with nobody held back
+export function passDrillRating(drill, { formations }) → PassRating   // at the freeze
+export function mirrorPassDrill(drill, { formations }) → PassDrill    // mirrorScenario + carrier and keyed answers mirrored + the rating recomputed
+export function passLessons(rating, principles) → string[];   forwardSlot(seed) → boolean
+export function passMoments(sequence, { formations, after = 0.4 }) → [{ t, carrierId, rating }]   // our receptions in a Live sequence
+```
+
+A pass drill is a ball-scripted scenario (§5.3) in which **the learner has the ball at the freeze** (so `validateScenario` alone would refuse it; `validatePassDrill` checks it):
+
+```jsonc
+{ "id": "pass-lcm-12-pa2-pa5", "kind": "pass", "title", "titleKid", "brief", "briefKid": "The ball is coming to you. Look around.",
+  "question": "Who do you pass to?", "questionKid": "Who's open?", "takeaway": { "standard", "kid" },   // the primary principle's (catalogue)
+  "module": "pass", "moment": "in_possession", "phase", "principles": ["PA5", "PA2"],                 // first = the lesson
+  "learner": { "role": "LCM" }, "carrierId": "us-LCM", "carrier": "us-LCM",
+  "timeline": { "duration", "freezeAt",   // = duration, 1.5-3 s: a teammate has it (maybe running with it), passes; the learner receives; ~0.5 s later the freeze
+                "ball", "possession", "carrier": [{ "t": 0, "id": "us-DM" }, { "t": 0.65, "id": null }, { "t": 1.39, "id": "us-LCM" }],
+                "players": { "auto": true, "overrides": [] /* the templates key their players */ }, "tags": [] },
+  "answer": { "mode": "pass", "best": "us-ST", "accept": [], "space": false },
+  "rating": PassRating,                   // at the freeze, JSON-safe: grade and explain without recomputing
+  "misconceptions": [], "difficulty", "params": { "autoPress": false } /* a quarter of drills: nobody presses the learner */,
+  "source": { "kind": "generated", "generator": "fotbol passdrill v1", "seed", "role", "principles", "direction", "attempt", "template": "switch"|"own-goal"|null } }
+```
+
+- **Playing it (UI):** always with nobody held back: `passDrillFrame` or `passDrillPlayback` (with the default learnerId the learner is held at their spot and never reaches the ball). Grade with `gradePass(drill.rating, choiceId, { accept: drill.answer.accept })`, explain with `explainPass(drill.rating, choiceId, { wording: 'kid', focus: drill.principles })`. Mirror with `mirrorPassDrill` (`mirrorScenario` alone leaves the rating and the answer stale).
+- **Gates** (`checkPassDrill`; generation keeps only drills whose mirror passes too): the learner on the ball at the freeze; the best leads every other option by `margin` (8) points (accepted ids aside; a too-safe option counts at its graded cap, 79); the best not cut out; at least 3 options not cut out; a decoy (a cut-out pass to a teammate who looks free, or a too-safe one); a keyed `answer.best` within `bestMargin` of the engine's best; passes at most 20 m/s and carries at most 7 m/s; the stored rating not stale.
+- **Generation:** the learner receives in their zone (their in-possession spot for a random ball) from a teammate 8-24 m away (measured with the learner where their shape puts them with the ball at the passer), aimed at their in-flight spot; the freeze frame is rated. The drill must teach a principle asked (`PASS_LESSONS`): a reason of the best pass (PA3 free, PA5 a line broken, PA6 switch, PA8 into space, PA9 can turn, PA11 zone 14 or a pull-back, PA13 keep it) or a trap among the others (PA2 too-safe, PA4 a free-looking teammate who would be cut out, PA10 across our own goal, PA12 a long pass). With none asked, any. PA1 is every drill's watch; PA7, PA14 and PA15 (v2) give null. Templates: `switch` (PA6; centre-backs, #6, #8: their block slid toward the ball side, one presses, others mark our ball-side options and screen the square pass; the far side free) and `own-goal` (PA10; a centre-back at the corner of our box, their #9 lurking in front of goal).
+- **The "always pass back" trap:** `direction: 'auto'` wants a forward best (or a switch) on 3 of every 5 consecutive integer seeds (`forwardSlot`), unless no principle asked can be taught by a forward pass for the role (PA13; PA10 except for a centre-back). Build a set from consecutive integer seeds, or with `generatePassSet`, which guarantees it.
+- **Measured** (Node 24, 10 seeds per cell): with no principle asked, 9-10 of 10 for every outfield role, 5-70 ms a drill; PA3/PA4 and PA2/PA5 for every role (the #9 5 of 10 for PA2/PA5); PA6/PA8: centre-backs, #8s and wingers 10 of 10, the #9 6, the #6 1, full-backs 0 (no switch or space best from them yet); PA10/PA13: back four and forwards 9-10, #8s 6-8, the #6 2 (its safe passes come in pairs, so no clear best). Five drills: 30-200 ms.
+
+### 5.15 spotdrill.js (generated "Find your spot" drills)
+
+```js
+// js/engine/spotdrill.js: PURE, deterministic (sequence.js createRng)
+export const SPOT_DEFAULTS      // the gates = scripts/check-scenarios.mjs CHECK_DEFAULTS (tested), minRuleWeight 2, minRuleScore 0.9, timings; speeds = SEQUENCE_DEFAULTS (tested)
+export const SPOT_PRINCIPLES    // { [principleId]: { rules, moments: ['us'|'them'] } }: every principle with a rule (from the registry)
+export function generateSpotDrill({ seed, role, principles = [], formations, catalogue, params, trace }) → Scenario | null
+export function checkSpotDrill(scenario, { formations, principles /* catalogue */, want, params })
+  → { errors } | { errors: [], t, frame, base, ctx, ghost, start, moved, startScore, taught: [{ principle, rule, weight, s, sStart }], problems }
+export const SPOT_WORDS; export function spotPrinciples()
+```
+
+- **The scenario** is the authored format (§5.3; `validateScenario` and `npm run check`'s `checkScenario` pass it): id `spot-<role>-<seed>[-<principles asked>]`, module `generated`, `answer: { mode: 'engine' }`, `learner: { role, start }` with `start` the learner's own automatic spot at t = 0 (before the event), one misconception `stood-still` (2 m round the start), `difficulty` from the principle's level, `title`/`titleKid`/`takeaway` from the catalogue (else the rule's names), `brief`/`briefKid`/`question`/`questionKid` from templates ("Their winger has the ball. Where do you go?"; no side, no code), `source: { kind: 'generated', generator: 'fotbol spotdrill v1', seed /* the seed used */, requestedSeed, attempt }`.
+- **The event:** the team on the ball (theirs for a defending principle, ours for an attacking one) holds it 1-1.5 s, then a pass (12-20 m/s, to the player nearest the end spot, aimed where they are when it arrives) or a carry (4-7 m/s) leaves it where the focus principle's rule applies (a few metres in front of the learner for the press, beside them for cover, in the far wing lane for tuck, wide in the final third for crosses, anywhere for the rest). The freeze comes 0.4-1 s after the ball arrives; from 0.4 s after it, 1.5 s more play (the holder runs on) for "See what happens", which never changes the frozen picture.
+- **Gates:** `npm run check`'s (the ghost scores S, it is at least 5 m from the start, standing still scores below 70, the answer is outside the misconception), plus a rule of a principle asked weighted at least 2 and scoring at least 0.9 at the answer (that principle becomes `principles[0]`; the rule the start fails most wins), the moment and the learner's duty match (never on the ball), and realistic speeds. A failed try moves to the next seed (`seed + k`, or `'<seed>#k'`) up to `maxAttempts` (30).
+- **Yield per try** (6 seeds per cell, where the rule judges the role): press D1/D2 17-86 % (centre-backs 3 %: the line holds), cover and tuck D3/D4 11-25 % (back four, #6, #8), marking D5 13-35 % (centre-backs, full-backs, #8s), support B3/B4 13-43 %, width and pin B1/B2 9-17 % (wingers, #9), between the lines P2/B5 9-46 %, crosses P10 43 % (wingers), the line U4 22-75 % (back four), slide U2/U5 14-60 % and compact U1 22-75 % (everyone), screen R3 75 % (the #6). About 5-40 ms a drill.
+- **Cannot be generated:** principles with no rule (T2, T3, U3, U6, U7, U8, R1, R2, B6, P1, every PA) give null at once; F8 (spacing weighs 1); and a rule for a position it never judges (width for defenders, pin for anyone but the #9, screen for anyone but the #6, the line for midfielders and forwards). The Road's spot nodes each hold at least one generatable principle.
 
 ## 6. Adding things
 

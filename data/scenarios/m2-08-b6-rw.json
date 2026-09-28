@@ -3,12 +3,12 @@
   "title": "Full-back overlaps: come inside",
   "titleKid": "Teammate runs past? Come inside",
   "brief": "Your #8 has the ball facing forward, and your full-back sprints up the touchline past you.",
-  "briefKid": "Your midfielder has the ball. Your defender sprints up the sideline, past you.",
+  "briefKid": "Your defender sprints past you, along the sideline.",
   "question": "Your full-back now holds the width. Where do you go?",
   "questionKid": "Your defender is out wide now. Where do you go?",
   "takeaway": {
     "standard": "The full-back and winger never share the touchline: when the full-back overlaps, you come inside into the half-space between their lines, which drags their full-back inside and frees yours.",
-    "kid": "Teammate runs past you on the outside? Move inside into your own lane."
+    "kid": "Teammate runs past you on the outside? Move inside, into your own space."
   },
   "module": "M2",
   "moment": "in_possession",
@@ -127,7 +127,7 @@
         "y1": 68
       },
       "text": "You stayed on the touchline with your full-back, so one defender can mark you both and the overlap is wasted.",
-      "textKid": "You and your defender are in the same lane. Move inside."
+      "textKid": "You and your defender are both by the sideline. Move inside."
     },
     {
       "id": "too-central",
