@@ -1,7 +1,8 @@
 // Screen (R3): out of possession the #6 sits 5-10 m in front of the back line,
-// in the centre lane, on or near the passing line from the ball to the most
-// dangerous central attacker. When the whole block has slid toward the ball, "the
-// centre lane" slides with the centre-backs (at most to the half-space: R3).
+// in the centre lane, in the passing line from the ball to the most dangerous central
+// attacker (within shadowDist of it: close enough to block the pass). When the whole
+// block has slid toward the ball, "the centre lane" slides with the centre-backs (at
+// most to the half-space: R3).
 
 import { band, clamp, mean } from '../geometry.js';
 import { LANE_EDGES, MID_Y } from '../pitch.js';
@@ -16,8 +17,9 @@ export const SCREEN_DEFAULTS = Object.freeze({
   aheadSoftHi: 5, // [D] Appendix A: tolerance allows up to 15 m
   laneSoft: 11, // [D] credit reaches 0 at the outer edge of the half-space (R3)
   laneSoftCovering: 20, // [D] a covering #6 may be pulled wider
-  shadowDist: 3, // [D] RESEARCH 5.5: within 3 m of the ball-to-attacker line
-  shadowSoft: 4, // [D]
+  shadowDist: 1.5, // [D] within this of the ball-to-attacker line the pass is blocked (RESEARCH 5.8 cover shadow: 1.5 m;
+  //                    5.5's 3 m let a #6 2.7 m off the line count as "in the passing line" while the pass went by)
+  shadowSoft: 2.5, // [D] ...credit reaches 0 this far beyond it (4 m off the line)
   laneShiftMax: 11, // [D] R3: the screening lane follows the centre-backs' mid-point sideways by at most this (the half-space width)
 });
 

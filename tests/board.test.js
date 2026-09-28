@@ -1,7 +1,7 @@
 import { test, assert, approx, isNode } from './harness.js';
 import {
   createBoard, BOARD_DEFAULTS, BALL_ID, pickOrientation, viewBoxFor, project, unproject, worldTransform,
-  keyDelta, describeSpot, tokenName, pitchMarkings,
+  keyDelta, describeSpot, tokenName, pitchMarkings, tokenScale, labelScale, pxPerMetre, focusViewBox,
 } from '../js/ui/board.js';
 import { LENGTH, WIDTH, MID_Y, PENALTY_AREA, PENALTY_SPOT_DIST, CIRCLE_RADIUS, POSTS, GOAL_DEPTH } from '../js/engine/pitch.js';
 
@@ -178,5 +178,112 @@ test('board (browser): setHeatmap with the same field object does not re-encode 
     obs.disconnect();
     board.setHeatmap(null);
     assert.equal(board.el.querySelector('.board-heatmap'), null);
+  });
+});
+
+test('board: on a small board tokens and labels grow to a readable size (capped); a big board draws them life size', () => {
+  const P = BOARD_DEFAULTS;
+  assert.equal(tokenScale(10), 1, 'desktop: life size');
+  assert.equal(tokenScale(0), 1, 'unmeasured');
+  // A phone with a drill's focus window (about 4.85 px per metre): tokens reach minTokenPx across.
+  approx(2 * P.tokenRadius * tokenScale(4.85) * 4.85, P.minTokenPx, 0.3);
+  // The whole pitch on a phone (about 3.2 px per metre): as big as the cap allows, and at least 18 px across.
+  const k = tokenScale(3.2);
+  assert.equal(k, P.maxTokenScale);
+  assert.ok(2 * P.tokenRadius * k * 3.2 >= 18, `${(2 * P.tokenRadius * k * 3.2).toFixed(1)} px`);
+  assert.ok(P.grabRadius >= P.tokenRadius, 'grab at least the token');
+  assert.equal(labelScale(20), 1);
+  assert.ok(labelScale(3.2) > 1 && labelScale(3.2) <= P.maxLabelScale);
+  approx(pxPerMetre({ width: 359, height: 380 }, viewBoxFor('vertical')), Math.min(359 / 74, 380 / 111));
+  assert.equal(pxPerMetre({ width: 0, height: 0 }, viewBoxFor('vertical')), 0);
+});
+
+test('board: a phone held upright crops the pitch length to the focus; a big board always shows the whole pitch', () => {
+  const pad = BOARD_DEFAULTS.focusPad;
+  const phone = { width: 359, height: 380 };
+  const full = viewBoxFor('vertical');
+  const worldRange = (v) => [LENGTH - (v.y + v.height), LENGTH - v.y]; // vertical: view y = LENGTH - world x
+  assert.deepEqual(focusViewBox('vertical', phone, null), full, 'no focus: the whole pitch');
+  const own = focusViewBox('vertical', phone, { x0: 5, x1: 54 });
+  assert.equal(own.width, full.width, 'the whole width stays in view');
+  assert.ok(own.height < full.height, 'the length is cropped');
+  approx(own.height / own.width, phone.height / phone.width, 0.01, 'the window fills the box (no letterbox)');
+  let [a, b] = worldRange(own);
+  assert.ok(a <= 0 && b >= 54 + pad, `play in our half keeps our goal line in view (${a}..${b})`);
+  [a, b] = worldRange(focusViewBox('vertical', phone, { x0: 51, x1: 99 }));
+  assert.ok(a <= 51 - pad && b >= LENGTH, `play near their goal keeps their goal line in view (${a}..${b})`);
+  [a, b] = worldRange(focusViewBox('vertical', phone, { x0: 30, x1: 70 }));
+  assert.ok(a <= 30 - pad && b >= 70 + pad, 'midfield play: centred on it');
+  assert.deepEqual(focusViewBox('vertical', phone, { x0: 0, x1: 105 }), full, 'longer than the box allows: zooms out to the whole pitch');
+  const tallPlay = focusViewBox('vertical', phone, { x0: 10, x1: 90 });
+  [a, b] = worldRange(tallPlay);
+  assert.ok(a <= 10 - pad && b >= 90 + pad, 'a long focus is never cut');
+  assert.deepEqual(focusViewBox('horizontal', { width: 900, height: 600 }, { x0: 5, x1: 54 }), viewBoxFor('horizontal'), 'desktop');
+  assert.deepEqual(focusViewBox('vertical', { width: 552, height: 740 }, { x0: 5, x1: 54 }), full, 'a narrow desktop window');
+});
+
+test('board (browser): a touch drag moves the token by the finger\'s move (never the other way), with a lift capped in metres on a long drag', async () => {
+  if (isNode) return;
+  await withBoard(async (board) => {
+    board.render(frameWith({ x: 30, y: 30 }), { learnerId: 'us-LCB' });
+    const ends = [], moves = [];
+    board.enableDrag({ ids: ['us-LCB'], onMove: (id, p) => moves.push(p), onEnd: (id, p) => ends.push(p) });
+    const svg = board.el.querySelector('svg');
+    const m = board.el.querySelector('.board-world').getScreenCTM();
+    const pxPerM = Math.hypot(m.a, m.b);
+    const at = { x: m.a * 30 + m.c * 30 + m.e, y: m.b * 30 + m.d * 30 + m.f };
+    const ev = (type, dx, dy) => new PointerEvent(type, { pointerId: 9, pointerType: 'touch', isPrimary: true, bubbles: true, cancelable: true, clientX: at.x + dx, clientY: at.y + dy });
+    // A small corrective drag, 8 px down the screen (horizontal board: toward our right touchline, +y).
+    svg.dispatchEvent(ev('pointerdown', 0, 0));
+    for (let i = 1; i <= 8; i++) svg.dispatchEvent(ev('pointermove', 0, i));
+    svg.dispatchEvent(ev('pointerup', 0, 8));
+    const p = ends.at(-1);
+    approx(p.x, 30, 0.05, 'no sideways jump');
+    approx(p.y - 30, 8 / pxPerM, 0.05, `moved ${(p.y - 30).toFixed(2)} m for 8 px (${(8 / pxPerM).toFixed(2)} m)`);
+    // A long drag: the token eases up above the finger, never more than touchLiftMaxM.
+    const start = { x: m.a * p.x + m.c * p.y + m.e, y: m.b * p.x + m.d * p.y + m.f };
+    const ev2 = (type, dx, dy) => new PointerEvent(type, { pointerId: 10, pointerType: 'touch', isPrimary: true, bubbles: true, cancelable: true, clientX: start.x + dx, clientY: start.y + dy });
+    svg.dispatchEvent(ev2('pointerdown', 0, 0));
+    for (let i = 1; i <= 12; i++) svg.dispatchEvent(ev2('pointermove', i * 5, 0));
+    await new Promise((r) => setTimeout(r, BOARD_DEFAULTS.touchLiftMs + 60));
+    svg.dispatchEvent(ev2('pointermove', 61, 0));
+    svg.dispatchEvent(ev2('pointerup', 61, 0));
+    const q = ends.at(-1);
+    approx(q.x - p.x, 61 / pxPerM, 0.05, 'follows the finger along the drag');
+    const lift = p.y - q.y; // screen up is world -y on this board
+    const want = Math.min(BOARD_DEFAULTS.touchOffsetPx, BOARD_DEFAULTS.touchLiftMaxM * pxPerM) / pxPerM;
+    approx(lift, want, 0.05, `lifted ${lift.toFixed(2)} m above the finger (cap ${BOARD_DEFAULTS.touchLiftMaxM} m)`);
+  });
+});
+
+test('board (browser): with a token armed, a tap just beside it moves it there; a tap on it disarms it', async () => {
+  if (isNode) return;
+  await withBoard(async (board) => {
+    board.render(frameWith({ x: 30, y: 30 }), { learnerId: 'us-LCB' });
+    const ends = [];
+    board.enableDrag({ ids: ['us-LCB'], onEnd: (id, p) => ends.push(p) });
+    const svg = board.el.querySelector('svg');
+    const m = board.el.querySelector('.board-world').getScreenCTM();
+    const toScreen = (p) => ({ clientX: m.a * p.x + m.c * p.y + m.e, clientY: m.b * p.x + m.d * p.y + m.f });
+    let id = 20;
+    const tap = (p, target = svg) => {
+      const o = { pointerId: ++id, pointerType: 'touch', isPrimary: true, bubbles: true, cancelable: true, ...toScreen(p) };
+      target.dispatchEvent(new PointerEvent('pointerdown', o));
+      target.dispatchEvent(new PointerEvent('pointerup', o));
+    };
+    const token = board.el.querySelector('.token[data-id="us-LCB"]');
+    tap({ x: 30, y: 30 }, token);
+    assert.ok(board.el.classList.contains('is-armed'), 'a tap on the token arms it');
+    // 3 m away: inside the forgiving grab radius, outside the drawn token. A touch browser may even report the
+    // token as the target (touch adjustment): the distance decides.
+    tap({ x: 33, y: 30 }, token);
+    assert.ok(!board.el.classList.contains('is-armed'));
+    assert.equal(ends.length, 1, 'moved');
+    approx(ends[0].x, 33, 0.05);
+    tap({ x: 33, y: 30 });
+    assert.ok(board.el.classList.contains('is-armed'));
+    tap({ x: 33.3, y: 30.2 });
+    assert.ok(!board.el.classList.contains('is-armed'), 'a tap on the armed token disarms it');
+    assert.equal(ends.length, 1, 'without moving it');
   });
 });

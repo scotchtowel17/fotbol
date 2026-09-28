@@ -1,0 +1,158 @@
+{
+  "id": "m2-07-b3-st",
+  "title": "Get out of their shadow",
+  "titleKid": "Get out from behind them",
+  "brief": "The ball is switched from one #8 to the other, and their #6 slides across to screen.",
+  "briefKid": "The ball goes across our midfield, and their midfielder slides over to block.",
+  "question": "Your #8 has it, facing forward. Where do you go so the pass can find you?",
+  "questionKid": "Your teammate has the ball, facing forward. Where can the pass reach you?",
+  "takeaway": {
+    "standard": "Stay on their last defender's shoulder, but slide along the line until no opponent stands between the ball and you: a striker hidden behind a defender is no option at all.",
+    "kid": "Defender between you and the ball? Slide sideways until the pass is open."
+  },
+  "module": "M2",
+  "moment": "in_possession",
+  "phase": "progression",
+  "principles": [
+    "B3",
+    "B2",
+    "R5"
+  ],
+  "learner": {
+    "role": "ST",
+    "start": {
+      "x": 72,
+      "y": 24.5
+    }
+  },
+  "timeline": {
+    "duration": 5.0,
+    "freezeAt": 3.3,
+    "ball": [
+      {
+        "t": 0,
+        "x": 59,
+        "y": 22,
+        "event": "carry"
+      },
+      {
+        "t": 1.0,
+        "x": 61,
+        "y": 23,
+        "event": "pass"
+      },
+      {
+        "t": 2.5,
+        "x": 64,
+        "y": 48,
+        "event": "carry"
+      },
+      {
+        "t": 5.0,
+        "x": 68,
+        "y": 49
+      }
+    ],
+    "possession": [
+      {
+        "t": 0,
+        "team": "us"
+      }
+    ],
+    "carrier": [
+      {
+        "t": 0,
+        "id": "us-LCM"
+      },
+      {
+        "t": 1.0,
+        "id": null
+      },
+      {
+        "t": 2.5,
+        "id": "us-RCM"
+      }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "them-DM",
+          "keys": [
+            {
+              "t": 0,
+              "x": 71,
+              "y": 33
+            },
+            {
+              "t": 1.0,
+              "x": 71,
+              "y": 34
+            },
+            {
+              "t": 2.5,
+              "x": 70.5,
+              "y": 43.5
+            },
+            {
+              "t": 3.3,
+              "x": 70.5,
+              "y": 45.5
+            },
+            {
+              "t": 5.0,
+              "x": 72,
+              "y": 46.5
+            }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      {
+        "t": 0,
+        "carrierFacing": "forward",
+        "pressureOnBall": false
+      },
+      {
+        "t": 2.5,
+        "carrierFacing": "forward",
+        "pressureOnBall": false
+      }
+    ]
+  },
+  "answer": {
+    "mode": "engine"
+  },
+  "misconceptions": [
+    {
+      "id": "dropped-off-the-line",
+      "region": {
+        "type": "circle",
+        "x": 67.5,
+        "y": 46,
+        "r": 2.5
+      },
+      "text": "You came short toward the ball, so nobody pins their centre-backs and you run into their midfield's traffic; stay on their last line and slide along it instead.",
+      "textKid": "Don't run back to the ball. Stay level with their last defender and slide sideways."
+    },
+    {
+      "id": "stayed-on-the-far-side",
+      "region": {
+        "type": "circle",
+        "x": 72,
+        "y": 25,
+        "r": 5
+      },
+      "text": "You stayed where the ball was before the switch, so the #8 has no pass into the striker.",
+      "textKid": "The ball moved across. Move across with it."
+    }
+  ],
+  "difficulty": 0,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  }
+}

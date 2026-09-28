@@ -211,25 +211,25 @@
           "us-LCM": { "x": 47.3, "y": 22.2 },
           "them-GK": { "x": 100, "y": 34 },
           "them-RB": { "x": 72, "y": 14 },
-          "them-RCB": { "x": 72, "y": 28 },
-          "them-LCB": { "x": 72, "y": 40 },
+          "them-RCB": { "x": 72, "y": 29.5 },
+          "them-LCB": { "x": 72, "y": 38.5 },
           "them-LB": { "x": 72, "y": 54 }
         }
       },
       "task": {
         "type": "place",
-        "target": { "x": 69.5, "y": 34, "r": 2.5 },
+        "target": { "x": 69, "y": 34, "r": 3 },
         "prompt": {
-          "standard": "You're the striker and you're offside. Get back onside, but stay as high as you can, level with their back line.",
-          "kid": "You're offside! Step back until you're level with their defenders."
+          "standard": "You're the striker and you're offside. Drop straight back between their centre-backs until you're level with them or a step behind: onside, but still high.",
+          "kid": "You're offside! Step straight back until you're level with their defenders."
         },
         "success": {
           "standard": "That's it: level with their line or just behind it, you're onside and their defenders still have to worry about a run in behind.",
           "kid": "Nice! You're onside and ready to run behind them."
         },
         "hint": {
-          "standard": "Find their defenders nearest their goal (not the keeper) and stand level with them or a step closer to halfway.",
-          "kid": "Line up with their defenders, not past them."
+          "standard": "Stay in the gap between their two highlighted centre-backs and drop straight back until you're level with them, or a step closer to halfway.",
+          "kid": "Step straight back between their two middle defenders. Stop when you're level."
         }
       }
     },

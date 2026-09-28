@@ -1,0 +1,85 @@
+{
+  "id": "m1-01-d1-lcm",
+  "title": "Get goal-side, then press",
+  "titleKid": "Get between them and our goal",
+  "brief": "Their #6 has the ball. Keep an eye on their #8 as well.",
+  "briefKid": "Their midfielder has the ball. Watch the other midfielder near you too.",
+  "question": "Their #8 has it and is running at our goal. Where do you go?",
+  "questionKid": "Their midfielder has the ball and is running at our goal. Where do you go?",
+  "takeaway": {
+    "standard": "When you are nearest the ball, get between it and our goal first, then close the carrier down to a couple of metres.",
+    "kid": "If you are nearest the ball, get between it and our goal, then get close."
+  },
+  "module": "M1",
+  "moment": "out_of_possession",
+  "phase": "mid_block",
+  "principles": ["D1", "D5"],
+  "learner": {
+    "role": "LCM",
+    "start": { "x": 55, "y": 21.5 }
+  },
+  "timeline": {
+    "duration": 4.5,
+    "freezeAt": 2.8,
+    "ball": [
+      { "t": 0, "x": 64, "y": 33, "event": "carry" },
+      { "t": 1.0, "x": 62, "y": 31.5, "event": "pass" },
+      { "t": 2.1, "x": 49.5, "y": 18.5, "event": "carry" },
+      { "t": 2.8, "x": 47.8, "y": 19.1 },
+      { "t": 4.5, "x": 42.5, "y": 21.5 }
+    ],
+    "possession": [
+      { "t": 0, "team": "them" }
+    ],
+    "carrier": [
+      { "t": 0, "id": "them-DM" },
+      { "t": 1.0, "id": null },
+      { "t": 2.1, "id": "them-RCM" }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "them-RCM",
+          "keys": [
+            { "t": 0, "x": 58, "y": 15.5 },
+            { "t": 1.0, "x": 54, "y": 16.8 },
+            { "t": 2.1, "x": 50.2, "y": 18.3 },
+            { "t": 2.8, "x": 48.5, "y": 18.9 },
+            { "t": 4.5, "x": 43.2, "y": 21.3 }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      { "t": 0, "carrierFacing": "forward" },
+      { "t": 1.0, "event": "pass" },
+      { "t": 2.1, "carrierFacing": "forward" }
+    ]
+  },
+  "answer": {
+    "mode": "engine",
+    "ideal": { "x": 46.5, "y": 19 }
+  },
+  "misconceptions": [
+    {
+      "id": "pressed-from-behind",
+      "region": { "type": "circle", "x": 51.5, "y": 18.8, "r": 2 },
+      "text": "You chased the ball from behind it, so their #8 can still run straight at our goal; get goal-side first.",
+      "textKid": "Chasing from behind lets them run at our goal, so get between them and goal."
+    },
+    {
+      "id": "stood-off",
+      "region": { "type": "circle", "x": 43.5, "y": 22, "r": 2 },
+      "text": "You dropped off into space, but now nobody is pressing the ball, so their #8 has all the time they need.",
+      "textKid": "You are too far away, so get close before they can pass."
+    }
+  ],
+  "difficulty": -1,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  }
+}

@@ -18,13 +18,18 @@ export const TEST_FILES = Object.freeze([
   'ghost.test.js',
   'explain.test.js',
   'elo.test.js',
+  'sequence.test.js',
   'integration.test.js',
   // data files
   'content.test.js',
+  'scenarios-content.test.js',
+  'build-index.test.js',
   // app plumbing and UI (pure parts)
   'store.test.js',
   'app.test.js',
   'board.test.js',
   'heatmap.test.js',
+  'reveal.test.js',
+  'session.test.js',
   'manifest.test.js',
 ]);

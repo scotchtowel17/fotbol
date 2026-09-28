@@ -1,0 +1,135 @@
+{
+  "id": "m2-09-p2-lcm",
+  "title": "Find the gap between their lines",
+  "titleKid": "Find the gap behind their midfielders",
+  "brief": "Your centre-back fizzes the ball into your #6, who turns to face forward.",
+  "briefKid": "Your defender passes to your midfielder, who turns to face their goal.",
+  "question": "Your #6 is free and facing forward. Where do you go to receive?",
+  "questionKid": "Your teammate is free and facing forward. Where do you go?",
+  "takeaway": {
+    "standard": "Get beyond their midfield line into the gap in front of their defence, at least 3 m from any opponent and with a clear lane to the ball: one pass to you there takes their whole midfield out of the game.",
+    "kid": "Get into the gap between their midfielders and their defenders, where you are free."
+  },
+  "module": "M2",
+  "moment": "in_possession",
+  "phase": "progression",
+  "principles": [
+    "P2",
+    "B3"
+  ],
+  "learner": {
+    "role": "LCM",
+    "start": {
+      "x": 46,
+      "y": 18
+    }
+  },
+  "timeline": {
+    "duration": 5.0,
+    "freezeAt": 3.0,
+    "ball": [
+      {
+        "t": 0,
+        "x": 37,
+        "y": 24,
+        "event": "carry"
+      },
+      {
+        "t": 0.8,
+        "x": 39,
+        "y": 25,
+        "event": "pass"
+      },
+      {
+        "t": 1.6,
+        "x": 47,
+        "y": 32.5,
+        "event": "carry"
+      },
+      {
+        "t": 2.7,
+        "x": 50,
+        "y": 32.5
+      },
+      {
+        "t": 5.0,
+        "x": 55,
+        "y": 32
+      }
+    ],
+    "possession": [
+      {
+        "t": 0,
+        "team": "us"
+      }
+    ],
+    "carrier": [
+      {
+        "t": 0,
+        "id": "us-LCB"
+      },
+      {
+        "t": 0.8,
+        "id": null
+      },
+      {
+        "t": 1.6,
+        "id": "us-DM"
+      }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": []
+    },
+    "tags": [
+      {
+        "t": 0,
+        "carrierFacing": "forward",
+        "pressureOnBall": false
+      },
+      {
+        "t": 1.6,
+        "carrierFacing": "sideways"
+      },
+      {
+        "t": 2.0,
+        "carrierFacing": "forward",
+        "pressureOnBall": false
+      }
+    ]
+  },
+  "answer": {
+    "mode": "engine"
+  },
+  "misconceptions": [
+    {
+      "id": "stayed-in-front",
+      "region": {
+        "type": "circle",
+        "x": 47,
+        "y": 19,
+        "r": 3.5
+      },
+      "text": "You stayed in front of their midfield, so a pass to you beats nobody and their #8 can step in and press you.",
+      "textKid": "You are in front of their midfielders. Get behind them, into the gap."
+    },
+    {
+      "id": "came-to-the-ball",
+      "region": {
+        "type": "circle",
+        "x": 46,
+        "y": 28,
+        "r": 3
+      },
+      "text": "You came back toward your #6, who is free and facing forward, so you only crowd the ball and drag their midfield toward it.",
+      "textKid": "Your teammate is free, so don't run to the ball. Get into the gap ahead."
+    }
+  ],
+  "difficulty": 1,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  }
+}

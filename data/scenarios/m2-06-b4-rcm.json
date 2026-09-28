@@ -1,0 +1,155 @@
+{
+  "id": "m2-06-b4-rcm",
+  "title": "Your #6 is free: move away",
+  "titleKid": "Teammate free? Move away",
+  "brief": "Your #6 receives facing your own goal with their #9 tight behind, so you come short to help.",
+  "briefKid": "Your midfielder gets the ball facing our goal, with their striker close behind.",
+  "question": "Your #6 has turned and is free, facing forward. Where do you go now?",
+  "questionKid": "Your teammate has turned and is free. Where do you go now?",
+  "takeaway": {
+    "standard": "Come short while the carrier is in trouble, but once the carrier is free and facing forward, move 12-25 m away into the gap between their lines, where one pass breaks their midfield.",
+    "kid": "Teammate in trouble? Come close. Teammate free? Move away into space."
+  },
+  "module": "M2",
+  "moment": "in_possession",
+  "phase": "progression",
+  "principles": [
+    "B4",
+    "P2"
+  ],
+  "learner": {
+    "role": "RCM",
+    "start": {
+      "x": 47,
+      "y": 41
+    }
+  },
+  "params": {
+    "autoPress": false
+  },
+  "timeline": {
+    "duration": 5.0,
+    "freezeAt": 2.5,
+    "ball": [
+      {
+        "t": 0,
+        "x": 45,
+        "y": 33.5,
+        "event": "carry"
+      },
+      {
+        "t": 0.7,
+        "x": 46,
+        "y": 32.5
+      },
+      {
+        "t": 1.3,
+        "x": 48.5,
+        "y": 32
+      },
+      {
+        "t": 2.3,
+        "x": 52.5,
+        "y": 32
+      },
+      {
+        "t": 5.0,
+        "x": 58,
+        "y": 32
+      }
+    ],
+    "possession": [
+      {
+        "t": 0,
+        "team": "us"
+      }
+    ],
+    "carrier": [
+      {
+        "t": 0,
+        "id": "us-DM"
+      }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "them-ST",
+          "keys": [
+            {
+              "t": 0,
+              "x": 47.3,
+              "y": 34
+            },
+            {
+              "t": 0.7,
+              "x": 47.5,
+              "y": 33.5
+            },
+            {
+              "t": 1.3,
+              "x": 47.5,
+              "y": 34
+            },
+            {
+              "t": 2.3,
+              "x": 49,
+              "y": 34.5
+            },
+            {
+              "t": 5.0,
+              "x": 53,
+              "y": 35
+            }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      {
+        "t": 0,
+        "carrierFacing": "backward",
+        "pressureOnBall": true
+      },
+      {
+        "t": 1.3,
+        "carrierFacing": "forward",
+        "pressureOnBall": false
+      }
+    ]
+  },
+  "answer": {
+    "mode": "engine"
+  },
+  "misconceptions": [
+    {
+      "id": "stayed-short",
+      "region": {
+        "type": "circle",
+        "x": 48,
+        "y": 40.5,
+        "r": 4.5
+      },
+      "text": "You stayed short next to your #6, but the #6 is free now, so you only crowd the ball and bring another opponent close to it.",
+      "textKid": "You stayed too close. Your teammate is free now, so move away into space."
+    },
+    {
+      "id": "into-the-wingers-lane",
+      "region": {
+        "type": "circle",
+        "x": 60,
+        "y": 61,
+        "r": 3.5
+      },
+      "text": "You ran out toward the touchline, where your winger already holds the width, so one opponent can cover you both.",
+      "textKid": "That is your winger's space. Find the gap between their players instead."
+    }
+  ],
+  "difficulty": 0,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  }
+}

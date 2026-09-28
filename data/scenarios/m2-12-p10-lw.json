@@ -1,0 +1,133 @@
+{
+  "id": "m2-12-p10-lw",
+  "title": "Cross coming: attack the back post",
+  "titleKid": "Cross coming: run to the far post",
+  "brief": "You are holding the width on the far side as your other winger beats their full-back.",
+  "briefKid": "You are wide on the far side. Your other winger gets past their defender.",
+  "question": "Your winger is about to cross. Where do you go?",
+  "questionKid": "A cross is coming from the other side. Where do you go?",
+  "takeaway": {
+    "standard": "Once the ball is wide near their byline, the far winger's job changes: leave the touchline and attack the back post, onside, so the cross has a target in every scoring zone.",
+    "kid": "Cross coming from the other side? Run into the box to the far post."
+  },
+  "module": "M2",
+  "moment": "in_possession",
+  "phase": "final_third",
+  "principles": [
+    "P10",
+    "B1",
+    "F4"
+  ],
+  "learner": {
+    "role": "LW",
+    "start": {
+      "x": 84,
+      "y": 4
+    }
+  },
+  "timeline": {
+    "duration": 5.3,
+    "freezeAt": 3.4,
+    "ball": [
+      {
+        "t": 0,
+        "x": 74,
+        "y": 63,
+        "event": "carry"
+      },
+      {
+        "t": 1.2,
+        "x": 79.5,
+        "y": 62
+      },
+      {
+        "t": 2.3,
+        "x": 86,
+        "y": 60.5
+      },
+      {
+        "t": 3.1,
+        "x": 90,
+        "y": 59.5
+      },
+      {
+        "t": 3.9,
+        "x": 92.5,
+        "y": 58.5,
+        "event": "cross"
+      },
+      {
+        "t": 5.3,
+        "x": 97,
+        "y": 28
+      }
+    ],
+    "possession": [
+      {
+        "t": 0,
+        "team": "us"
+      }
+    ],
+    "carrier": [
+      {
+        "t": 0,
+        "id": "us-RW"
+      },
+      {
+        "t": 3.9,
+        "id": null
+      }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": []
+    },
+    "tags": [
+      {
+        "t": 0,
+        "carrierFacing": "forward",
+        "pressureOnBall": false
+      },
+      {
+        "t": 3.9,
+        "event": "cross"
+      }
+    ]
+  },
+  "answer": {
+    "mode": "engine"
+  },
+  "misconceptions": [
+    {
+      "id": "held-the-width",
+      "region": {
+        "type": "rect",
+        "x0": 78,
+        "y0": 0,
+        "x1": 98,
+        "y1": 9
+      },
+      "text": "You stayed out on the touchline, but the cross is coming from the other wing, so nobody is attacking the back post.",
+      "textKid": "You stayed wide. The cross is coming, so run into the box."
+    },
+    {
+      "id": "offside-at-the-back-post",
+      "region": {
+        "type": "rect",
+        "x0": 99,
+        "y0": 18,
+        "x1": 105,
+        "y1": 36
+      },
+      "text": "You ran in beyond their last defender, so if the cross comes now you are offside; arrive level with their line and attack the ball from there.",
+      "textKid": "Too far in! Stay level with their last defender until the cross."
+    }
+  ],
+  "difficulty": 1,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  }
+}

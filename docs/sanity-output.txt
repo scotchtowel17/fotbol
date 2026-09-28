@@ -40,7 +40,7 @@ Ball ( 86.0, 18.0), they have the ball, on the ball: their right centre-back.
 Left centre-back [LCB]  duty: third-defender  block: high  marks: their #9
   base  ( 51.2, 22.3)   ghost ( 51.2, 22.3)  score 96 (S)   base -> ghost: stay put
   rules at the ghost: goal-side 0.92 x 3, level-line 1.00 x 3, compact 0.71 x 2
-  8 m off at ( 58.6, 25.4): 7 (F) Out of position.
+  8 m off at ( 58.6, 25.4): 10 (F) Out of position.
     - [U4 A level line, set by the CB nearest the ball] Drop 6 m to get level with the rest of your back line, or a ball over the top gets in behind you.
     - [D5 Goal-side and ball-side marking] Get goal-side of their #9 so you are between them and the middle of our goal.
     Fix: Drop 7 m deeper and move 3 m wider.
@@ -49,9 +49,9 @@ Left centre-back [LCB]  duty: third-defender  block: high  marks: their #9
 Right centre-back [RCB]  duty: third-defender  block: high
   base  ( 51.6, 36.3)   ghost ( 52.6, 33.3)  score 100 (S)   base -> ghost: push up 1 m and come 3 m inside
   rules at the ghost: level-line 1.00 x 3, compact 1.00 x 2, spacing 1.00 x 1
-  8 m off at ( 58.3, 27.7): 4 (F) Out of position.
+  8 m off at ( 58.3, 27.7): 7 (F) Out of position.
     - [U4 A level line, set by the CB nearest the ball] Drop 7 m to get level with your centre-back partner, or a ball over the top gets in behind you.
-    - [U1 Compactness: stay short and narrow] Slide across toward your right-back, because a 21 m gap is big enough for a pass to split you.
+    - [U2 Shift and slide, no crossover] Slide across toward your right-back, because a gap of 21 m is big enough for a pass to split you.
     Fix: Drop 6 m deeper and come 6 m inside.
     Cue: Who is setting the height of your back line right now?
 
@@ -74,21 +74,20 @@ Right back [RB]  duty: third-defender  block: high  marks: their left winger
     Cue: Who is setting the height of your back line right now?
 
 Holding midfielder (#6) [DM]  duty: third-defender  block: high
-  base  ( 60.6, 25.2)   ghost ( 60.6, 25.2)  score 100 (S)   base -> ghost: stay put
+  base  ( 60.6, 25.2)   ghost ( 60.6, 26.2)  score 100 (S)   base -> ghost: come 1 m inside
   rules at the ghost: screen 1.00 x 3, compact 1.00 x 2, spacing 1.00 x 1
-  8 m off at ( 53.2, 22.1): 34 (F) Out of position.
-    - [R3 The #6 screens the centre-backs] Step up to about 7 m in front of your centre-backs, so you screen them instead of joining them.
-    - [U1 Compactness: stay short and narrow] Step up off your back line a few metres, because two lines stacked flat are beaten by one pass.
-    Fix: Push up 7 m and come 3 m inside.
+  8 m off at ( 60.6, 34.2): 32 (F) Out of position.
+    - [R3 The #6 screens the centre-backs] Step into the passing line from the ball to their #9 so the pass into them is blocked.
+    - [U2 Shift and slide, no crossover] Slide across toward your #8, because a gap of 18 m is big enough for a pass to split you.
+    Fix: Shift 8 m across toward the left touchline.
     Cue: Which pass would hurt your centre-backs most right now?
 
 Left central midfielder (#8) [LCM]  duty: third-defender  block: high
   base  ( 67.0, 16.4)   ghost ( 67.0, 16.4)  score 100 (S)   base -> ghost: stay put
   rules at the ghost: compact 1.00 x 2, spacing 1.00 x 1
-  8 m off at ( 63.9, 23.8): 57 (D) Not quite.
-    - [U1 Compactness: stay short and narrow] Give your #6 more room, because 1 m apart one attacker can occupy you both.
-    - [F8 Keep sensible spacing] You are only 4 m from your #6, so spread out so one opponent cannot mark you both.
-    Fix: Push up 3 m and move 7 m wider.
+  8 m off at ( 75.0, 16.4): 61 (C) Close, but…
+    - [U1 Compactness: stay short and narrow] Drop to close the 23 m gap to your back line, and keep it under 15 m so nobody can receive between the lines.
+    Fix: Drop 8 m deeper.
     Cue: Where is the biggest gap around you that a pass could go through?
 
 Right central midfielder (#8) [RCM]  duty: third-defender  block: high  marks: their #8
@@ -103,7 +102,7 @@ Right central midfielder (#8) [RCM]  duty: third-defender  block: high  marks: t
 Left winger [LW]  duty: third-defender  block: high  marks: their right-back
   base  ( 82.0, 10.8)   ghost ( 82.0,  6.8)  score 100 (S)   base -> ghost: move 4 m wider
   rules at the ghost: compact 1.00 x 2, goal-side 1.00 x 1.5, spacing 1.00 x 1
-  8 m off at ( 87.7,  1.2): 18 (F) Out of position.
+  8 m off at ( 87.7,  1.2): 17 (F) Out of position.
     - [U1 Compactness: stay short and narrow] Drop to close the 21 m gap to your midfield, and keep it under 15 m so nobody can receive between the lines.
     - [D5 Goal-side and ball-side marking] Get goal-side of their right-back so you are between them and the middle of our goal.
     Fix: Drop 6 m deeper and come 6 m inside.
@@ -112,19 +111,18 @@ Left winger [LW]  duty: third-defender  block: high  marks: their right-back
 Right winger [RW]  duty: third-defender  block: high  marks: their left-back
   base  ( 82.0, 46.9)   ghost ( 81.0, 45.9)  score 100 (S)   base -> ghost: drop 1 m deeper and come 1 m inside
   rules at the ghost: compact 1.00 x 2, goal-side 1.00 x 1.5, spacing 1.00 x 1
-  8 m off at ( 86.7, 40.2): 47 (F) Out of position.
+  8 m off at ( 86.7, 40.2): 48 (F) Out of position.
     - [U1 Compactness: stay short and narrow] Drop to close the 20 m gap to your midfield, and keep it under 15 m so nobody can receive between the lines.
     - [D5 Goal-side and ball-side marking] Get onto the line between their left-back and the middle of our goal, leaning a little toward the ball.
     Fix: Drop 6 m deeper and move 6 m wider.
     Cue: Where is the biggest gap around you that a pass could go through?
 
 Striker (#9) [ST]  duty: first-defender  block: high  marks: their right centre-back
-  base  ( 82.7, 21.4)   ghost ( 84.7, 18.4)  score 100 (S)   base -> ghost: push up 2 m and move 3 m wider
-  rules at the ghost: press 1.00 x 3, goal-side 1.00 x 1, spacing 1.00 x 1
-  8 m off at ( 84.7, 10.4): 39 (F) Out of position.
-    - [D1 First defender: pressure the ball] Close their right centre-back down to about 2 m, because from 8 m away they have time to pick a pass.
-    - [D5 Goal-side and ball-side marking] Get onto the line between their right centre-back and the middle of our goal, leaning a little toward the ball.
-    Fix: Come 8 m inside.
+  base  ( 82.9, 21.8)   ghost ( 84.9, 19.8)  score 100 (S)   base -> ghost: push up 2 m and move 2 m wider
+  rules at the ghost: press 1.00 x 3
+  8 m off at ( 90.5, 14.2): 40 (F) Out of position.
+    - [D1 First defender: pressure the ball] Get goal-side of their right centre-back before you press, so they can't run straight at our goal.
+    Fix: Drop 6 m deeper and come 6 m inside.
     Cue: Who should close their right centre-back down, and from which side?
 
 ===============================================================================
@@ -141,7 +139,7 @@ Ball ( 60.0, 20.0), they have the ball, on the ball: their right centre-back.
  12  |-----------+               LB      :                       +-----------|
  15  |           |                    8  :8'                     |           |
  19  |           |                       :    o rcb              |           |
- 22  |           |             LCB       :  9                    |           |
+ 22  |           |             LCB       :   9                   |           |
  25  |----+      |                    ...:...6'                  |      +----|
  28  |    |      |                9'.6.  :  ...                  |      |    |
  31 #|    |      |                 ..    :    ..                 |      |    |#
@@ -162,7 +160,7 @@ Ball ( 60.0, 20.0), they have the ball, on the ball: their right centre-back.
 Left centre-back [LCB]  duty: third-defender  block: mid  marks: their #9
   base  ( 39.0, 22.0)   ghost ( 39.0, 24.0)  score 99 (S)   base -> ghost: come 2 m inside
   rules at the ghost: level-line 1.00 x 3, goal-side 1.00 x 3, compact 0.93 x 2
-  8 m off at ( 46.4, 27.1): 5 (F) Out of position.
+  8 m off at ( 46.4, 27.1): 8 (F) Out of position.
     - [U4 A level line, set by the CB nearest the ball] Drop 6 m to get level with the rest of your back line, or a ball over the top gets in behind you.
     - [D5 Goal-side and ball-side marking] Get goal-side of their #9 so you are between them and the middle of our goal.
     Fix: Drop 7 m deeper and move 3 m wider.
@@ -171,16 +169,16 @@ Left centre-back [LCB]  duty: third-defender  block: mid  marks: their #9
 Right centre-back [RCB]  duty: third-defender  block: mid
   base  ( 39.1, 34.5)   ghost ( 39.1, 33.5)  score 100 (S)   base -> ghost: shift 1 m across toward the left touchline
   rules at the ghost: level-line 1.00 x 3, compact 1.00 x 2, spacing 1.00 x 1
-  8 m off at ( 46.5, 30.4): 9 (F) Out of position.
+  8 m off at ( 47.1, 33.5): 11 (F) Out of position.
     - [U4 A level line, set by the CB nearest the ball] Drop 8 m to get level with your centre-back partner, or a ball over the top gets in behind you.
     - [U1 Compactness: stay short and narrow] Drop off your midfield a few metres, because two lines stacked flat are beaten by one pass.
-    Fix: Drop 7 m deeper and come 3 m inside.
+    Fix: Drop 8 m deeper.
     Cue: Who is setting the height of your back line right now?
 
 Left back [LB]  duty: third-defender  block: mid  marks: their right winger
   base  ( 40.1, 11.7)   ghost ( 40.1, 11.7)  score 100 (S)   base -> ghost: stay put
   rules at the ghost: level-line 1.00 x 3, goal-side 1.00 x 3, compact 1.00 x 2
-  8 m off at ( 48.1, 11.7): 7 (F) Out of position.
+  8 m off at ( 48.1, 11.7): 8 (F) Out of position.
     - [U4 A level line, set by the CB nearest the ball] Drop 9 m to get level with your left centre-back, or a ball over the top gets in behind you.
     - [D5 Goal-side and ball-side marking] Get goal-side of their right winger so you are between them and the middle of our goal.
     Fix: Drop 8 m deeper.
@@ -198,28 +196,28 @@ Right back [RB]  duty: third-defender  block: mid  marks: their left winger
 Holding midfielder (#6) [DM]  duty: third-defender  block: mid
   base  ( 47.2, 26.6)   ghost ( 47.2, 26.6)  score 100 (S)   base -> ghost: stay put
   rules at the ghost: screen 1.00 x 3, compact 1.00 x 2, spacing 1.00 x 1
-  8 m off at ( 39.8, 23.5): 33 (F) Out of position.
+  8 m off at ( 39.8, 29.7): 41 (F) Out of position.
     - [R3 The #6 screens the centre-backs] Step up to about 7 m in front of your centre-backs, so you screen them instead of joining them.
     - [U1 Compactness: stay short and narrow] Step up off your back line a few metres, because two lines stacked flat are beaten by one pass.
-    Fix: Push up 7 m and come 3 m inside.
+    Fix: Push up 7 m and move 3 m wider.
     Cue: Which pass would hurt your centre-backs most right now?
 
 Left central midfielder (#8) [LCM]  duty: second-defender  block: mid
-  base  ( 48.7, 16.3)   ghost ( 51.7, 23.3)  score 96 (S)   base -> ghost: push up 3 m and come 7 m inside
-  rules at the ghost: cover 1.00 x 2, spacing 0.89 x 1
-  8 m off at ( 59.7, 23.3): 23 (F) Out of position.
-    - [D3 Second defender: cover at an angle] Drop in behind your #9, because level with them one pass takes you both out.
-    - [F8 Keep sensible spacing] You are only 3 m from your #9, so spread out so one opponent cannot mark you both.
-    Fix: Drop 8 m deeper.
+  base  ( 48.7, 16.3)   ghost ( 50.7, 24.3)  score 96 (S)   base -> ghost: push up 2 m and come 8 m inside
+  rules at the ghost: cover 1.00 x 2, spacing 1.00 x 1
+  8 m off at ( 53.8, 31.7): 22 (F) Out of position.
+    - [D3 Second defender: cover at an angle] Close the gap across to your #9 so you can still reach the ball if they are beaten.
+    - [F2 Shift with the ball as a unit] You are about 16 m from where a left central midfielder (#8) stands with the ball here, so slide back into the team's shape.
+    Fix: Drop 3 m deeper and move 7 m wider.
     Cue: If your #9 gets beaten, who is there to stop the carrier?
 
 Right central midfielder (#8) [RCM]  duty: third-defender  block: mid  marks: their #8
   base  ( 52.3, 38.9)   ghost ( 50.3, 37.9)  score 100 (S)   base -> ghost: drop 2 m deeper and come 1 m inside
   rules at the ghost: goal-side 1.00 x 2, compact 1.00 x 2, spacing 1.00 x 1
-  8 m off at ( 50.3, 29.9): 61 (C) Close, but…
+  8 m off at ( 50.3, 45.9): 63 (C) Close, but…
     - [D5 Goal-side and ball-side marking] Get onto the line between their #8 and the middle of our goal, leaning a little toward the ball.
-    - [U1 Compactness: stay short and narrow] Give your #6 more room, because 3 m apart one attacker can occupy you both.
-    Fix: Shift 8 m across toward the right touchline.
+    - [U2 Shift and slide, no crossover] Slide across toward your #6, because a gap of 19 m is big enough for a pass to split you.
+    Fix: Come 8 m inside.
     Cue: Where is their #8, and which side of them is our goal?
 
 Left winger [LW]  duty: third-defender  block: mid  marks: their right-back
@@ -241,12 +239,11 @@ Right winger [RW]  duty: third-defender  block: mid  marks: their left-back
     Cue: Where is their left-back, and which side of them is our goal?
 
 Striker (#9) [ST]  duty: first-defender  block: mid  marks: their right centre-back
-  base  ( 57.6, 20.6)   ghost ( 58.6, 20.6)  score 100 (S)   base -> ghost: push up 1 m
-  rules at the ghost: press 1.00 x 3, goal-side 1.00 x 1, spacing 1.00 x 1
-  8 m off at ( 61.6, 13.2): 53 (D) Not quite.
+  base  ( 58.0, 21.5)   ghost ( 59.0, 21.5)  score 100 (S)   base -> ghost: push up 1 m
+  rules at the ghost: press 1.00 x 3
+  8 m off at ( 67.0, 21.5): 49 (F) Out of position.
     - [D1 First defender: pressure the ball] Get goal-side of their right centre-back before you press, so they can't run straight at our goal.
-    - [D5 Goal-side and ball-side marking] Get goal-side of their right centre-back so you are between them and the middle of our goal.
-    Fix: Drop 3 m deeper and come 7 m inside.
+    Fix: Drop 8 m deeper.
     Cue: Who should close their right centre-back down, and from which side?
 
 ===============================================================================
@@ -284,27 +281,27 @@ Ball ( 22.0,  6.0), they have the ball, on the ball: their right winger.
 Left centre-back [LCB]  duty: second-defender  block: low
   base  ( 12.2, 20.4)   ghost ( 12.2, 15.4)  score 95 (S)   base -> ghost: move 5 m wider
   rules at the ghost: cover 0.78 x 3, level-line 1.00 x 3, compact 1.00 x 2
-  8 m off at ( 17.9,  9.8): 3 (F) Out of position.
+  8 m off at ( 17.9,  9.8): 12 (F) Out of position.
     - [U4 A level line, set by the CB nearest the ball] Drop 5 m to get level with the rest of your back line, or a ball over the top gets in behind you.
-    - [D3 Second defender: cover at an angle] Give your left-back more room and cover from about 9 m behind, so one dribble can't beat you both.
+    - [U2 Shift and slide, no crossover] Slide across toward your centre-back partner, because a gap of 20 m is big enough for a pass to split you.
     Fix: Drop 6 m deeper and come 6 m inside.
     Cue: Who is setting the height of your back line right now?
 
 Right centre-back [RCB]  duty: third-defender  block: low
-  base  ( 12.5, 29.7)   ghost ( 11.5, 29.7)  score 100 (S)   base -> ghost: drop 1 m deeper
+  base  ( 12.5, 29.7)   ghost ( 12.5, 29.7)  score 100 (S)   base -> ghost: stay put
   rules at the ghost: level-line 1.00 x 3, tuck 1.00 x 2, compact 1.00 x 2
-  8 m off at (  5.9, 35.3): 14 (F) Out of position.
-    - [U4 A level line, set by the CB nearest the ball] Step up 6 m to get level with your centre-back partner, so the line stays flat.
-    - [U1 Compactness: stay short and narrow] Slide across toward your centre-back partner, because a 15 m gap is big enough for a pass to split you.
-    Fix: Push up 6 m and shift 6 m across toward the left touchline.
+  8 m off at ( 20.5, 29.7): 15 (F) Out of position.
+    - [U4 A level line, set by the CB nearest the ball] Drop 8 m to get level with your centre-back partner, or a ball over the top gets in behind you.
+    - [U1 Compactness: stay short and narrow] Drop off your midfield a few metres, because two lines stacked flat are beaten by one pass.
+    Fix: Drop 8 m deeper.
     Cue: Who is setting the height of your back line right now?
 
 Left back [LB]  duty: first-defender  block: low  marks: their right winger
   base  ( 20.5,  8.0)   ghost ( 22.5,  8.0)  score 100 (S)   base -> ghost: push up 2 m
-  rules at the ghost: press 1.00 x 3, spacing 0.99 x 1, goal-side 1.00 x 1
-  8 m off at ( 30.5,  8.0): 4 (F) Out of position.
+  rules at the ghost: press 1.00 x 3
+  8 m off at ( 30.5,  8.0): 1 (F) Out of position.
     - [D1 First defender: pressure the ball] Get goal-side of their right winger before you press, so they can't run straight at our goal.
-    - [D5 Goal-side and ball-side marking] Get goal-side of their right winger so you are between them and the middle of our goal.
+    - [F2 Shift with the ball as a unit] You are about 10 m from where a left back stands with the ball here, so slide back into the team's shape.
     Fix: Drop 8 m deeper.
     Cue: Who should close their right winger down, and from which side?
 
@@ -318,31 +315,30 @@ Right back [RB]  duty: third-defender  block: low
     Cue: Who is setting the height of your back line right now?
 
 Holding midfielder (#6) [DM]  duty: third-defender  block: low
-  base  ( 18.1, 22.6)   ghost ( 18.1, 22.6)  score 100 (S)   base -> ghost: stay put
+  base  ( 18.1, 22.6)   ghost ( 19.1, 22.6)  score 100 (S)   base -> ghost: push up 1 m
   rules at the ghost: screen 1.00 x 3, compact 1.00 x 2, spacing 1.00 x 1
-  8 m off at ( 10.7, 19.5): 33 (F) Out of position.
-    - [R3 The #6 screens the centre-backs] Step up to about 7 m in front of your centre-backs, so you screen them instead of joining them.
-    - [U1 Compactness: stay short and narrow] Step up off your back line a few metres, because two lines stacked flat are beaten by one pass.
-    Fix: Push up 7 m and come 3 m inside.
+  8 m off at ( 24.7, 28.2): 36 (F) Out of position.
+    - [R3 The #6 screens the centre-backs] Step into the passing line from the ball to their #8 so the pass into them is blocked.
+    - [U2 Shift and slide, no crossover] Give your #8 more room, because 3 m apart one attacker can occupy you both.
+    Fix: Drop 6 m deeper and move 6 m wider.
     Cue: Which pass would hurt your centre-backs most right now?
 
 Left central midfielder (#8) [LCM]  duty: third-defender  block: low
-  base  ( 20.2, 13.5)   ghost ( 20.2, 14.5)  score 100 (S)   base -> ghost: come 1 m inside
+  base  ( 20.2, 13.5)   ghost ( 20.2, 13.5)  score 100 (S)   base -> ghost: stay put
   rules at the ghost: compact 1.00 x 2, spacing 1.00 x 1
-  8 m off at ( 17.1, 21.9): 48 (F) Out of position.
-    - [U1 Compactness: stay short and narrow] Give your #6 more room, because 1 m apart one attacker can occupy you both.
-    - [F8 Keep sensible spacing] You are only 1 m from your #6, so spread out so one opponent cannot mark you both.
-    Fix: Push up 3 m and move 7 m wider.
+  8 m off at ( 12.2, 13.5): 61 (C) Close, but…
+    - [U1 Compactness: stay short and narrow] Step up off your back line a few metres, because two lines stacked flat are beaten by one pass.
+    Fix: Push up 8 m.
     Cue: Where is the biggest gap around you that a pass could go through?
 
 Right central midfielder (#8) [RCM]  duty: third-defender  block: low  marks: their #8
-  base  ( 18.2, 30.9)   ghost ( 18.2, 31.9)  score 99 (S)   base -> ghost: come 1 m inside
-  rules at the ghost: goal-side 1.00 x 2, compact 1.00 x 2, tuck 0.86 x 1.5
-  8 m off at ( 15.2, 39.3): 52 (D) Not quite.
-    - [U1 Compactness: stay short and narrow] Slide across toward your #6, because a 17 m gap is big enough for a pass to split you.
+  base  ( 18.2, 30.9)   ghost ( 17.2, 30.9)  score 100 (S)   base -> ghost: drop 1 m deeper
+  rules at the ghost: goal-side 1.00 x 2, compact 1.00 x 2, tuck 1.00 x 1.5
+  8 m off at ( 17.2, 38.9): 59 (D) Not quite.
     - [D5 Goal-side and ball-side marking] Get onto the line between their #8 and the middle of our goal, leaning a little toward the ball.
-    Fix: Push up 3 m and shift 7 m across toward the left touchline.
-    Cue: Where is the biggest gap around you that a pass could go through?
+    - [U2 Shift and slide, no crossover] Slide across toward your #6, because a gap of 16 m is big enough for a pass to split you.
+    Fix: Shift 8 m across toward the left touchline.
+    Cue: Where is their #8, and which side of them is our goal?
 
 Left winger [LW]  duty: third-defender  block: low  marks: their right-back
   base  ( 35.2, 10.0)   ghost ( 33.2, 10.0)  score 100 (S)   base -> ghost: drop 2 m deeper
@@ -365,10 +361,9 @@ Right winger [RW]  duty: third-defender  block: low  marks: their left-back
 Striker (#9) [ST]  duty: third-defender  block: low
   base  ( 24.0, 26.1)   ghost ( 24.0, 26.1)  score 100 (S)   base -> ghost: stay put
   rules at the ghost: compact 1.00 x 2, spacing 1.00 x 1
-  8 m off at ( 16.6, 23.0): 52 (D) Not quite.
+  8 m off at ( 16.6, 29.1): 67 (C) Close, but…
     - [U1 Compactness: stay short and narrow] Step up off your midfield a few metres, because two lines stacked flat are beaten by one pass.
-    - [F8 Keep sensible spacing] You are only 2 m from your #6, so spread out so one opponent cannot mark you both.
-    Fix: Push up 7 m and come 3 m inside.
+    Fix: Push up 7 m and move 3 m wider.
     Cue: Where is the biggest gap around you that a pass could go through?
 
 ===============================================================================
@@ -408,7 +403,7 @@ Left centre-back [LCB]  duty: second-attacker  block: high
   rules at the ghost: lane-open 1.00 x 3, support-distance 0.65 x 2, occupancy 1.00 x 2
   8 m off at ( 20.6, 22.8): 23 (F) Out of position.
     - [B5 Lanes and lines] You are flat on a line with 3 teammates, so step off it to open a diagonal pass.
-    - [B4 Support distance depends on pressure] You are on the same line from the ball as your #8, so find a new angle to give the carrier a second option.
+    - [F2 Shift with the ball as a unit] You are about 9 m from where a left centre-back stands with the ball here, so slide back into the team's shape.
     Fix: Drop 7 m deeper and move 3 m wider.
     Cue: Which lanes and lines already have a teammate in them?
 
@@ -576,17 +571,16 @@ Right central midfielder (#8) [RCM]  duty: second-attacker  block: low
   base  ( 78.1, 55.1)   ghost ( 77.1, 61.1)  score 90 (S)   base -> ghost: drop 1 m deeper and move 6 m wider
   rules at the ghost: lane-open 1.00 x 3, occupancy 0.50 x 2, offside 1.00 x 2
   8 m off at ( 71.4, 66.8): 49 (F) Out of position.
-    - [P2 Receive between the lines, outside cover shadows] Push up 16 m beyond their midfield line so you can receive between the lines.
     - [B4 Support distance depends on pressure] The carrier is under pressure, so come 5 m closer to give a short option.
+    - [F2 Shift with the ball as a unit] You are about 13 m from where a right central midfielder (#8) stands with the ball here, so slide back into the team's shape.
     Fix: Push up 6 m and come 6 m inside.
-    Cue: Where is the gap between their midfield and their back line?
+    Cue: How much pressure is the carrier under, and how close should you be?
 
 Left winger [LW]  duty: third-attacker  block: low
   base  ( 91.7,  7.9)   ghost ( 91.7,  4.9)  score 96 (S)   base -> ghost: move 3 m wider
   rules at the ghost: offside 1.00 x 3, width 1.00 x 2.25, occupancy 1.00 x 2
   8 m off at ( 99.1,  1.9): 61 (C) Close, but…
     - [F4 Offside (hard rule)] You are 6 m past their last defender and would be offside if the pass came now, so step back level.
-    - [P10 Fill the box on crosses] Get 24 m closer to the back post, so the crosser has a target in a scoring zone.
     Fix: Drop 7 m deeper and come 3 m inside.
     Cue: Where is their last defender, and are you ahead of them?
 
@@ -595,7 +589,7 @@ Right winger [RW]  duty: third-attacker  block: low
   rules at the ghost: offside 1.00 x 3, width 1.00 x 3, lane-open 1.00 x 3
   8 m off at ( 85.8, 55.6): 50 (D) Not quite.
     - [B1 Width: make the field big] Get 7 m wider, close to the touchline, to stretch their back line.
-    - [B5 Lanes and lines] The right wing already has 2 teammates near you, so move into a free lane to offer a new option.
+    - [B4 Support distance depends on pressure] You are crowding the carrier, so move 1 m further away to give a freer option.
     Fix: Push up 3 m and move 7 m wider.
     Cue: Who is keeping the pitch wide on your side?
 
@@ -643,10 +637,10 @@ Ball ( 50.0, 40.0), loose ball.
 Left centre-back [LCB]  duty: third-defender  block: mid
   base  ( 39.6, 33.1)   ghost ( 39.6, 33.1)  score 100 (S)   base -> ghost: stay put
   rules at the ghost: level-line 1.00 x 3, compact 1.00 x 2, spacing 1.00 x 1
-  8 m off at ( 46.9, 36.2): 10 (F) Out of position.
-    - [U4 A level line, set by the CB nearest the ball] Drop 7 m to get level with your centre-back partner, or a ball over the top gets in behind you.
+  8 m off at ( 47.6, 33.1): 11 (F) Out of position.
+    - [U4 A level line, set by the CB nearest the ball] Drop 8 m to get level with your centre-back partner, or a ball over the top gets in behind you.
     - [U1 Compactness: stay short and narrow] Drop off your midfield a few metres, because two lines stacked flat are beaten by one pass.
-    Fix: Drop 7 m deeper and come 3 m inside.
+    Fix: Drop 8 m deeper.
     Cue: Who is setting the height of your back line right now?
 
 Right centre-back [RCB]  duty: third-defender  block: mid  marks: their #9
@@ -661,7 +655,7 @@ Right centre-back [RCB]  duty: third-defender  block: mid  marks: their #9
 Left back [LB]  duty: third-defender  block: mid  marks: their right winger
   base  ( 39.9, 19.6)   ghost ( 39.9, 21.6)  score 100 (S)   base -> ghost: come 2 m inside
   rules at the ghost: level-line 1.00 x 3, goal-side 1.00 x 3, compact 1.00 x 2
-  8 m off at ( 47.9, 21.6): 5 (F) Out of position.
+  8 m off at ( 47.9, 21.6): 8 (F) Out of position.
     - [U4 A level line, set by the CB nearest the ball] Drop 8 m to get level with your right centre-back, or a ball over the top gets in behind you.
     - [D5 Goal-side and ball-side marking] Get goal-side of their right winger so you are between them and the middle of our goal.
     Fix: Drop 8 m deeper.
@@ -670,25 +664,24 @@ Left back [LB]  duty: third-defender  block: mid  marks: their right winger
 Right back [RB]  duty: third-defender  block: mid  marks: their left winger
   base  ( 39.8, 52.9)   ghost ( 39.8, 52.9)  score 100 (S)   base -> ghost: stay put
   rules at the ghost: level-line 1.00 x 3, goal-side 1.00 x 3, compact 1.00 x 2
-  8 m off at ( 47.8, 52.9): 7 (F) Out of position.
+  8 m off at ( 47.8, 52.9): 8 (F) Out of position.
     - [U4 A level line, set by the CB nearest the ball] Drop 8 m to get level with your right centre-back, or a ball over the top gets in behind you.
     - [D5 Goal-side and ball-side marking] Get goal-side of their left winger so you are between them and the middle of our goal.
     Fix: Drop 8 m deeper.
     Cue: Who is setting the height of your back line right now?
 
 Holding midfielder (#6) [DM]  duty: first-defender  block: mid
-  base  ( 47.5, 39.7)   ghost ( 47.5, 39.7)  score 100 (S)   base -> ghost: stay put
-  rules at the ghost: press 1.00 x 3, spacing 1.00 x 1
-  8 m off at ( 40.1, 42.8): 33 (F) Out of position.
+  base  ( 47.6, 39.4)   ghost ( 47.6, 39.4)  score 100 (S)   base -> ghost: stay put
+  rules at the ghost: press 1.00 x 3
+  8 m off at ( 44.5, 32.0): 33 (F) Out of position.
     - [D1 First defender: pressure the ball] Close the ball down to about 2 m, because from 10 m away they have time to pick a pass.
-    - [F8 Keep sensible spacing] You are only 1 m from your right centre-back, so spread out so one opponent cannot mark you both.
-    Fix: Push up 7 m and come 3 m inside.
+    Fix: Push up 3 m and shift 7 m across toward the right touchline.
     Cue: Who should close the ball down, and from which side?
 
 Left central midfielder (#8) [LCM]  duty: third-defender  block: mid  marks: their #8
   base  ( 48.1, 23.8)   ghost ( 48.1, 27.8)  score 100 (S)   base -> ghost: come 4 m inside
   rules at the ghost: goal-side 1.00 x 2, compact 1.00 x 2, spacing 1.00 x 1
-  8 m off at ( 40.7, 30.9): 40 (F) Out of position.
+  8 m off at ( 40.7, 30.9): 48 (F) Out of position.
     - [U1 Compactness: stay short and narrow] Step up off your back line a few metres, because two lines stacked flat are beaten by one pass.
     - [D5 Goal-side and ball-side marking] Tighten up to about 4 m from their #8, because at 12 m they can receive and turn.
     Fix: Push up 7 m and move 3 m wider.
@@ -697,29 +690,27 @@ Left central midfielder (#8) [LCM]  duty: third-defender  block: mid  marks: the
 Right central midfielder (#8) [RCM]  duty: third-defender  block: mid
   base  ( 49.9, 49.2)   ghost ( 49.9, 49.2)  score 100 (S)   base -> ghost: stay put
   rules at the ghost: compact 1.00 x 2, spacing 1.00 x 1
-  8 m off at ( 55.6, 54.9): 58 (D) Not quite.
-    - [U1 Compactness: stay short and narrow] Slide across toward your #6, because a 16 m gap is big enough for a pass to split you.
-    - [F8 Keep sensible spacing] You are only 4 m from your right winger, so spread out so one opponent cannot mark you both.
-    Fix: Drop 6 m deeper and come 6 m inside.
+  8 m off at ( 53.0, 56.6): 66 (C) Close, but…
+    - [U2 Shift and slide, no crossover] Slide across toward your #6, because a gap of 17 m is big enough for a pass to split you.
+    Fix: Drop 3 m deeper and come 7 m inside.
     Cue: Where is the biggest gap around you that a pass could go through?
 
 Left winger [LW]  duty: third-defender  block: mid  marks: their right-back
   base  ( 56.9, 10.0)   ghost ( 52.9, 14.0)  score 97 (S)   base -> ghost: drop 4 m deeper and come 4 m inside
   rules at the ghost: compact 1.00 x 2, goal-side 0.85 x 1.5, spacing 1.00 x 1
-  8 m off at ( 47.2, 19.7): 21 (F) Out of position.
+  8 m off at ( 47.2, 19.7): 24 (F) Out of position.
     - [U1 Compactness: stay short and narrow] Step up off your midfield a few metres, because two lines stacked flat are beaten by one pass.
-    - [F8 Keep sensible spacing] You are only 4 m from your #8, so spread out so one opponent cannot mark you both.
+    - [F2 Shift with the ball as a unit] You are about 14 m from where a left winger stands with the ball here, so slide back into the team's shape.
     Fix: Push up 6 m and move 6 m wider.
     Cue: Where is the biggest gap around you that a pass could go through?
 
 Right winger [RW]  duty: third-defender  block: mid  marks: their left-back
   base  ( 57.9, 58.0)   ghost ( 55.9, 55.0)  score 100 (S)   base -> ghost: drop 2 m deeper and come 3 m inside
   rules at the ghost: compact 1.00 x 2, goal-side 1.00 x 1.5, spacing 1.00 x 1
-  8 m off at ( 52.8, 47.6): 40 (F) Out of position.
-    - [F8 Keep sensible spacing] You are only 3 m from your #8, so spread out so one opponent cannot mark you both.
-    - [F2 Shift with the ball as a unit] You are about 12 m from where a right winger stands with the ball here, so slide back into the team's shape.
-    Fix: Push up 3 m and move 7 m wider.
-    Cue: How far are you from your nearest teammate?
+  8 m off at ( 55.9, 47.0): 43 (F) Out of position.
+    - [F2 Shift with the ball as a unit] You are about 11 m from where a right winger stands with the ball here, so slide back into the team's shape.
+    Fix: Move 8 m wider.
+    Cue: Where does your position usually stand when the ball is here?
 
 Striker (#9) [ST]  duty: third-defender  block: mid
   base  ( 58.7, 38.2)   ghost ( 58.7, 38.2)  score 100 (S)   base -> ghost: stay put

@@ -1,0 +1,165 @@
+{
+  "id": "m2-10-b5-lb",
+  "title": "Don't make a flat line",
+  "titleKid": "Don't stand in a flat line",
+  "brief": "Your centre-back plays the ball into your #6, who has dropped deep to collect it.",
+  "briefKid": "Your midfielder drops back next to your defenders to get the ball.",
+  "question": "Your #6 has joined the back line. Where do you go?",
+  "questionKid": "Your midfielder is in line with your defenders now. Where do you go?",
+  "takeaway": {
+    "standard": "No more than three teammates on one line across the pitch: when your #6 drops in beside the centre-backs, push up past their front line and stay wide, so the passes to you are diagonals, not flat balls along a crowded line.",
+    "kid": "Too many teammates in one flat line? Run forward and stay wide."
+  },
+  "module": "M2",
+  "moment": "in_possession",
+  "phase": "build_up",
+  "principles": [
+    "B5",
+    "B1"
+  ],
+  "learner": {
+    "role": "LB",
+    "start": {
+      "x": 17.5,
+      "y": 12
+    }
+  },
+  "timeline": {
+    "duration": 4.5,
+    "freezeAt": 2.4,
+    "ball": [
+      {
+        "t": 0,
+        "x": 13,
+        "y": 48,
+        "event": "carry"
+      },
+      {
+        "t": 0.6,
+        "x": 14,
+        "y": 47,
+        "event": "pass"
+      },
+      {
+        "t": 1.5,
+        "x": 19.5,
+        "y": 34.5,
+        "event": "carry"
+      },
+      {
+        "t": 4.5,
+        "x": 22,
+        "y": 32
+      }
+    ],
+    "possession": [
+      {
+        "t": 0,
+        "team": "us"
+      }
+    ],
+    "carrier": [
+      {
+        "t": 0,
+        "id": "us-RCB"
+      },
+      {
+        "t": 0.6,
+        "id": null
+      },
+      {
+        "t": 1.5,
+        "id": "us-DM"
+      }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "us-RB",
+          "keys": [
+            {
+              "t": 0,
+              "x": 21,
+              "y": 64
+            },
+            {
+              "t": 2.4,
+              "x": 33.5,
+              "y": 63.5
+            },
+            {
+              "t": 4.5,
+              "x": 36,
+              "y": 63
+            }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      {
+        "t": 0,
+        "carrierFacing": "forward",
+        "pressureOnBall": false
+      },
+      {
+        "t": 1.5,
+        "carrierFacing": "forward",
+        "pressureOnBall": false
+      }
+    ]
+  },
+  "answer": {
+    "mode": "authored",
+    "ideal": {
+      "x": 33,
+      "y": 5
+    }
+  },
+  "misconceptions": [
+    {
+      "id": "flat-with-the-back-line",
+      "region": {
+        "type": "rect",
+        "x0": 16.8,
+        "y0": 4,
+        "x1": 20.4,
+        "y1": 13
+      },
+      "text": "You stayed level with your centre-backs and the #6, so four of you stand on one flat line and every pass between you is square and easy to cut out.",
+      "textKid": "You are in a flat line with your teammates. Run forward and stay wide."
+    },
+    {
+      "id": "stopped-behind-their-winger",
+      "region": {
+        "type": "rect",
+        "x0": 20.4,
+        "y0": 1,
+        "x1": 25.5,
+        "y1": 14
+      },
+      "text": "You stepped up, but you are still behind their winger, so they can press you and the pass to you beats nobody; get past them, high and wide.",
+      "textKid": "Keep going! Get past their winger, high and wide."
+    },
+    {
+      "id": "tucked-in-to-the-centre-back",
+      "region": {
+        "type": "circle",
+        "x": 19,
+        "y": 18,
+        "r": 2.5
+      },
+      "text": "You tucked in next to your centre-back, so one opponent can press you both and the flank is empty.",
+      "textKid": "Too close to your defender. Stay wide and run forward."
+    }
+  ],
+  "difficulty": 0,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  },
+  "notes": "Authored answer: with the #6 dropped between the centre-backs, layer A keeps the full-back level with the back line (the build-up depth floor), so the engine's best spot (about (21, 8.5)) is still flat with the centre-backs and behind their first presser, and the start scored an A. The coach's answer is high and wide: past their winger (x 23), short of their midfield line (x 38) and off the #8s' line (x 29.7). The far full-back is keyed up the flank to x 33.5 at the freeze, never on the #8s' line, so the picture shows the right shape instead of a flat five. Difficulty 0 now that standing still scores F: the answer is a clear high-and-wide spot with a full-back's zone round it."
+}

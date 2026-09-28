@@ -1,0 +1,99 @@
+{
+  "id": "m3-07-r2-rb",
+  "title": "Engage the winger",
+  "titleKid": "Go to their winger",
+  "brief": "Their #6 is looking for a long switch, maybe to your side.",
+  "briefKid": "Their midfielder wants to kick a long pass, maybe to your side.",
+  "question": "Their winger is holding the ball up on your side. Where should you be?",
+  "questionKid": "Their winger has the ball near you. Where do you go?",
+  "takeaway": {
+    "standard": "When the ball reaches the winger on your side, go out and engage them before they can turn: goal-side and a little inside, so they can only go down the line, while a teammate covers behind you.",
+    "kid": "Their winger has the ball near you? Get close, between them and our goal."
+  },
+  "module": "M3",
+  "moment": "out_of_possession",
+  "phase": "mid_block",
+  "principles": ["R2", "D1", "D2"],
+  "learner": {
+    "role": "RB",
+    "start": { "x": 44, "y": 50.5 }
+  },
+  "timeline": {
+    "duration": 5.6,
+    "freezeAt": 5.1,
+    "ball": [
+      { "t": 0, "x": 68, "y": 31, "event": "carry" },
+      { "t": 1, "x": 66.5, "y": 30, "event": "pass" },
+      { "t": 2.9, "x": 45.5, "y": 63.5, "event": "carry" },
+      { "t": 3.4, "x": 45, "y": 63.8 },
+      { "t": 3.9, "x": 44.6, "y": 63.6 },
+      { "t": 4.4, "x": 44.4, "y": 63.9 },
+      { "t": 4.9, "x": 44.2, "y": 63.6 },
+      { "t": 5.6, "x": 43.6, "y": 63.2 }
+    ],
+    "possession": [
+      { "t": 0, "team": "them" }
+    ],
+    "carrier": [
+      { "t": 0, "id": "them-DM" },
+      { "t": 1, "id": null },
+      { "t": 2.9, "id": "them-LW" }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "them-DM",
+          "keys": [
+            { "t": 0, "x": 68.8, "y": 31 },
+            { "t": 1, "x": 67.3, "y": 30 },
+            { "t": 2.9, "x": 63, "y": 33 },
+            { "t": 5.6, "x": 60, "y": 37 }
+          ]
+        },
+        {
+          "id": "them-LW",
+          "keys": [
+            { "t": 0, "x": 49, "y": 66 },
+            { "t": 1, "x": 48.5, "y": 65.5 },
+            { "t": 2.9, "x": 46.3, "y": 63.5 },
+            { "t": 3.4, "x": 45.8, "y": 63.8 },
+            { "t": 3.9, "x": 45.4, "y": 63.6 },
+            { "t": 4.4, "x": 45.2, "y": 63.9 },
+            { "t": 4.9, "x": 45, "y": 63.6 },
+            { "t": 5.6, "x": 44.4, "y": 63.2 }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      { "t": 0, "carrierFacing": "forward", "pressureOnBall": false },
+      { "t": 2.9, "carrierFacing": "sideways" }
+    ]
+  },
+  "answer": {
+    "mode": "engine",
+    "ideal": { "x": 42.5, "y": 62 }
+  },
+  "misconceptions": [
+    {
+      "id": "stayed-tucked-in",
+      "region": { "type": "circle", "x": 43, "y": 51, "r": 4 },
+      "text": "You stayed tucked in, which gives their winger all the time they want to turn and run at your back line.",
+      "textKid": "Their winger has lots of time. Go and get close to them."
+    },
+    {
+      "id": "showed-him-inside",
+      "region": { "type": "circle", "x": 45, "y": 66.5, "r": 2.5 },
+      "text": "You went round the outside of them, which opens the way inside toward our goal; engage from the inside.",
+      "textKid": "Stand on their inside, so they can only go down the line."
+    }
+  ],
+  "difficulty": 0,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  }
+}

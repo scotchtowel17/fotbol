@@ -6,7 +6,7 @@
 // then scored against that duty, which avoids circular scoring.
 
 import { dist, median, clamp } from './geometry.js';
-import { laneOf, thirdOf, isWingLane, OWN_GOAL, LENGTH, MID_Y, LANE_EDGES, mirrorPoint } from './pitch.js';
+import { laneOf, thirdOf, isWingLane, OWN_GOAL, LENGTH, MID_Y, HALF_X, LANE_EDGES, mirrorPoint } from './pitch.js';
 import { ROLE_INFO, BACK_LINE, MIDFIELD, parsePlayerId } from './roles.js';
 
 export const CONTEXT_DEFAULTS = Object.freeze({
@@ -27,6 +27,7 @@ export const CONTEXT_DEFAULTS = Object.freeze({
   fbEngageTo: 55, // [D] ...fading out by this x (in their half the winger or #8 presses)
   blockHigh: 45, // [D] back-line x (in the defending team's own frame) at or above this = high block
   blockLow: 25, // [D] below this = low block
+  offsideMarkMargin: 1, // [D] U4/F4: an opponent this far or more in an offside position (behind our second-last player and the ball, in our half) is nobody's mark: the line holds and leaves him offside
 });
 
 const OPP_BACK = BACK_LINE;
@@ -140,7 +141,12 @@ export function buildContext(frame, { learnerId, base, params = {} }) {
     const markers = outfieldUs.filter((p) => p !== firstDefender && p !== secondDefender);
     // A back-liner who covers stays in or near the line, so an opponent beside him is his to deal with.
     const coverer = secondDefender && MARK_UNIT[ROLE_INFO[secondDefender.role]?.family] === 'back' ? secondDefender : null;
-    const targets = opponents.filter((o) => o.role !== 'GK' && o !== carrier && !(coverer && dist(o, coverer) <= P.coverReach));
+    // U4: an attacker standing offside (behind our second-last player, with the learner at base, and
+    // behind the ball, in our half) is left there: dropping to mark him would play him onside.
+    const usXs = usAtBase.map((p) => p.x).sort((a, b) => a - b);
+    const ourSecondLastX = usXs.length > 1 ? usXs[1] : 0;
+    const offsideAt = Math.min(ourSecondLastX, ball.x, HALF_X) - P.offsideMarkMargin;
+    const targets = opponents.filter((o) => o.role !== 'GK' && o !== carrier && !(coverer && dist(o, coverer) <= P.coverReach) && !(o.x < offsideAt));
     const bands = {
       backMax: ourBackLineX + P.backReach, fwdMin: ourBackLineX + P.handoverDepth, dmMax: ourMidLineX, cmMax: ourMidLineX + P.midReach,
       fwdMax: blockHeight === 'high' ? Infinity : ball.x + P.markBehindBall,
@@ -205,6 +211,26 @@ export function engageBias(team, ball, P) {
   const wide = clamp((Math.abs(own.y - MID_Y) - (LANE_EDGES[3] - MID_Y)) / (LANE_EDGES[4] - LANE_EDGES[3]), 0, 1);
   const deep = clamp((P.fbEngageTo - own.x) / (P.fbEngageTo - P.fbEngageFrom), 0, 1);
   return { role: own.y < MID_Y ? 'LB' : 'RB', bias: P.fbEngage * wide * deep };
+}
+
+/**
+ * D2/R5 (and the D9 curved run): in the opponents' half the first defender presses from the inside of
+ * the ball-to-goal line, shutting the pass inside (centre-back to centre-back, or to their #6) and
+ * showing the carrier wide; near the middle of the pitch there is no inside, and in the defending team's
+ * own half the press stays on the line to goal (D1). Returns how much of that lean applies, 0..1: the
+ * side factor fades in from leanCentre metres off the middle to the inner edge of the half-space, the
+ * height factor from leanFrom to leanTo (the defending team's own frame), so it is continuous in the ball.
+ * Shared by scene.js (where the automatic presser stands) and the press rule (what it rewards).
+ * @param {'us'|'them'} team  the defending team
+ * @param {{x:number,y:number}} ball  canonical frame (the carrier, or the ball)
+ * @param {{leanCentre:number, leanFrom:number, leanTo:number}} P
+ * @returns {number} 0..1
+ */
+export function pressLean(team, ball, P) {
+  const own = team === 'us' ? ball : mirrorPoint(ball);
+  const side = clamp((Math.abs(own.y - MID_Y) - P.leanCentre) / (MID_Y - LANE_EDGES[2] - P.leanCentre), 0, 1);
+  const high = clamp((own.x - P.leanFrom) / (P.leanTo - P.leanFrom), 0, 1);
+  return side * high;
 }
 
 /**

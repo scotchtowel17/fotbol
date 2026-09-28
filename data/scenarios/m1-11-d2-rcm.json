@@ -1,0 +1,86 @@
+{
+  "id": "m1-11-d2-rcm",
+  "title": "Step out and show them the touchline",
+  "titleKid": "Go out and send them to the sideline",
+  "brief": "Their centre-back is looking to go wide to their full-back.",
+  "briefKid": "Their defender is looking to pass out wide.",
+  "question": "Their full-back has it on the touchline. Where do you go?",
+  "questionKid": "Their defender has the ball by the side line. Where do you go?",
+  "takeaway": {
+    "standard": "When you are the nearest to a full-back on the touchline, step out and press from the inside so the only way on is down the line.",
+    "kid": "If you're nearest the ball by the side line, press from the middle side."
+  },
+  "module": "M1",
+  "moment": "out_of_possession",
+  "phase": "mid_block",
+  "principles": ["D2", "D1"],
+  "learner": {
+    "role": "RCM",
+    "start": { "x": 51, "y": 50 }
+  },
+  "timeline": {
+    "duration": 5.2,
+    "freezeAt": 3.4,
+    "ball": [
+      { "t": 0, "x": 62, "y": 43, "event": "carry" },
+      { "t": 0.8, "x": 60.5, "y": 44.5, "event": "pass" },
+      { "t": 2.0, "x": 50.5, "y": 61, "event": "carry" },
+      { "t": 2.6, "x": 49.5, "y": 60.8, "event": "carry" },
+      { "t": 3.4, "x": 47.5, "y": 60.3 },
+      { "t": 5.2, "x": 43, "y": 59.5 }
+    ],
+    "possession": [
+      { "t": 0, "team": "them" }
+    ],
+    "carrier": [
+      { "t": 0, "id": "them-LCB" },
+      { "t": 0.8, "id": null },
+      { "t": 2.0, "id": "them-LB" }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "them-LB",
+          "keys": [
+            { "t": 0, "x": 56, "y": 63 },
+            { "t": 0.8, "x": 54, "y": 62.3 },
+            { "t": 2.0, "x": 51.1, "y": 61.1 },
+            { "t": 2.6, "x": 50.1, "y": 60.9 },
+            { "t": 3.4, "x": 48.1, "y": 60.4 },
+            { "t": 5.2, "x": 43.6, "y": 59.6 }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      { "t": 0, "carrierFacing": "forward" },
+      { "t": 2.0, "carrierFacing": "forward" }
+    ]
+  },
+  "answer": {
+    "mode": "engine",
+    "ideal": { "x": 46, "y": 58.5 }
+  },
+  "misconceptions": [
+    {
+      "id": "pressed-from-the-touchline-side",
+      "region": { "type": "circle", "x": 47.5, "y": 63, "r": 1.5 },
+      "text": "You came at them from the touchline side, which lets them cut inside toward the middle of the pitch.",
+      "textKid": "Coming from the side line lets them cut inside, so come from the middle side."
+    },
+    {
+      "id": "stayed-in-the-middle",
+      "region": { "type": "circle", "x": 50.5, "y": 50, "r": 3 },
+      "text": "You held your spot in the middle, so their full-back has time to run or pick a pass, and nobody is closer than you.",
+      "textKid": "Nobody else is close, so you need to go to the ball."
+    }
+  ],
+  "difficulty": 1,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  }
+}

@@ -1,0 +1,193 @@
+{
+  "id": "m2-11-p1-rcm",
+  "title": "Ball goes wide: take the half-space",
+  "titleKid": "Ball wide? Find the in-between strip",
+  "brief": "Your #6 plays the ball out to your full-back, who has space to run up the touchline.",
+  "briefKid": "Your midfielder passes out wide to your defender, who has space to run.",
+  "question": "The ball is out wide on your side. Where do you go?",
+  "questionKid": "The ball is out wide near you. Where do you go?",
+  "takeaway": {
+    "standard": "With the ball wide, get into the ball-side half-space between their midfield and back line: their full-back and centre-back must decide who takes you, and either choice opens a pass.",
+    "kid": "Ball out wide? Find the gap between the wing and the middle, behind their midfielders."
+  },
+  "module": "M2",
+  "moment": "in_possession",
+  "phase": "progression",
+  "principles": [
+    "P1",
+    "P2",
+    "B5"
+  ],
+  "learner": {
+    "role": "RCM",
+    "start": {
+      "x": 55,
+      "y": 45
+    }
+  },
+  "timeline": {
+    "duration": 5.0,
+    "freezeAt": 3.3,
+    "ball": [
+      {
+        "t": 0,
+        "x": 49,
+        "y": 36,
+        "event": "carry"
+      },
+      {
+        "t": 0.8,
+        "x": 50.5,
+        "y": 36.5,
+        "event": "pass"
+      },
+      {
+        "t": 2.4,
+        "x": 55,
+        "y": 62.5,
+        "event": "carry"
+      },
+      {
+        "t": 3.3,
+        "x": 59,
+        "y": 63
+      },
+      {
+        "t": 5.0,
+        "x": 65,
+        "y": 63
+      }
+    ],
+    "possession": [
+      {
+        "t": 0,
+        "team": "us"
+      }
+    ],
+    "carrier": [
+      {
+        "t": 0,
+        "id": "us-DM"
+      },
+      {
+        "t": 0.8,
+        "id": null
+      },
+      {
+        "t": 2.4,
+        "id": "us-RB"
+      }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "us-RB",
+          "keys": [
+            {
+              "t": 0,
+              "x": 47,
+              "y": 60
+            },
+            {
+              "t": 0.8,
+              "x": 49.5,
+              "y": 61
+            },
+            {
+              "t": 2.4,
+              "x": 55.3,
+              "y": 62.5
+            },
+            {
+              "t": 5.0,
+              "x": 65.3,
+              "y": 63
+            }
+          ]
+        },
+        {
+          "id": "us-ST",
+          "keys": [
+            {
+              "t": 0,
+              "x": 67,
+              "y": 37
+            },
+            {
+              "t": 2.4,
+              "x": 69,
+              "y": 39.5
+            },
+            {
+              "t": 3.3,
+              "x": 69.8,
+              "y": 40
+            },
+            {
+              "t": 5.0,
+              "x": 72,
+              "y": 41
+            }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      {
+        "t": 0,
+        "carrierFacing": "forward",
+        "pressureOnBall": false
+      },
+      {
+        "t": 2.4,
+        "carrierFacing": "forward",
+        "pressureOnBall": false
+      }
+    ]
+  },
+  "answer": {
+    "mode": "authored",
+    "ideal": {
+      "x": 67.5,
+      "y": 52
+    },
+    "tol": {
+      "tx": 4,
+      "ty": 3
+    }
+  },
+  "misconceptions": [
+    {
+      "id": "stayed-central",
+      "region": {
+        "type": "circle",
+        "x": 55,
+        "y": 45,
+        "r": 4
+      },
+      "text": "You stayed in the middle next to your #6, so their midfield can cover you both and the full-back has no pass inside.",
+      "textKid": "You stayed in the middle. Move toward the ball, into the channel behind their midfielders."
+    },
+    {
+      "id": "behind-the-ball",
+      "region": {
+        "type": "rect",
+        "x0": 45,
+        "y0": 52,
+        "x1": 57,
+        "y1": 62
+      },
+      "text": "You dropped behind the ball on the same flank, which is a safe pass but beats nobody; get ahead of their midfield in the half-space.",
+      "textKid": "You went behind the ball. Get ahead, behind their midfielders."
+    }
+  ],
+  "difficulty": 1,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  },
+  "notes": "Authored answer (engine disagreement). With the ball wide on the #8's side, layer A (HELIOS) drags the ball-side #8 into the wing lane 5-10 m inside and behind the ball, in front of their midfield line: base (54.5, 56.2). In engine mode the ghost is (49.5, 55.2) scoring 87 (A) with between-lines 0.00, occupancy 0.60 and support-distance 0.65: a deep support spot behind the ball, not P1. P1 has no rule of its own (its ruleIds are empty), so the zone is centred on the ball-side half-space pocket between their #6/#8 and their centre-back/full-back, with a tighter tolerance (4 x 3 m) so the ghost search does not drift into the wing lane, where their #8 follows the learner (scene.js settle) and the spot is judged 84 in the drill frame. The rules agree at the ideal (ghost 96: between-lines 1.00, lane-open 1.00; the support angle with the #9 is 0.65). The #9 is keyed on their centre-back's shoulder in the centre lane, as in the P1 picture (he pins the centre-back so the half-space stays free)."
+}

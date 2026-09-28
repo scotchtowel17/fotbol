@@ -1,0 +1,207 @@
+{
+  "id": "m2-02-b4-dm",
+  "title": "Help the pressed centre-back",
+  "titleKid": "Help your defender out",
+  "brief": "Your centre-back plays the ball across the back, and their #9 chases it.",
+  "briefKid": "Your defender passes across the back, and their striker chases the ball.",
+  "question": "Your centre-back is under pressure. Where do you go?",
+  "questionKid": "Their striker is chasing your defender. Where do you go to help?",
+  "takeaway": {
+    "standard": "When a teammate is pressed, come short to 5-10 m at an angle with a clear lane, so they have a safe pass out of trouble.",
+    "kid": "Teammate in trouble? Come close so they can pass to you."
+  },
+  "module": "M2",
+  "moment": "in_possession",
+  "phase": "build_up",
+  "principles": [
+    "B4",
+    "B3"
+  ],
+  "learner": {
+    "role": "DM",
+    "start": {
+      "x": 33,
+      "y": 40
+    }
+  },
+  "timeline": {
+    "duration": 5.0,
+    "freezeAt": 3.4,
+    "ball": [
+      {
+        "t": 0,
+        "x": 28,
+        "y": 45,
+        "event": "carry"
+      },
+      {
+        "t": 1.1,
+        "x": 30.5,
+        "y": 44,
+        "event": "pass"
+      },
+      {
+        "t": 2.6,
+        "x": 22,
+        "y": 25,
+        "event": "carry"
+      },
+      {
+        "t": 5.0,
+        "x": 20,
+        "y": 23
+      }
+    ],
+    "possession": [
+      {
+        "t": 0,
+        "team": "us"
+      }
+    ],
+    "carrier": [
+      {
+        "t": 0,
+        "id": "us-RCB"
+      },
+      {
+        "t": 1.1,
+        "id": null
+      },
+      {
+        "t": 2.6,
+        "id": "us-LCB"
+      }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "us-LCB",
+          "keys": [
+            {
+              "t": 0,
+              "x": 27,
+              "y": 25
+            },
+            {
+              "t": 1.1,
+              "x": 25,
+              "y": 25
+            },
+            {
+              "t": 2.6,
+              "x": 22.5,
+              "y": 25
+            },
+            {
+              "t": 5.0,
+              "x": 20.5,
+              "y": 23
+            }
+          ]
+        },
+        {
+          "id": "us-RCM",
+          "keys": [
+            {
+              "t": 0,
+              "x": 38,
+              "y": 49
+            },
+            {
+              "t": 2.6,
+              "x": 39.5,
+              "y": 50
+            },
+            {
+              "t": 5.0,
+              "x": 40,
+              "y": 51
+            }
+          ]
+        },
+        {
+          "id": "them-ST",
+          "keys": [
+            {
+              "t": 0,
+              "x": 30.5,
+              "y": 44.6
+            },
+            {
+              "t": 1.1,
+              "x": 30.8,
+              "y": 40.5
+            },
+            {
+              "t": 2.6,
+              "x": 26.6,
+              "y": 31.8
+            },
+            {
+              "t": 3.4,
+              "x": 24.3,
+              "y": 26.1
+            },
+            {
+              "t": 5.0,
+              "x": 22.6,
+              "y": 24.4
+            }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      {
+        "t": 0,
+        "carrierFacing": "forward",
+        "pressureOnBall": false
+      },
+      {
+        "t": 2.6,
+        "carrierFacing": "sideways",
+        "pressureOnBall": true
+      }
+    ]
+  },
+  "answer": {
+    "mode": "engine",
+    "ideal": {
+      "x": 25.5,
+      "y": 31
+    }
+  },
+  "misconceptions": [
+    {
+      "id": "stayed-with-the-ball",
+      "region": {
+        "type": "circle",
+        "x": 33,
+        "y": 40,
+        "r": 4
+      },
+      "text": "You stayed where the ball was a moment ago, so your pressed centre-back has no short pass and has to kick it long.",
+      "textKid": "You stayed where the ball was. Follow it and help your teammate."
+    },
+    {
+      "id": "hidden-behind-the-presser",
+      "region": {
+        "type": "circle",
+        "x": 29.8,
+        "y": 29.2,
+        "r": 1.5
+      },
+      "text": "You hid behind their #9: as they close your centre-back down, they block the pass to you too, so step out of their shadow into a clear lane.",
+      "textKid": "Their striker is between you and the ball. Move so the pass can reach you."
+    }
+  ],
+  "difficulty": -1,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  },
+  "notes": "Their #9 is keyed on a curved pressing run that arrives about 3.5 m from the centre-back, in front and a little inside, at the freeze (pressureOnBall is tagged true from the reception). Left automatic, the #9 was still 6 m off the ball, so the engine's answer stood in the #9's back, 1.75 m off their line to the ball, and spots squarely in the #9's shadow scored S. Now the answer is short and inside the #9 (the #9 is 1.7 m off that pass, early in it), no spot deep in the #9's shadow (lane-open 0.3 or less) scores S, and the shadow region sits on the line from the ball through the #9 and holds no S spot. Engine note: lane-open clears a lane at 1.5 m even for a presser running at the ball and gives partial credit near it, so spots at the edge of the shadow can still score S with the cover-shadow reason."
+}

@@ -1,0 +1,99 @@
+{
+  "id": "m3-04-u6-st",
+  "title": "High block: jump on the back pass",
+  "titleKid": "They pass back: go and chase",
+  "brief": "You are pressing their #6, who has their back to goal.",
+  "briefKid": "You are chasing their midfielder, who is facing away from our goal.",
+  "question": "Their #6 has played it back to their centre-back. Where do you go?",
+  "questionKid": "They passed it back to their defender. Where do you go?",
+  "takeaway": {
+    "standard": "A back pass is the signal for a high block: the striker jumps first and presses the centre-back, and the whole team pushes up behind you.",
+    "kid": "When they pass back, chase the defender with the ball. Your team follows you."
+  },
+  "module": "M3",
+  "moment": "out_of_possession",
+  "phase": "high_press",
+  "principles": ["U6", "D8", "D1"],
+  "learner": {
+    "role": "ST",
+    "start": { "x": 64.5, "y": 36.5 }
+  },
+  "timeline": {
+    "duration": 4.5,
+    "freezeAt": 3.1,
+    "ball": [
+      { "t": 0, "x": 67, "y": 37, "event": "carry" },
+      { "t": 0.8, "x": 68, "y": 36, "event": "pass" },
+      { "t": 1.9, "x": 84, "y": 24.5, "event": "carry" },
+      { "t": 2.5, "x": 83.5, "y": 25 },
+      { "t": 3.1, "x": 82.7, "y": 25.8 },
+      { "t": 3.8, "x": 81.8, "y": 26.5 },
+      { "t": 4.5, "x": 81, "y": 27.5 }
+    ],
+    "possession": [
+      { "t": 0, "team": "them" }
+    ],
+    "carrier": [
+      { "t": 0, "id": "them-DM" },
+      { "t": 0.8, "id": null },
+      { "t": 1.9, "id": "them-RCB" }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "them-DM",
+          "keys": [
+            { "t": 0, "x": 67.8, "y": 37 },
+            { "t": 0.8, "x": 68.8, "y": 36 },
+            { "t": 1.9, "x": 70, "y": 34 },
+            { "t": 4.5, "x": 73, "y": 31.5 }
+          ]
+        },
+        {
+          "id": "them-RCB",
+          "keys": [
+            { "t": 0, "x": 80, "y": 26 },
+            { "t": 0.8, "x": 82, "y": 25 },
+            { "t": 1.9, "x": 84.8, "y": 24.5 },
+            { "t": 2.5, "x": 84.3, "y": 25 },
+            { "t": 3.1, "x": 83.5, "y": 25.8 },
+            { "t": 3.8, "x": 82.6, "y": 26.5 },
+            { "t": 4.5, "x": 81.8, "y": 27.5 }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      { "t": 0, "carrierFacing": "backward", "pressureOnBall": true },
+      { "t": 0.8, "ballMovingBack": true },
+      { "t": 1.9, "carrierFacing": "forward", "pressureOnBall": false }
+    ]
+  },
+  "answer": {
+    "mode": "engine",
+    "ideal": { "x": 81.5, "y": 27 }
+  },
+  "misconceptions": [
+    {
+      "id": "stayed-on-their-6",
+      "region": { "type": "circle", "x": 65, "y": 36, "r": 5 },
+      "text": "You stayed on their #6 after the ball had gone, so their centre-back has all the time in the world to pick a pass.",
+      "textKid": "The ball went back. Run at the defender who has it now."
+    },
+    {
+      "id": "pressed-from-the-outside",
+      "region": { "type": "circle", "x": 82, "y": 21.5, "r": 2 },
+      "text": "You came at them from the touchline side, which leaves them the easy pass inside; press from the inside and show them down the line.",
+      "textKid": "Come at them from the middle side, so they can only pass down the line."
+    }
+  ],
+  "difficulty": -1,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  },
+  "notes": "answer.ideal keyed on the inside shoulder (81.5, 27) once press.js leaned inside for a carrier off the middle in their half (the curved run: D2, R5). Before that the engine pressed on the ball-to-goal line and graded the inside approach down, which contradicted the pressed-from-the-outside text. If the press rule stops leaning inside, rewrite that text to match what is graded."
+}

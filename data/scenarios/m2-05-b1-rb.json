@@ -1,0 +1,163 @@
+{
+  "id": "m2-05-b1-rb",
+  "title": "Winger inside? You are the width",
+  "titleKid": "Winger inside? You go wide",
+  "brief": "Your winger has drifted inside, and the ball comes across the back to your side.",
+  "briefKid": "Your winger has gone into the middle. The ball comes across to your side.",
+  "question": "Nobody is wide on your flank. Where do you go?",
+  "questionKid": "Nobody is out wide on your side. Where do you go?",
+  "takeaway": {
+    "standard": "When your winger plays inside, the flank is yours: get high and wide, past their winger, so the centre-back has a forward pass out wide and their winger has to choose between pressing the ball and tracking you.",
+    "kid": "Winger went inside? Then you go wide and forward, near the sideline."
+  },
+  "module": "M2",
+  "moment": "in_possession",
+  "phase": "build_up",
+  "principles": [
+    "B1",
+    "B6"
+  ],
+  "learner": {
+    "role": "RB",
+    "start": {
+      "x": 34,
+      "y": 52.5
+    }
+  },
+  "timeline": {
+    "duration": 5.0,
+    "freezeAt": 3.6,
+    "ball": [
+      {
+        "t": 0,
+        "x": 35,
+        "y": 21,
+        "event": "carry"
+      },
+      {
+        "t": 1.0,
+        "x": 36.5,
+        "y": 22.5,
+        "event": "pass"
+      },
+      {
+        "t": 2.7,
+        "x": 41,
+        "y": 48,
+        "event": "carry"
+      },
+      {
+        "t": 5.0,
+        "x": 47,
+        "y": 50
+      }
+    ],
+    "possession": [
+      {
+        "t": 0,
+        "team": "us"
+      }
+    ],
+    "carrier": [
+      {
+        "t": 0,
+        "id": "us-LCB"
+      },
+      {
+        "t": 1.0,
+        "id": null
+      },
+      {
+        "t": 2.7,
+        "id": "us-RCB"
+      }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "us-RW",
+          "keys": [
+            {
+              "t": 0,
+              "x": 56,
+              "y": 58
+            },
+            {
+              "t": 2.7,
+              "x": 60,
+              "y": 51
+            },
+            {
+              "t": 5.0,
+              "x": 63,
+              "y": 49
+            }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      {
+        "t": 0,
+        "carrierFacing": "forward",
+        "pressureOnBall": false,
+        "widthHolders": [
+          "RB",
+          "LW"
+        ]
+      }
+    ]
+  },
+  "answer": {
+    "mode": "authored",
+    "ideal": {
+      "x": 49,
+      "y": 64
+    }
+  },
+  "misconceptions": [
+    {
+      "id": "stayed-behind-their-winger",
+      "region": {
+        "type": "rect",
+        "x0": 33,
+        "y0": 59,
+        "x1": 42.5,
+        "y1": 68
+      },
+      "text": "You went wide but stayed behind their winger, so they can press your centre-back and still cut out the pass to you.",
+      "textKid": "You are behind their winger. Run forward past them, near the sideline."
+    },
+    {
+      "id": "stayed-tucked-in",
+      "region": {
+        "type": "circle",
+        "x": 34,
+        "y": 52.5,
+        "r": 4
+      },
+      "text": "You stayed tucked in as if we were defending, so the flank is empty and the centre-back's only passes go into a crowded middle.",
+      "textKid": "You stayed inside. Nobody is wide, so you go wide."
+    },
+    {
+      "id": "joined-the-winger",
+      "region": {
+        "type": "circle",
+        "x": 56,
+        "y": 53,
+        "r": 4
+      },
+      "text": "You pushed up inside next to your winger, so one opponent can mark you both and the touchline is still empty.",
+      "textKid": "You ran next to your winger. Go wide instead, near the sideline."
+    }
+  ],
+  "difficulty": 0,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  },
+  "notes": "Authored answer: the engine's best spot (about (36.8, 63.4)) keeps the full-back 6.5 m behind the carrying centre-back and behind their left winger, almost in that winger's cover shadow, so the pass beats nobody and invites the winger to press. The coach's answer is high and wide, past their winger (x 41) and a few metres ahead of the ball, so the winger has to choose between the ball and you (B1, B6). A deep, wide spot behind the winger now gets its own misconception note."
+}

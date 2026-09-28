@@ -1,0 +1,96 @@
+{
+  "id": "m1-04-d5-rcb",
+  "title": "Their #9 is yours",
+  "titleKid": "Their striker is yours",
+  "brief": "Their #8 is about to slip the ball out to their winger. Keep an eye on their #9.",
+  "briefKid": "Their midfielder is about to pass out wide. Watch their striker too.",
+  "question": "The ball is out wide and their #9 is running into the box. Where do you go?",
+  "questionKid": "The ball is out wide and their striker is running in. Where do you go?",
+  "takeaway": {
+    "standard": "When the ball goes wide, your job is their #9: drop with your line and stand between them and the middle of our goal, leaning a little toward the ball.",
+    "kid": "When the ball goes wide, stay between their striker and our goal."
+  },
+  "module": "M1",
+  "moment": "out_of_possession",
+  "phase": "low_block",
+  "principles": ["D5", "R1", "U5"],
+  "learner": {
+    "role": "RCB",
+    "start": { "x": 30, "y": 34 }
+  },
+  "timeline": {
+    "duration": 5.0,
+    "freezeAt": 3.2,
+    "ball": [
+      { "t": 0, "x": 43, "y": 27, "event": "carry" },
+      { "t": 0.8, "x": 41, "y": 25.5, "event": "pass" },
+      { "t": 2.2, "x": 24.5, "y": 7.5, "event": "carry" },
+      { "t": 2.7, "x": 23, "y": 7.2 },
+      { "t": 3.2, "x": 21.5, "y": 7 },
+      { "t": 5.0, "x": 17, "y": 8 }
+    ],
+    "possession": [
+      { "t": 0, "team": "them" }
+    ],
+    "carrier": [
+      { "t": 0, "id": "them-RCM" },
+      { "t": 0.8, "id": null },
+      { "t": 2.2, "id": "them-RW" }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "them-RW",
+          "keys": [
+            { "t": 0, "x": 33, "y": 5 },
+            { "t": 0.8, "x": 29.5, "y": 6 },
+            { "t": 2.2, "x": 25.1, "y": 7.3 },
+            { "t": 2.7, "x": 23.6, "y": 7.1 },
+            { "t": 3.2, "x": 22.1, "y": 6.9 },
+            { "t": 5.0, "x": 17.6, "y": 7.9 }
+          ]
+        },
+        {
+          "id": "them-ST",
+          "keys": [
+            { "t": 0, "x": 31, "y": 36 },
+            { "t": 0.8, "x": 28.5, "y": 35 },
+            { "t": 2.2, "x": 22, "y": 32.5 },
+            { "t": 3.2, "x": 18, "y": 30.5 },
+            { "t": 5.0, "x": 13.5, "y": 30 }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      { "t": 0, "carrierFacing": "forward" },
+      { "t": 2.2, "carrierFacing": "forward" }
+    ]
+  },
+  "answer": {
+    "mode": "engine",
+    "ideal": { "x": 13.5, "y": 30 }
+  },
+  "misconceptions": [
+    {
+      "id": "ball-watching",
+      "region": { "type": "circle", "x": 18, "y": 23, "r": 2.5 },
+      "text": "You drifted toward the ball, but your full-back and your partner have it covered; their #9 is your job.",
+      "textKid": "Your teammates have the ball covered, so watch their striker."
+    },
+    {
+      "id": "in-front-of-the-striker",
+      "region": { "type": "circle", "x": 21, "y": 30.5, "r": 2.5 },
+      "text": "You stayed in front of their #9, so a ball played in behind you finds them free in the box.",
+      "textKid": "Get between their striker and our goal, not in front of them."
+    }
+  ],
+  "difficulty": 0,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  }
+}

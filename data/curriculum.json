@@ -82,9 +82,22 @@
         "kid": "Learn the three defending jobs: press the ball, back up, or hold the shape."
       },
       "principles": ["D1", "D2", "D3", "D4", "D5", "T3", "T2", "U8"],
-      "roles": ["CB", "FB", "DM", "CM"],
+      "roles": ["CB", "FB", "DM", "CM", "W", "ST"],
       "unlock": "M0",
-      "scenarios": [],
+      "scenarios": [
+        "m1-01-d1-lcm",
+        "m1-02-d3-rcb",
+        "m1-03-d4-lb",
+        "m1-04-d5-rcb",
+        "m1-05-d2-rb",
+        "m1-06-t3-rw",
+        "m1-07-d3-dm",
+        "m1-08-d1-st",
+        "m1-09-t2-dm",
+        "m1-10-u8-lcb",
+        "m1-11-d2-rcm",
+        "m1-12-u8-rb"
+      ],
       "levels": [
         {
           "level": 1,
@@ -127,9 +140,22 @@
         "kid": "Learn where to stand so your teammate on the ball can pass to you."
       },
       "principles": ["B3", "B4", "B1", "B2", "B6", "B5", "P1", "P2", "P10"],
-      "roles": ["FB", "DM", "CM", "W", "ST"],
+      "roles": ["CB", "FB", "DM", "CM", "W", "ST"],
       "unlock": "M1",
-      "scenarios": [],
+      "scenarios": [
+        "m2-01-b1-lw",
+        "m2-02-b4-dm",
+        "m2-03-b3-rcb",
+        "m2-04-b2-st",
+        "m2-05-b1-rb",
+        "m2-06-b4-rcm",
+        "m2-07-b3-st",
+        "m2-08-b6-rw",
+        "m2-10-b5-lb",
+        "m2-09-p2-lcm",
+        "m2-11-p1-rcm",
+        "m2-12-p10-lw"
+      ],
       "levels": [
         {
           "level": 1,
@@ -174,7 +200,20 @@
       "principles": ["U1", "U2", "U4", "U3", "U5", "U7", "U6", "R1", "R2", "R3"],
       "roles": ["CB", "FB", "DM", "CM", "W", "ST"],
       "unlock": "M2",
-      "scenarios": [],
+      "scenarios": [
+        "m3-01-u2-lcm",
+        "m3-02-u4-rb",
+        "m3-03-u3-rcb",
+        "m3-04-u6-st",
+        "m3-05-u6-lw",
+        "m3-06-u5-lcb",
+        "m3-07-r2-rb",
+        "m3-08-r3-dm",
+        "m3-09-u6-rcm",
+        "m3-10-u3-lcb",
+        "m3-11-r1-rcb",
+        "m3-12-u7-dm"
+      ],
       "levels": [
         {
           "level": 1,

@@ -5,7 +5,8 @@
 import { test, assert, approx } from './harness.js';
 import { buildContext } from '../js/engine/context.js';
 import { makeFrame, posOf } from './fixtures.js';
-import press from '../js/engine/rules/press.js';
+import press, { PRESS_DEFAULTS } from '../js/engine/rules/press.js';
+import { SCENE_DEFAULTS } from '../js/engine/scene.js';
 import cover from '../js/engine/rules/cover.js';
 import levelLine from '../js/engine/rules/level-line.js';
 import keepsOnside from '../js/engine/rules/keeps-onside.js';
@@ -97,25 +98,74 @@ const RCB_PRESSES = {
 // ---------------------------------------------------------------------------
 // press (D1, D2)
 
-test('press: first defender closes the carrier down on the ball-to-goal line (central)', () => {
-  const ctx = mid('us-RCM');
+/** oopMidBlock with the ball carried in our half: our #6 is the first defender, pressing a central carrier (D1). */
+const OUR_HALF = { ball: { x: 38, y: 44 }, move: { 'them-LCM': { x: 38.5, y: 44.5 } } };
+/** A spot `d` m from `c`, `deg` degrees off the line from c to the middle of our goal (positive: toward the middle of the pitch). */
+function offLine(c, d, deg) {
+  const ux = -c.x, uy = 34 - c.y, l = Math.hypot(ux, uy);
+  const r = (deg * (c.y >= 34 ? 1 : -1) * Math.PI) / 180;
+  return [c.x + (d * (ux * Math.cos(r) - uy * Math.sin(r))) / l, c.y + (d * (ux * Math.sin(r) + uy * Math.cos(r))) / l];
+}
+
+test('press: in our half the first defender closes a central carrier down on the ball-to-goal line (D1)', () => {
+  const ctx = mid('us-DM', OUR_HALF);
+  assert.equal(ctx.duty, 'first-defender');
   assert.equal(press.weight(ctx), 3);
-  const good = ev(press, ctx, 56.3, 44.1); // ~2.2 m goal-side of their #8
-  assert.ok(good.s >= 0.8, `good ${good.s}`);
+  const c = { x: 38.5, y: 44.5 };
+  const good = ev(press, ctx, ...offLine(c, 2.2, 0));
+  assert.ok(good.s >= 0.99, `good ${good.s}`);
   assert.equal(good.vars.who, 'their #8');
-  const far = ev(press, ctx, 48, 44); // the base, 10 m off
+  const far = ev(press, ctx, ...offLine(c, 10, 0));
   assert.ok(far.s <= 0.3, `far ${far.s}`);
   assert.equal(far.vars.issue, 'far');
-  assert.equal(far.vars.dist, 11);
-  const wrong = ev(press, ctx, 61, 45); // behind the carrier
+  assert.equal(far.vars.dist, 10);
+  const wrong = ev(press, ctx, 41, 45); // behind the carrier
   assert.ok(wrong.s <= 0.3);
   assert.equal(wrong.vars.issue, 'wrong-side');
-  // 2.2 m away but 50° off the line to goal: the direct route is open.
-  const off = ev(press, ctx, 58.5 - 2.2 * Math.cos(Math.PI * 60 / 180), 44.5 - 2.2 * Math.sin(Math.PI * 60 / 180));
-  assert.ok(off.s <= 0.3, `off-line ${off.s}`);
-  assert.equal(off.vars.issue, 'line');
+  // 2.2 m away but 50° off the line to goal, on either side: the direct route is open.
+  for (const deg of [50, -50]) {
+    const off = ev(press, ctx, ...offLine(c, 2.2, deg));
+    assert.ok(off.s <= 0.3, `off-line ${deg}: ${off.s}`);
+    assert.equal(off.vars.issue, 'line');
+    assert.equal(off.vars.principle, 'D1');
+  }
   const t = good.target;
   assert.ok(ev(press, ctx, t.x, t.y).s >= 0.99, 'the target satisfies the rule');
+});
+
+test("press: in their half the press curves onto the carrier's inside, shutting the pass inside and showing them wide (D2, R5)", () => {
+  const ctx = mid('us-RCM'); // their #8 carries at (58.5, 44.5): their half, off the middle of the pitch
+  assert.equal(ctx.duty, 'first-defender');
+  const c = { x: 58.5, y: 44.5 };
+  // The line itself still passes, and so does the curved run up to centralInside.
+  for (const deg of [0, PRESS_DEFAULTS.centralAim, 40]) assert.ok(ev(press, ctx, ...offLine(c, 2.2, deg)).s >= 0.99, `${deg}° inside`);
+  const outside = ev(press, ctx, ...offLine(c, 2.2, -25)); // on the outside: the pass inside is open
+  assert.ok(outside.s <= 0.6, `outside ${outside.s}`);
+  assert.equal(outside.vars.issue, 'inside');
+  assert.equal(outside.vars.principle, 'D2');
+  const round = ev(press, ctx, ...offLine(c, 2.2, 65)); // swung round past the carrier's inside shoulder
+  assert.ok(round.s <= 0.6, `too round ${round.s}`);
+  assert.equal(round.vars.issue, 'too-round');
+  // The target is the curved run: centralAim inside the line, at the middle of the distance band.
+  const [tx, ty] = offLine(c, (PRESS_DEFAULTS.distMin + PRESS_DEFAULTS.distMax) / 2, PRESS_DEFAULTS.centralAim);
+  approx(outside.target.x, tx, 1e-9);
+  approx(outside.target.y, ty, 1e-9);
+  // The lean fades in between leanFrom and leanTo: near halfway 20° outside costs a little, in their half a lot.
+  const HALFWAY = { ball: { x: 49.5, y: 44 }, move: { 'them-LCM': { x: 50, y: 44.5 }, 'us-RCM': { x: 45, y: 44 } } };
+  const half = ctxOf('oopMidBlock', 'us-RCM', HALFWAY, { x: 45, y: 44 });
+  assert.equal(half.duty, 'first-defender');
+  const s20 = ev(press, half, ...offLine({ x: 50, y: 44.5 }, 2.2, -20)).s;
+  assert.ok(s20 > ev(press, ctx, ...offLine(c, 2.2, -20)).s && s20 < 1, `halfway ${s20}`);
+  // scene.js places the automatic presser with the same lean (context.js pressLean).
+  assert.equal(SCENE_DEFAULTS.pressAim, PRESS_DEFAULTS.centralAim);
+  assert.equal(SCENE_DEFAULTS.pressLeanCentre, PRESS_DEFAULTS.leanCentre);
+  assert.equal(SCENE_DEFAULTS.pressLeanFrom, PRESS_DEFAULTS.leanFrom);
+  assert.equal(SCENE_DEFAULTS.pressLeanTo, PRESS_DEFAULTS.leanTo);
+  // No inside in the middle of the pitch: the band is symmetric there (continuous in the carrier's y).
+  const MIDDLE = { ball: { x: 58, y: 34 }, move: { 'them-LCM': { x: 58.5, y: 34.5 } } };
+  const middle = mid('us-ST', MIDDLE); // our #9 is nearest
+  assert.equal(middle.duty, 'first-defender');
+  approx(ev(press, middle, ...offLine({ x: 58.5, y: 34.5 }, 2.2, 15)).s, ev(press, middle, ...offLine({ x: 58.5, y: 34.5 }, 2.2, -15)).s, 0.05);
 });
 
 test('press: in a wing lane, pressing from the inside beats the line, which beats the outside (D2)', () => {
@@ -133,6 +183,8 @@ test('press: in a wing lane, pressing from the inside beats the line, which beat
   assert.ok(inside.s >= 0.8, `inside ${inside.s}`);
   assert.ok(outside.s <= 0.3, `outside ${outside.s}`);
   assert.equal(outside.vars.issue, 'show-inside');
+  assert.equal(outside.vars.principle, 'D2', 'the angle is D2 (dictate direction), not D1');
+  assert.equal(ev(press, ctx, c.x - 9, c.y - 2).vars.principle, 'D1', 'too far off is D1 (pressure)');
   assert.ok(inside.s > line.s && line.s > outside.s);
   const t = inside.target;
   assert.ok(ev(press, ctx, t.x, t.y).s >= 0.99);
@@ -193,9 +245,18 @@ test('cover: a covering back-liner covers from his line, never from ahead of it 
   const t = ev(cover, ctx, 30, 25).target;
   assert.ok(t.x <= line + 1e-9, `cover target x ${t.x.toFixed(1)} is behind the line`);
   // 4.5 m behind the presser (ideal for a midfield cover) would be 5 m ahead of the line: not for a back-liner.
+  // That is the line's business (U4): the level-line rule marks it down and says so ("get level with your back
+  // line"), and the cover rule does not add a wrong reason ("cover from 10 m behind so one dribble can't beat you both").
   const ahead = ev(cover, ctx, 33, 33), onLine = ev(cover, ctx, 27.5, 33); // 3 m inside him
-  assert.ok(onLine.s >= 0.8 && ahead.s < onLine.s - 0.3, `on the line ${onLine.s.toFixed(2)}, ahead ${ahead.s.toFixed(2)}`);
-  assert.equal(ahead.vars.issue, 'tight');
+  assert.ok(onLine.s >= 0.8, `on the line ${onLine.s.toFixed(2)}`);
+  assert.notEqual(ahead.vars.issue, 'tight');
+  const level = ev(levelLine, ctx, 33, 33);
+  assert.ok(level.s <= 0.3, `level-line ${level.s.toFixed(2)}`);
+  assert.equal(level.vars.issue, 'high');
+  // Too deep behind the line is still the cover rule's: too far to get across in time.
+  const deep = ev(cover, ctx, 16, 31);
+  assert.ok(deep.s < 0.5, `deep ${deep.s.toFixed(2)}`);
+  assert.equal(deep.vars.issue, 'deep');
   // A midfielder covering the same presser is not held to the line.
   const dm = ctxOf('oopMidBlock', 'us-DM', { ...LCB_STEPS_OUT, move: { ...LCB_STEPS_OUT.move, 'us-LB': { x: 29, y: 12 }, 'us-DM': { x: 33, y: 32 } } }, { x: 33, y: 32 });
   assert.equal(dm.secondDefender?.id, 'us-DM');
@@ -340,8 +401,25 @@ test('goal-side: weights by duty and role; not applicable without a man or in po
   assert.equal(goalSide.weight(ctxOf('ipBuildUp', 'us-RCB')), 0);
   assert.equal(goalSide.weight(mid('us-DM')), 0, 'the covering #6 marks nobody');
   assert.equal(goalSide.weight(mid('us-DM', LCM_COVERS)), 0, 'their #9 is the RCB\'s, so the #6 screens instead');
-  assert.equal(goalSide.weight(mid('us-RCM')), 1, 'first defender: press leads');
+  assert.equal(goalSide.weight(mid('us-RCM')), 0, 'first defender outside our box: the press rule judges him');
   assert.equal(goalSide.weight(mid('us-LW')), 1.5);
+});
+
+test('goal-side: the first defender is judged only with the carrier in our box, and only on the side (so the in-box critical stays)', () => {
+  // Their left winger carries into our box; our right-back presses.
+  const IN_BOX = { ball: { x: 14, y: 45 }, move: { 'them-LW': { x: 14.5, y: 45.5 }, 'us-RB': { x: 12, y: 45 } } };
+  const fd = ctxOf(BOX, 'us-RB', IN_BOX, { x: 12, y: 45 });
+  assert.equal(fd.duty, 'first-defender');
+  assert.equal(goalSide.weight(fd), 1);
+  const c = { x: 14.5, y: 45.5 };
+  // The angle is the press rule's: the curved run onto the carrier's inside is not marked down here.
+  for (const deg of [0, 40, 60]) assert.equal(ev(goalSide, fd, ...offLine(c, 2.2, deg)).s, 1, `${deg}° inside, goal-side of them`);
+  const behind = ev(goalSide, fd, 17, 46); // the wrong side of them in our box
+  assert.equal(behind.critical, true);
+  assert.equal(behind.vars.issue, 'wrong-side');
+  // Outside our box the press rule says it (once): "get goal-side before you press".
+  assert.equal(goalSide.weight(mid('us-RCM')), 0);
+  assert.equal(ev(press, mid('us-RCM'), 61, 45).vars.issue, 'wrong-side');
 });
 
 // ---------------------------------------------------------------------------
@@ -408,7 +486,13 @@ test('compact: back-liner keeps the line gap under 15 m and sensible gaps to lin
   assert.equal(crowd.vars.issue, 'crowd');
   assert.equal(ev(compact, ctx, 18, 29).vars.gap, 22);
   assert.equal(ev(compact, ctx, 28, 22).vars.ref, 'your centre-back partner');
-  assert.ok(ev(compact, ctx, 28, 44).s <= 0.3, 'crossing over your partner');
+  const crossed = ev(compact, ctx, 28, 44);
+  assert.ok(crossed.s <= 0.3, 'crossing over your partner');
+  assert.equal(crossed.vars.issue, 'crossed');
+  assert.ok(crossed.vars.gap > 0, 'the gap it names is never negative');
+  assert.equal(crossed.vars.principle, 'U2');
+  assert.equal(ev(compact, ctx, 18, 29).vars.principle, 'U1');
+  checkText(compact, crossed.vars);
   const t = ev(compact, ctx, 18, 22).target;
   assert.equal(ev(compact, ctx, t.x, t.y).s, 1, 'the target fixes both gaps');
 });
@@ -473,6 +557,15 @@ test('screen: the #6 sits 5-10 m ahead of the back line, central, in the passing
   const t = good.target;
   assert.ok(ev(screen, ctx, t.x, t.y).s >= 0.99);
   assert.ok(segDist(t.x, t.y, 58, 44, 36, 38) < 0.5, 'target is on the ball-to-#9 line');
+  // "In the passing line" means close enough to block the pass (RESEARCH 5.8: 1.5 m), not 2.7 m off it.
+  const onLine = (off) => { // a spot at the screening depth, `off` metres off the ball-to-#9 line toward the middle
+    const [bx, by, ax, ay] = [58, 44, 36, 38], l = Math.hypot(ax - bx, ay - by), u = (bx - 37) / (bx - ax);
+    return ev(screen, ctx, bx + (ax - bx) * u + (off * (ay - by)) / l, by + (ay - by) * u - (off * (ax - bx)) / l);
+  };
+  assert.ok(onLine(1).s >= 0.99, `1 m off ${onLine(1).s}`);
+  const off = onLine(2.7);
+  assert.ok(off.s < 0.6, `2.7 m off still scores ${off.s}`);
+  assert.equal(off.vars.issue, 'lane');
 });
 
 test('screen: when the block has slid toward the ball, the screening lane slides with the centre-backs (at most a half-space)', () => {
@@ -511,7 +604,7 @@ function applicablePairs() {
   const ctxs = [
     mid('us-RCM'), mid('us-DM'), mid('us-LCB'), mid('us-RCB'), mid('us-LB', RUNNER), mid('us-DM', LCM_COVERS),
     mid('us-LCM'), mid('us-LW'), mid('us-ST'), wide('us-RB'), wide('us-RCB'), wide('us-LB'), wide('us-LCB'),
-    wide('us-LCM'), wide('us-LW'), wide('us-LCB', RCB_PRESSES), ctxOf(BOX, 'us-RCB'), ctxOf(BOX, 'us-LB'),
+    wide('us-LCM'), wide('us-LW'), wide('us-LCB', RCB_PRESSES), ctxOf(BOX, 'us-RCB'), ctxOf(BOX, 'us-LB'), mid('us-DM', OUR_HALF),
   ];
   const pairs = [];
   for (const ctx of ctxs) for (const rule of RULES) if (rule.weight(ctx) > 0) pairs.push({ rule, ctx });
@@ -614,7 +707,7 @@ test('all rules: feedback text is one sentence, second person, football language
     }
   }
   // Every failure branch of every rule is reached by some spot (goal-side 'tight' is checked in its own test).
-  for (const need of ['press:far', 'press:close', 'press:wrong-side', 'press:line', 'press:show-inside', 'press:too-round',
+  for (const need of ['press:far', 'press:close', 'press:wrong-side', 'press:line', 'press:show-inside', 'press:inside', 'press:too-round',
     'cover:level', 'cover:tight', 'cover:deep', 'cover:behind', 'cover:outside', 'cover:wide',
     'level-line:deep', 'level-line:high', 'keeps-onside:kept', 'goal-side:wrong-side', 'goal-side:angle', 'goal-side:loose',
     'tuck:wide', 'tuck:narrow', 'compact:far-line', 'compact:close-line', 'compact:gap', 'compact:crowd',

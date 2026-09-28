@@ -1,0 +1,95 @@
+{
+  "id": "m3-12-u7-dm",
+  "title": "Protect the edge of the box",
+  "titleKid": "Guard the front of our box",
+  "brief": "Their #8 is about to play the ball out to their winger, deep in your half.",
+  "briefKid": "Their midfielder is about to pass to their winger, near our goal.",
+  "question": "Their winger is running at your box from the wing. Where do you go?",
+  "questionKid": "Their winger is running at our box. Where do you go?",
+  "takeaway": {
+    "standard": "When the ball is wide in your own third, the #6 drops to the edge of the box on the ball side, blocking the pass inside and the cut-back, while the defenders guard the goal.",
+    "kid": "When they attack near our goal, drop back to the front of our box."
+  },
+  "module": "M3",
+  "moment": "out_of_possession",
+  "phase": "low_block",
+  "principles": ["U7", "R3", "U6"],
+  "learner": {
+    "role": "DM",
+    "start": { "x": 36.5, "y": 27 }
+  },
+  "timeline": {
+    "duration": 4.2,
+    "freezeAt": 3.2,
+    "ball": [
+      { "t": 0, "x": 46, "y": 25, "event": "carry" },
+      { "t": 0.8, "x": 44.5, "y": 24, "event": "pass" },
+      { "t": 2.1, "x": 30, "y": 7.5, "event": "carry" },
+      { "t": 2.8, "x": 27.5, "y": 7 },
+      { "t": 3.5, "x": 25, "y": 7 },
+      { "t": 4.2, "x": 22.5, "y": 7.5 }
+    ],
+    "possession": [
+      { "t": 0, "team": "them" }
+    ],
+    "carrier": [
+      { "t": 0, "id": "them-RCM" },
+      { "t": 0.8, "id": null },
+      { "t": 2.1, "id": "them-RW" }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "them-RCM",
+          "keys": [
+            { "t": 0, "x": 46.8, "y": 25 },
+            { "t": 0.8, "x": 45.3, "y": 24 },
+            { "t": 2.1, "x": 42, "y": 25 },
+            { "t": 4.2, "x": 36, "y": 25 }
+          ]
+        },
+        {
+          "id": "them-RW",
+          "keys": [
+            { "t": 0, "x": 38, "y": 5 },
+            { "t": 0.8, "x": 35, "y": 6 },
+            { "t": 2.1, "x": 30.8, "y": 7.5 },
+            { "t": 2.8, "x": 28.3, "y": 7 },
+            { "t": 3.5, "x": 25.8, "y": 7 },
+            { "t": 4.2, "x": 23.3, "y": 7.5 }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      { "t": 0, "carrierFacing": "forward" },
+      { "t": 2.1, "carrierFacing": "forward" }
+    ]
+  },
+  "answer": {
+    "mode": "engine",
+    "ideal": { "x": 23.5, "y": 22 }
+  },
+  "misconceptions": [
+    {
+      "id": "stayed-in-midfield",
+      "region": { "type": "circle", "x": 36, "y": 27, "r": 4 },
+      "text": "You stayed in midfield, so the edge of your box is empty for a cut-back or a pass inside.",
+      "textKid": "Drop back! The front of our box needs you."
+    },
+    {
+      "id": "joined-the-back-line",
+      "region": { "type": "circle", "x": 17.5, "y": 24.5, "r": 3 },
+      "text": "You dropped into the back line; they already have the box covered, so stay just in front of them to block the pass inside.",
+      "textKid": "Too deep! Stay just in front of your defenders."
+    }
+  ],
+  "difficulty": 1,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  }
+}

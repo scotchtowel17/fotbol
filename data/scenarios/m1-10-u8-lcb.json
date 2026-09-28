@@ -1,0 +1,107 @@
+{
+  "id": "m1-10-u8-lcb",
+  "title": "Protect the goal from a cross",
+  "titleKid": "Guard the goal from a cross",
+  "brief": "Their winger is racing toward the byline on the other side of the pitch.",
+  "briefKid": "Their winger is running with the ball on the other side.",
+  "question": "Their winger is about to cross. Where do you go?",
+  "questionKid": "A cross is coming. Where do you go?",
+  "takeaway": {
+    "standard": "On a cross, centre-backs guard the goal: stay central between the posts, goal-side of their #9, and leave the crosser to your full-back.",
+    "kid": "When a cross is coming, stay in the middle, between their striker and our goal."
+  },
+  "module": "M1",
+  "moment": "out_of_possession",
+  "phase": "low_block",
+  "principles": ["U8", "D5", "R1"],
+  "learner": {
+    "role": "LCB",
+    "start": { "x": 24, "y": 36.5 }
+  },
+  "timeline": {
+    "duration": 5.0,
+    "freezeAt": 3.4,
+    "ball": [
+      { "t": 0, "x": 35, "y": 50, "event": "carry" },
+      { "t": 0.6, "x": 33.5, "y": 51, "event": "pass" },
+      { "t": 1.8, "x": 18, "y": 61, "event": "carry" },
+      { "t": 2.6, "x": 13, "y": 60 },
+      { "t": 3.4, "x": 9, "y": 58.5 },
+      { "t": 4.0, "x": 7.5, "y": 58, "event": "cross" },
+      { "t": 5.0, "x": 6, "y": 38 }
+    ],
+    "possession": [
+      { "t": 0, "team": "them" }
+    ],
+    "carrier": [
+      { "t": 0, "id": "them-LCM" },
+      { "t": 0.6, "id": null },
+      { "t": 1.8, "id": "them-LW" },
+      { "t": 4.0, "id": null }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "them-LW",
+          "keys": [
+            { "t": 0, "x": 27, "y": 62.5 },
+            { "t": 0.6, "x": 24, "y": 62 },
+            { "t": 1.8, "x": 18.6, "y": 61.2 },
+            { "t": 2.6, "x": 13.6, "y": 60.2 },
+            { "t": 3.4, "x": 9.6, "y": 58.8 },
+            { "t": 4.0, "x": 8.1, "y": 58.3 },
+            { "t": 5.0, "x": 7, "y": 57 }
+          ]
+        },
+        {
+          "id": "them-ST",
+          "keys": [
+            { "t": 0, "x": 25, "y": 35 },
+            { "t": 1.8, "x": 18.5, "y": 35.5 },
+            { "t": 3.4, "x": 11, "y": 36.3 },
+            { "t": 5.0, "x": 6.5, "y": 37 }
+          ]
+        },
+        {
+          "id": "them-RW",
+          "keys": [
+            { "t": 0, "x": 31, "y": 6 },
+            { "t": 1.8, "x": 21, "y": 12 },
+            { "t": 3.4, "x": 11, "y": 24 },
+            { "t": 5.0, "x": 6.5, "y": 28 }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      { "t": 0, "carrierFacing": "forward" },
+      { "t": 1.8, "carrierFacing": "forward" }
+    ]
+  },
+  "answer": {
+    "mode": "engine",
+    "ideal": { "x": 8.5, "y": 37 }
+  },
+  "misconceptions": [
+    {
+      "id": "ball-watching",
+      "region": { "type": "circle", "x": 10, "y": 45.5, "r": 3 },
+      "text": "You were pulled toward the ball, which leaves the middle of the goal open for the cross.",
+      "textKid": "Don't go to the ball; guard the middle of the goal."
+    },
+    {
+      "id": "in-front-of-the-striker",
+      "region": { "type": "circle", "x": 14.5, "y": 37, "r": 2 },
+      "text": "You stepped out in front of their #9, so a cross over your head finds them free in front of goal.",
+      "textKid": "Get between their striker and our goal, not in front of them."
+    }
+  ],
+  "difficulty": 1,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  }
+}

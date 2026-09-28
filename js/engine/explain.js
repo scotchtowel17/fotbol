@@ -19,6 +19,9 @@ export const EXPLAIN_DEFAULTS = Object.freeze({
   minMove: 1, // [D] metres; smaller moves are not worth phrasing
   centreBand: 1, // [D] within this of y = 34 you are "central", so sideways moves name a touchline
   zoneFailBelow: 0.6, // [D] a zone score below this (about 2x the tolerance from the base) is itself a reason to move
+  tradeoffMargin: 0.1, // [D] a rule the best spot also fails is a trade-off, not a reason, unless you score this much lower on it
+  bestEps: 0.5, // [D] points: a spot scoring within this of the best spot (or more) gets no reasons (nothing left to fix)
+  zoneGap: 5, // [D] points: with no other reason left, a zone costing at least this much is the reason (F2)
 });
 
 /**
@@ -63,7 +66,9 @@ function say(rule, wording, key, vars) {
 }
 
 function principleOf(rule, result, principles, wording) {
-  const id = result.principles?.[0] ?? rule?.principles?.[0] ?? null;
+  // A rule that checks several principles may say which one this result is about (vars.principle).
+  const own = result.principles ?? rule?.principles ?? [];
+  const id = (own.includes(result.vars?.principle) ? result.vars.principle : own[0]) ?? null;
   const p = id && principles ? principles[id] : null;
   const name = p?.name ?? p?.title ?? rule?.text?.[wording]?.name ?? rule?.text?.standard?.name ?? result.id;
   return { id, name };
@@ -75,12 +80,19 @@ function principleOf(rule, result, principles, wording) {
  * @param {object} ctx         from buildContext()
  * @param {{x:number,y:number}} spot  the judged spot
  * @param {{ wording?: 'standard'|'kid', max?: number, principles?: object,
- *           ghost?: {x:number,y:number}|{spot:{x:number,y:number}}, rules?: object[] }} [opts]
+ *           ghost?: {x:number,y:number}|{spot:{x:number,y:number}, result?: object}, rules?: object[] }} [opts]
  *   principles: a byId map (or {byId}) from data/principles.json; ghost: the fix target
- *   (defaults to the zone centre); rules: the rule set used to evaluate (defaults to the registry).
+ *   (defaults to the zone centre), optionally with `result`, evaluate() at it in the same zone (a
+ *   computeGhost() result has both); rules: the rule set used to evaluate (defaults to the registry).
  *   Failing rules come first (criticals, then by weight x (1 - s)); a zone score below zoneFailBelow
  *   then adds the zone itself as a reason (ruleId 'zone', principle F2), so a spot far from the
  *   role's place in the shape is never explained by silence.
+ *   With the best spot's result, what the best spot itself gives up is a trade-off, not a mistake:
+ *   a rule (or the zone) the best spot also fails is not a reason unless you fail it by more than
+ *   tradeoffMargin, and a spot scoring within bestEps of the best spot (or more) gets no reasons and
+ *   no cue at all (only a broken critical rule is always a reason). So following a reason never
+ *   leads away from the best spot. When no reason is left and the zone still costs zoneGap points or
+ *   more, the zone is the reason.
  * @returns {{ grade:string, score:number, headline:string,
  *             reasons: { ruleId:string, principleId:string|null, name:string, text:string, severity:number, critical:boolean }[],
  *             praise: string[], fix: { text:string, dx:number, dy:number }|null,
@@ -94,18 +106,35 @@ export function explain(evalResult, ctx, spot, opts = {}) {
   const byId = opts.rules ? Object.fromEntries(opts.rules.map((r) => [r.id, r])) : RULES_BY_ID;
   const results = evalResult.rules ?? [];
 
+  // The best spot's own evaluation (the ghost's), when given: what it fails too is a trade-off.
+  const best = opts.ghost?.result ?? null;
+  const bestRule = new Map((best?.rules ?? []).map((r) => [r.id, r]));
+  const atBest = !!best && Number.isFinite(best.raw) && Number.isFinite(evalResult.raw) && evalResult.raw >= best.raw - P.bestEps;
+  const tradeoff = (r) => {
+    if (r.critical || !best) return false;
+    if (atBest) return true;
+    const b = r.zone ? { s: best.sZone, fails: best.sZone < P.zoneFailBelow } : bestRule.get(r.id);
+    const fails = r.zone ? b.fails : !!b && !b.critical && b.s < P.failBelow;
+    return fails && Number.isFinite(b.s) && r.s >= b.s - P.tradeoffMargin;
+  };
+
   // Failing rules first (criticals, then by w (1 - s): RESEARCH 5.6); the zone after them, since a
   // named principle says more than "you are out of your spot".
   const failing = results
-    .filter((r) => r.critical || r.s < P.failBelow)
+    .filter((r) => (r.critical || r.s < P.failBelow) && !tradeoff(r))
     .sort((a, b) => (b.critical - a.critical) || (b.weight * (1 - b.s) - a.weight * (1 - a.s)));
   const sZone = evalResult.sZone;
-  if (Number.isFinite(sZone) && sZone < P.zoneFailBelow) {
-    const role = ROLE_INFO[ctx?.learner?.role]?.label?.toLowerCase();
-    failing.push({
-      id: ZONE_REASON.id, principles: ZONE_REASON.principles, weight: SCORE_WEIGHTS.zone, s: sZone, critical: false, zone: true,
-      vars: { dist: Math.round(evalResult.distance ?? 0), role: role ? `a ${role}` : 'your position' },
-    });
+  const role = ROLE_INFO[ctx?.learner?.role]?.label?.toLowerCase();
+  const zoneReason = {
+    id: ZONE_REASON.id, principles: ZONE_REASON.principles, weight: SCORE_WEIGHTS.zone, s: sZone, critical: false, zone: true,
+    vars: { dist: Math.round(evalResult.distance ?? 0), role: role ? `a ${role}` : 'your position' },
+  };
+  if (Number.isFinite(sZone)) {
+    // The zone is a reason when it is far off, or when it is all that is left to explain a score it
+    // clearly costs (every rule passed, or failed only as much as the best spot does).
+    const far = sZone < P.zoneFailBelow;
+    const costly = !failing.length && 100 * SCORE_WEIGHTS.zone * (1 - sZone) >= P.zoneGap;
+    if ((far || costly) && !tradeoff(zoneReason)) failing.push(zoneReason);
   }
 
   const reasons = [];

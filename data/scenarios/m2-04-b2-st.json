@@ -1,0 +1,128 @@
+{
+  "id": "m2-04-b2-st",
+  "title": "Their line steps up: stay onside",
+  "titleKid": "Their defenders step up: stay onside",
+  "brief": "Your #8 is closed down and plays the ball back to your #6.",
+  "briefKid": "Your midfielder is being chased and passes the ball back.",
+  "question": "Their back line is stepping up. Where do you go?",
+  "questionKid": "Their defenders are stepping up. Where do you go?",
+  "takeaway": {
+    "standard": "Stay on the last defender's shoulder as their line moves: when they step up, you come back with them so you stay onside and keep pinning them.",
+    "kid": "Their defenders step up? Step back with them so you are never offside."
+  },
+  "module": "M2",
+  "moment": "in_possession",
+  "phase": "progression",
+  "principles": [
+    "B2",
+    "F4",
+    "R5"
+  ],
+  "learner": {
+    "role": "ST",
+    "start": {
+      "x": 87,
+      "y": 27
+    }
+  },
+  "timeline": {
+    "duration": 4.5,
+    "freezeAt": 3.0,
+    "ball": [
+      {
+        "t": 0,
+        "x": 76,
+        "y": 24,
+        "event": "carry"
+      },
+      {
+        "t": 1.0,
+        "x": 75.5,
+        "y": 24.5,
+        "event": "pass"
+      },
+      {
+        "t": 2.1,
+        "x": 62,
+        "y": 31,
+        "event": "carry"
+      },
+      {
+        "t": 4.5,
+        "x": 66,
+        "y": 31
+      }
+    ],
+    "possession": [
+      {
+        "t": 0,
+        "team": "us"
+      }
+    ],
+    "carrier": [
+      {
+        "t": 0,
+        "id": "us-LCM"
+      },
+      {
+        "t": 1.0,
+        "id": null
+      },
+      {
+        "t": 2.1,
+        "id": "us-DM"
+      }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": []
+    },
+    "tags": [
+      {
+        "t": 0,
+        "carrierFacing": "backward",
+        "pressureOnBall": true
+      },
+      {
+        "t": 2.1,
+        "carrierFacing": "forward",
+        "pressureOnBall": false
+      }
+    ]
+  },
+  "answer": {
+    "mode": "engine"
+  },
+  "misconceptions": [
+    {
+      "id": "stayed-offside",
+      "region": {
+        "type": "rect",
+        "x0": 80,
+        "y0": 22,
+        "x1": 92,
+        "y1": 42
+      },
+      "text": "You stayed high while their line stepped up, so you are now offside and the #6 cannot play you in.",
+      "textKid": "You stayed up there and now you are offside. Step back with their defenders."
+    },
+    {
+      "id": "dropped-too-deep",
+      "region": {
+        "type": "circle",
+        "x": 67,
+        "y": 34,
+        "r": 4
+      },
+      "text": "You dropped all the way back toward the ball, so nobody is pinning their back line and they can squeeze up on your midfield.",
+      "textKid": "You came too far back. Stay level with their last defender."
+    }
+  ],
+  "difficulty": 0,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  }
+}

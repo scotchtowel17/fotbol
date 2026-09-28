@@ -104,11 +104,15 @@ export default {
         vars.issue = vGap > p.vertical.range[1] ? 'far-line' : 'close-line';
         vars.gap = whole(Math.abs(vGap)); vars.max = p.vertical.range[1];
       } else {
-        const side = worst === sL ? p.L : p.R, g = worst === sL ? gL : gR;
-        vars.issue = g > side.hi ? 'gap' : 'crowd';
+        // A negative gap means you have crossed over that line-mate (U2: slide, don't cross): say that first.
+        const crossedL = p.L && gL < 0 && sL < 0.999, crossedR = p.R && gR < 0 && sR < 0.999;
+        const useL = crossedL || (!crossedR && worst === sL);
+        const side = useL ? p.L : p.R, g = useL ? gL : gR;
+        vars.issue = g > side.hi ? 'gap' : g < 0 ? 'crossed' : 'crowd';
         vars.ref = side.name; vars.refKid = 'your teammate';
-        vars.gap = whole(g); vars.max = side.hi;
+        vars.gap = whole(Math.abs(g)); vars.max = side.hi;
       }
+      vars.principle = vars.issue === 'far-line' || vars.issue === 'close-line' ? 'U1' : 'U2';
     }
     return { s, target: { x: tx, y: ty }, vars };
   },
@@ -119,8 +123,9 @@ export default {
       fail: (v) => ({
         'far-line': `${v.unit === 'back' ? 'Push up' : 'Drop'} to close the ${v.gap} m gap to ${v.ref}, and keep it under ${v.max} m so nobody can receive between the lines.`,
         'close-line': `${v.unit === 'back' ? 'Drop off' : 'Step up off'} ${v.ref} a few metres, because two lines stacked flat are beaten by one pass.`,
-        gap: `Slide across toward ${v.ref}, because a ${v.gap} m gap is big enough for a pass to split you.`,
+        gap: `Slide across toward ${v.ref}, because a gap of ${v.gap} m is big enough for a pass to split you.`,
         crowd: `Give ${v.ref} more room, because ${v.gap} m apart one attacker can occupy you both.`,
+        crossed: `Slide back beside ${v.ref} rather than across them, because crossing over leaves your own channel empty.`,
       })[v.issue] ?? 'Keep the gaps to your teammates small.',
       cue: () => 'Where is the biggest gap around you that a pass could go through?',
     },
@@ -132,6 +137,7 @@ export default {
         'close-line': v.unit === 'back' ? `Drop a little behind ${v.refKid}.` : `Step a little in front of ${v.refKid}.`,
         gap: `Slide toward ${v.refKid}, there is a big hole between you.`,
         crowd: `Give ${v.refKid} a little more room.`,
+        crossed: `Don't swap places with ${v.refKid}, stay next to them.`,
       })[v.issue] ?? 'Stay close to your teammates.',
       cue: () => 'Where is the biggest hole between you and your teammates?',
     },

@@ -1,0 +1,98 @@
+{
+  "id": "m1-12-u8-rb",
+  "title": "Guard the back post",
+  "titleKid": "Cover the far post",
+  "brief": "Their winger is getting in behind on the other side of the pitch.",
+  "briefKid": "Their winger is running with the ball on the other side.",
+  "question": "A cross is coming from the far wing and their other winger is running in. Where do you go?",
+  "questionKid": "A cross is coming from the other side. Where do you go?",
+  "takeaway": {
+    "standard": "On a cross from the far wing, tuck in to the back post, goal-side of the runner, so nobody gets a free header behind everyone.",
+    "kid": "When a cross comes from the other side, cover the far post."
+  },
+  "module": "M1",
+  "moment": "out_of_possession",
+  "phase": "low_block",
+  "principles": ["U8", "D4", "D5"],
+  "learner": {
+    "role": "RB",
+    "start": { "x": 24.5, "y": 42.5 }
+  },
+  "timeline": {
+    "duration": 5.0,
+    "freezeAt": 3.4,
+    "ball": [
+      { "t": 0, "x": 36, "y": 21, "event": "carry" },
+      { "t": 0.6, "x": 34.5, "y": 19.5, "event": "pass" },
+      { "t": 1.8, "x": 19, "y": 8, "event": "carry" },
+      { "t": 2.6, "x": 14, "y": 8.5 },
+      { "t": 3.4, "x": 10, "y": 9.5 },
+      { "t": 4.0, "x": 8.5, "y": 10, "event": "cross" },
+      { "t": 5.0, "x": 7, "y": 36 }
+    ],
+    "possession": [
+      { "t": 0, "team": "them" }
+    ],
+    "carrier": [
+      { "t": 0, "id": "them-RCM" },
+      { "t": 0.6, "id": null },
+      { "t": 1.8, "id": "them-RW" },
+      { "t": 4.0, "id": null }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "them-RW",
+          "keys": [
+            { "t": 0, "x": 28, "y": 5.5 },
+            { "t": 0.6, "x": 25, "y": 6 },
+            { "t": 1.8, "x": 19.6, "y": 7.8 },
+            { "t": 2.6, "x": 14.6, "y": 8.3 },
+            { "t": 3.4, "x": 10.6, "y": 9.3 },
+            { "t": 4.0, "x": 9.1, "y": 9.8 },
+            { "t": 5.0, "x": 8, "y": 11 }
+          ]
+        },
+        {
+          "id": "them-LW",
+          "keys": [
+            { "t": 0, "x": 31, "y": 61 },
+            { "t": 1.8, "x": 22, "y": 53 },
+            { "t": 3.4, "x": 12.5, "y": 43.5 },
+            { "t": 5.0, "x": 7, "y": 40 }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      { "t": 0, "carrierFacing": "forward" },
+      { "t": 1.8, "carrierFacing": "forward" }
+    ]
+  },
+  "answer": {
+    "mode": "engine",
+    "ideal": { "x": 8, "y": 41 }
+  },
+  "misconceptions": [
+    {
+      "id": "tucked-too-far",
+      "region": { "type": "circle", "x": 8.5, "y": 31.5, "r": 2.5 },
+      "text": "You tucked in so far that their winger has the back post to themselves.",
+      "textKid": "You came in too far, so their winger is free at the far post."
+    },
+    {
+      "id": "wrong-side-of-the-runner",
+      "region": { "type": "circle", "x": 14.5, "y": 45, "r": 3 },
+      "text": "You are on the wrong side of their winger, so a cross to the back post gives them a free header.",
+      "textKid": "Get between their winger and our goal."
+    }
+  ],
+  "difficulty": 1,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  }
+}

@@ -1,6 +1,6 @@
 import { test, assert, approx, loadJSON } from './harness.js';
 import {
-  frameAt, learnerBaseAt, ballAt, meanBallAt, possessionAt, carrierAt, ballEvents, timing, inGrace, sampleTimes, interpKeys,
+  frameAt, learnerBaseAt, ballAt, meanBallAt, possessionAt, carrierAt, ballEvents, timing, inGrace, sampleTimes, interpKeys, adjustCells,
   TIMELINE_DEFAULTS,
 } from '../js/engine/timeline.js';
 import { SCENE_DEFAULTS } from '../js/engine/scene.js';
@@ -168,6 +168,68 @@ test('the automatic presser is committed to until the next key, then re-decided'
   assert.ok(w.d < 0.75, `${w.id} moved ${w.d.toFixed(2)} m in 0.05 s at t = ${w.t.toFixed(2)}`);
 });
 
+test('settle and separation are averaged over adjustWindow, so no auto player is flung across the pitch', async () => {
+  // With the HELIOS table, separation used to swing our #6 round a crossing opponent at 34 m/s (0.34 m in 0.01 s).
+  const H = createFormation(await loadJSON('data/formations/helios-433.json'));
+  const hf = { us: H, them: H };
+  const peak = (params, from, to) => {
+    let prev = null, worst = { v: 0 };
+    for (let k = Math.round(from * 100); k <= Math.round(to * 100); k++) {
+      const f = frameAt(S, k / 100, { formations: hf, params });
+      if (prev) f.players.forEach((p, i) => { const v = dist(p, prev.players[i]) * 100; if (v > worst.v) worst = { v, id: p.id, t: k / 100 }; });
+      prev = f;
+    }
+    return worst;
+  };
+  const snap = peak({ adjustWindow: 0 }, 0.5, 1.2);
+  assert.ok(snap.v > 30, `fixture: without the averaging ${snap.id} snaps at ${snap.v.toFixed(1)} m/s`);
+  const smooth = peak({}, 0, timing(S).duration);
+  assert.ok(smooth.v < 22, `${smooth.id} moves ${smooth.v.toFixed(1)} m/s at t = ${smooth.t}`);
+  // The averaging is a pure function of t: a later call for the same t gives the same frame.
+  const again = frameAt(S, 0.83, { formations: hf }).players;
+  frameAt(S, 0.83, { formations: hf }).players.forEach((p, i) => assert.ok(dist(p, again[i]) < 1e-9, p.id));
+  // Its cells cover the window centred on t with weights summing to 1, and none when it is off.
+  const cells = adjustCells(2.37);
+  approx(cells.reduce((a, [, w]) => a + w, 0), 1, 1e-12);
+  assert.ok(cells.every(([i]) => Math.abs(i * TIMELINE_DEFAULTS.adjustStep - 2.37) <= TIMELINE_DEFAULTS.adjustWindow / 2 + TIMELINE_DEFAULTS.adjustStep / 2 + 1e-9));
+  assert.deepEqual(adjustCells(2.37, { ...TIMELINE_DEFAULTS, adjustWindow: 0 }), []);
+});
+
+test('a counter-attack: the press goes to the #8 already goal-side, and the #9 the play left behind never runs back past the carrier', async () => {
+  // Ranked on formation spots, our #9 (whose spot is near the ball but who is 6 m up the pitch at the turnover)
+  // used to be sent to press and sprinted 22 m in 2 s past the dribbler. At a key the press is ranked on where
+  // the players are, so the #8 who is goal-side of the break takes it.
+  const H = createFormation(await loadJSON('data/formations/helios-433.json'));
+  const hf = { us: H, them: H };
+  const COUNTER = {
+    id: 'counter-fixture', title: 'Counter fixture', moment: 'defensive_transition', principles: ['T2'], learner: { role: 'DM' },
+    timeline: {
+      duration: 5.5,
+      ball: [{ t: 0, x: 64, y: 45, event: 'carry' }, { t: 0.9, x: 66.5, y: 46.5, event: 'pass' }, { t: 1.2, x: 70.5, y: 48, event: 'carry' },
+        { t: 2, x: 66, y: 46 }, { t: 2.8, x: 61, y: 44 }, { t: 3.4, x: 57, y: 42.5 }, { t: 5.5, x: 45, y: 38 }],
+      possession: [{ t: 0, team: 'us' }, { t: 1.2, team: 'them' }],
+      carrier: [{ t: 0, id: 'us-RCM' }, { t: 0.9, id: null }, { t: 1.2, id: 'them-LCM' }],
+      players: {
+        auto: true,
+        overrides: [{ id: 'them-LCM', keys: [{ t: 0, x: 72, y: 47 }, { t: 0.9, x: 71.3, y: 47.8 }, { t: 1.2, x: 71.2, y: 48.1 }, { t: 2, x: 66.7, y: 46.1 },
+          { t: 2.8, x: 61.7, y: 44.1 }, { t: 3.4, x: 57.7, y: 42.6 }, { t: 5.5, x: 45.7, y: 38.1 }] }],
+      },
+    },
+  };
+  for (const learnerId of [undefined, null]) { // the drill's playback (the #6 held back) and the free one (the learner's base)
+    for (let t = 1.2; t <= 5.5 + 1e-9; t += 0.1) {
+      const f = frameAt(COUNTER, t, { formations: hf, learnerId });
+      const c = pos(f, 'them-LCM');
+      assert.ok(pos(f, 'us-ST').x > c.x + 2, `t = ${t.toFixed(1)}: the #9 stays behind the play (${(pos(f, 'us-ST').x - c.x).toFixed(1)} m)`);
+      for (const p of f.players.filter((q) => q.team === 'us' && Math.abs(dist(q, f.ball) - SCENE_DEFAULTS.pressDistance) < 1e-6)) {
+        assert.ok(p.x < c.x, `t = ${t.toFixed(1)}: ${p.id} presses from the goal side`);
+      }
+    }
+    const f = frameAt(COUNTER, 3.4, { formations: hf, learnerId });
+    approx(dist(pos(f, 'us-RCM'), f.ball), SCENE_DEFAULTS.pressDistance, 1e-9, 'our #8 presses the break');
+  }
+});
+
 test('the example scenario plays back smoothly and freezes on the intended picture', async () => {
   const ex = await loadJSON('data/scenarios/_example.json');
   const w = maxStep(ex, 0, timing(ex).duration, 0.05);
@@ -220,4 +282,17 @@ test('learnerBaseAt: the learner role as an auto player would stand (formation s
   assert.deepEqual(asLearner, pos(free, presser.id));
   assert.ok(dist(asLearner, free.ball) < dist(pos(frameAt(S, 1, { formations, learnerId: presser.id }), presser.id), free.ball), 'nearer the ball than its formation spot');
   assert.throws(() => learnerBaseAt({ ...S, learner: undefined }, 1, { formations }), TypeError);
+});
+
+test('learnerBaseAt: right after a state change the base is where the new state wants the role, not the blended auto player', () => {
+  // t = 3.2: our RB has just intercepted (possession change at t = 3), so every auto player is still blending.
+  const t = 3.2;
+  const unblended = { possessionBlend: 0, carrierBlend: 0, maxBlend: 0 };
+  for (const role of ['LCB', 'DM', 'ST']) {
+    const id = `us-${role}`;
+    const want = pos(frameAt(S, t, { formations, learnerId: null, params: unblended }), id);
+    const blended = pos(frameAt(S, t, { formations, learnerId: null }), id);
+    assert.deepEqual(learnerBaseAt(S, t, { formations, learnerId: id }), want, role);
+    if (role === 'ST') assert.ok(dist(want, blended) > 0.5, 'the fixture really is mid-blend');
+  }
 });

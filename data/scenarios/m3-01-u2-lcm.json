@@ -1,0 +1,106 @@
+{
+  "id": "m3-01-u2-lcm",
+  "title": "Slide across with the switch",
+  "titleKid": "Slide across with the ball",
+  "brief": "They are working the ball down one flank and looking for the switch.",
+  "briefKid": "They have the ball on one side and want to pass it across.",
+  "question": "The ball has gone across to the other flank. Where do you go now?",
+  "questionKid": "The ball went to the other side. Where do you go now?",
+  "takeaway": {
+    "standard": "When the ball is switched, the whole midfield slides across together, so the gaps between you stay small and nobody can pass through the middle.",
+    "kid": "When the ball goes to the other side, slide across with your teammates."
+  },
+  "module": "M3",
+  "moment": "out_of_possession",
+  "phase": "mid_block",
+  "principles": ["U2", "U1"],
+  "learner": {
+    "role": "LCM",
+    "start": { "x": 57, "y": 16 }
+  },
+  "timeline": {
+    "duration": 6.5,
+    "freezeAt": 5.3,
+    "ball": [
+      { "t": 0, "x": 62, "y": 9, "event": "carry" },
+      { "t": 1, "x": 62.5, "y": 9.5, "event": "pass" },
+      { "t": 2.1, "x": 72, "y": 21 },
+      { "t": 2.8, "x": 71, "y": 23.5, "event": "pass" },
+      { "t": 4.6, "x": 58, "y": 58, "event": "carry" },
+      { "t": 6.5, "x": 50, "y": 59.5 }
+    ],
+    "possession": [
+      { "t": 0, "team": "them" }
+    ],
+    "carrier": [
+      { "t": 0, "id": "them-RB" },
+      { "t": 1, "id": null },
+      { "t": 2.1, "id": "them-RCB" },
+      { "t": 2.8, "id": null },
+      { "t": 4.6, "id": "them-LB" }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "them-RB",
+          "keys": [
+            { "t": 0, "x": 62.8, "y": 9 },
+            { "t": 1, "x": 63.3, "y": 9.5 },
+            { "t": 2.5, "x": 67, "y": 5 },
+            { "t": 6.5, "x": 64, "y": 6 }
+          ]
+        },
+        {
+          "id": "them-RCB",
+          "keys": [
+            { "t": 0, "x": 66, "y": 14 },
+            { "t": 2.1, "x": 72.8, "y": 21 },
+            { "t": 2.8, "x": 71.8, "y": 23.5 },
+            { "t": 4.5, "x": 72, "y": 24 },
+            { "t": 6.5, "x": 68, "y": 28 }
+          ]
+        },
+        {
+          "id": "them-LB",
+          "keys": [
+            { "t": 0, "x": 64, "y": 50 },
+            { "t": 2.8, "x": 65, "y": 55 },
+            { "t": 4.6, "x": 58.8, "y": 58 },
+            { "t": 6.5, "x": 50.8, "y": 59.5 }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      { "t": 0, "carrierFacing": "forward" },
+      { "t": 2.1, "carrierFacing": "forward", "pressureOnBall": false },
+      { "t": 4.6, "carrierFacing": "forward" }
+    ]
+  },
+  "answer": {
+    "mode": "engine",
+    "ideal": { "x": 48.5, "y": 34.5 }
+  },
+  "misconceptions": [
+    {
+      "id": "stayed-on-the-old-side",
+      "region": { "type": "circle", "x": 56, "y": 16, "r": 6 },
+      "text": "You stayed where the ball used to be, so the middle behind your teammates is wide open.",
+      "textKid": "The ball went to the other side, so slide across with your team."
+    },
+    {
+      "id": "chased-the-switch",
+      "region": { "type": "circle", "x": 51, "y": 52, "r": 4 },
+      "text": "You ran all the way to the ball, but your teammate on that side is already there; slide only as far as the middle.",
+      "textKid": "Your teammate is already on the ball. Stay in the middle instead."
+    }
+  ],
+  "difficulty": -1,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  }
+}

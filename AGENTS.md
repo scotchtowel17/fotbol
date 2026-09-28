@@ -11,12 +11,13 @@ Read these first:
 
 ```bash
 npm test            # node --test on tests/**/*.test.js (Node >= 22: the quoted glob needs it; CI runs 22; no dependencies)
-npm run check       # validate every scenario and print the engine's answer at the freeze frame
+npm run check       # validate every scenario, print the engine's answer, fail the drill-quality gates, check the index is current
+npm run index       # rebuild data/scenarios/index.json (never edit it by hand)
 npm run serve       # python3 -m http.server 8080  → http://localhost:8080
-node scripts/sanity.mjs > docs/sanity-output.txt   # the engine's answers on the canonical situations, for coach review
+npm run sanity      # node scripts/sanity.mjs > docs/sanity-output.txt: the engine's answers on the canonical situations, for coach review
 ```
 
-`tests.html` runs the same test files in a browser. `#/dev` is the engine playground: a real scene, the ghost and heatmap, and a live score while you drag yourself or the ball. After any change to layer A or a rule, `tests/integration.test.js` must stay green (every canonical situation and role still gets an S-grade ghost) and the sanity report should be regenerated.
+`tests.html` runs the same test files in a browser. `#/dev` is the engine playground: a real scene, the ghost and heatmap, and a live score while you drag yourself or the ball. After any change to layer A or a rule, `tests/integration.test.js` must stay green (every canonical situation and role still gets an S-grade ghost), `npm run check` must stay green (every authored drill still has an S answer where the coach keyed it), and the sanity report should be regenerated.
 
 ## Hard rules
 
@@ -37,6 +38,7 @@ node scripts/sanity.mjs > docs/sanity-output.txt   # the engine's answers on the
 | Run the whole loop for one scene | `js/engine/analyse.js` (`analyseScene`, `judgeSpot`); canonical situations in `tests/situations.js` |
 | Change how a position is judged | `js/engine/rules/*.js`, `js/engine/score.js` |
 | Change feedback wording | the `text` block of each rule, `js/engine/explain.js` |
-| Add or fix a scenario | `data/scenarios/*.json` (then `npm run check`) |
+| Add or fix a scenario | `#/author` in the app, then `data/scenarios/<id>.json`, its module in `data/curriculum.json`, `npm run index`, `npm run check` (ARCHITECTURE §6) |
+| Change a mode (Drill, Live, Explore, Learn...) | `js/ui/modes/<mode>.js`; shared pieces in `js/ui/reveal.js` (feedback panel) and `js/ui/session.js` (selection, persistence, summaries) |
 | Change the curriculum | `data/curriculum.json`, `data/principles.json` |
 | Change the look | `css/app.css` (tokens at the top), `js/ui/board.js` |

@@ -135,16 +135,17 @@ test('integration: every failing rule yields one sentence in both wordings, with
 });
 
 test('integration: a broken critical rule caps the score at 59, and the situations do break them', () => {
-  // Pass moments make offside critical; in and around our box goal-side can break; and with their #9
-  // left waiting in an offside position, a back-liner who drops deep keeps him onside.
-  const runner = (s) => {
-    const backX = CASES.find((c) => c.situation === s).scene.ctx.lines.ourBackLineX;
-    return { ...s, id: `${s.id}+offside-runner`, overrides: { 'them-ST': { x: backX - 3, y: 30 } } };
-  };
+  // Pass moments make offside critical; with their #9 left waiting in an offside position, a back-liner
+  // who drops deep keeps him onside (and nobody marks him there: U4, context offsideMarkMargin); and with
+  // their #9 onside in our box, the defender marking him breaks goal-side on the wrong side of him.
+  const backXOf = (s) => CASES.find((c) => c.situation === s).scene.ctx.lines.ourBackLineX;
+  const runner = (s) => ({ ...s, id: `${s.id}+offside-runner`, overrides: { 'them-ST': { x: backXOf(s) - 3, y: 30 } } });
+  const boxRunner = (s) => ({ ...s, id: `${s.id}+box-runner`, overrides: { 'them-ST': { x: backXOf(s) + 0.5, y: 30 } } });
   const variants = [
     ...SITUATIONS,
     ...SITUATIONS.filter((s) => s.possession === 'us').map((s) => ({ ...s, id: `${s.id}+pass`, tags: { event: 'pass' } })),
     ...SITUATIONS.filter((s) => s.possession === 'them' && s.ball.x < 70).map(runner),
+    ...SITUATIONS.filter((s) => s.possession === 'them' && backXOf(s) + 0.5 < 16.5).map(boxRunner),
   ];
   const broken = new Map();
   for (const situation of variants) {
@@ -218,9 +219,13 @@ test('integration: judgeSpot judges against the ghost search zone, so a spot on 
     const ideal = { x: scene.base.x - 4, y: scene.base.y + 3 };
     const authored = analyseScene({ ...sceneOptions(situation, id, formations), ghost: { base: ideal } });
     for (const sc of [scene, authored]) {
-      const { result } = judgeSpot(sc, sc.ghost.spot);
+      const { result, feedback } = judgeSpot(sc, sc.ghost.spot);
       assert.equal(result.score, sc.ghost.score, `${label}: judged ${result.score}, ghost ${sc.ghost.score}`);
       assert.deepEqual(result.center, sc.ghost.result.center, label);
+      // Nothing to fix on the best spot: what it gives up is a trade-off, never a reason or a cue.
+      assert.deepEqual(feedback.reasons.map((r) => r.text), [], `${label}: reasons on the ghost`);
+      assert.equal(feedback.cue, null, `${label}: cue on the ghost`);
+      assert.equal(feedback.fix, null, `${label}: fix on the ghost`);
     }
     assert.deepEqual(authored.ghost.result.center, ideal, `${label}: the authored centre`);
   }

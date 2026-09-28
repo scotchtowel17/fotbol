@@ -93,6 +93,17 @@ test('context: marks are shared out within each unit (no two centre-backs on one
   }
 });
 
+test('context: an attacker standing offside behind our line is nobody\'s mark (U4: the line holds and leaves him there)', () => {
+  // Their #9 onside and near our centre-backs: marked.
+  assert.equal(ctxFor('oopMidBlock', 'us-RCB').markTarget.id, 'them-ST');
+  const line = ctxFor('oopMidBlock', 'us-RCB').usAtBase.map((p) => p.x).sort((a, b) => a - b)[1];
+  // Level with our second-last player (within the margin): still marked.
+  assert.equal(ctxFor('oopMidBlock', 'us-RCB', { move: { 'them-ST': { x: line - 0.5, y: 38 } } }).markTarget?.id, 'them-ST');
+  // Well behind it (offside): left alone, so goal-side never asks a defender to drop and play him onside.
+  const off = ctxFor('oopMidBlock', 'us-RCB', { move: { 'them-ST': { x: line - CONTEXT_DEFAULTS.offsideMarkMargin - 2, y: 38 } } });
+  assert.notEqual(off.markTarget?.id, 'them-ST');
+});
+
 test('context: midfielders hand an opponent at our back line\'s height over to the back line (D7)', () => {
   // The LCM covers, so the #6 is a third defender; their #9 sits on our RCB; a short markRadius
   // keeps the back line from claiming the runner, so only the hand-over rule decides.

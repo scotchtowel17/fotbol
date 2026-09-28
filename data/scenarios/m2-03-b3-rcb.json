@@ -1,0 +1,154 @@
+{
+  "id": "m2-03-b3-rcb",
+  "title": "Give your full-back a way out",
+  "titleKid": "Give your teammate a way out",
+  "brief": "Your keeper plays it out to your full-back, and their winger closes in.",
+  "briefKid": "Your keeper passes to your teammate by the sideline, and their winger runs at them.",
+  "question": "Your full-back is trapped near the touchline. Where do you go?",
+  "questionKid": "Your teammate is stuck by the sideline. Where do you go to help?",
+  "takeaway": {
+    "standard": "When a teammate is pinned on the touchline, offer a pass behind and inside them, at an angle and with no opponent in the lane, so there is always a way out.",
+    "kid": "Teammate stuck by the sideline? Offer a pass back and inside, to you."
+  },
+  "module": "M2",
+  "moment": "in_possession",
+  "phase": "build_up",
+  "principles": [
+    "B3",
+    "B4",
+    "R1"
+  ],
+  "learner": {
+    "role": "RCB",
+    "start": {
+      "x": 12.5,
+      "y": 45.5
+    }
+  },
+  "timeline": {
+    "duration": 4.5,
+    "freezeAt": 3.3,
+    "ball": [
+      {
+        "t": 0,
+        "x": 6,
+        "y": 32,
+        "event": "carry"
+      },
+      {
+        "t": 1.0,
+        "x": 7,
+        "y": 33.5,
+        "event": "pass"
+      },
+      {
+        "t": 2.6,
+        "x": 22,
+        "y": 62,
+        "event": "carry"
+      },
+      {
+        "t": 4.5,
+        "x": 20.5,
+        "y": 62.5
+      }
+    ],
+    "possession": [
+      {
+        "t": 0,
+        "team": "us"
+      }
+    ],
+    "carrier": [
+      {
+        "t": 0,
+        "id": "us-GK"
+      },
+      {
+        "t": 1.0,
+        "id": null
+      },
+      {
+        "t": 2.6,
+        "id": "us-RB"
+      }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "us-RB",
+          "keys": [
+            {
+              "t": 0,
+              "x": 18.5,
+              "y": 59
+            },
+            {
+              "t": 1.0,
+              "x": 19.5,
+              "y": 60
+            },
+            {
+              "t": 2.6,
+              "x": 22.3,
+              "y": 62
+            },
+            {
+              "t": 4.5,
+              "x": 20.8,
+              "y": 62.5
+            }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      {
+        "t": 0,
+        "carrierFacing": "forward",
+        "pressureOnBall": false
+      },
+      {
+        "t": 2.6,
+        "carrierFacing": "backward",
+        "pressureOnBall": true
+      }
+    ]
+  },
+  "answer": {
+    "mode": "engine"
+  },
+  "misconceptions": [
+    {
+      "id": "stayed-central",
+      "region": {
+        "type": "circle",
+        "x": 12.5,
+        "y": 45.5,
+        "r": 4
+      },
+      "text": "You stayed in the middle, so the pass back to you is long and their #9 can step across and cut it out.",
+      "textKid": "You stayed in the middle. That pass is too long and easy to steal."
+    },
+    {
+      "id": "too-flat",
+      "region": {
+        "type": "rect",
+        "x0": 23.5,
+        "y0": 50,
+        "x1": 30,
+        "y1": 60
+      },
+      "text": "You came up level with your full-back, so a pass to you goes square across their winger, and losing it there is a goal chance for them.",
+      "textKid": "Too level with your teammate. Stay a bit behind so the pass is safe."
+    }
+  ],
+  "difficulty": -1,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  }
+}

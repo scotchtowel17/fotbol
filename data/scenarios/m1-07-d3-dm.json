@@ -1,0 +1,88 @@
+{
+  "id": "m1-07-d3-dm",
+  "title": "Switch the cover",
+  "titleKid": "Move across to help",
+  "brief": "They are moving the ball across midfield. Watch who goes to it.",
+  "briefKid": "They are passing across the pitch. Watch who goes to the ball.",
+  "question": "Your #8 has stepped out to press. Where do you go?",
+  "questionKid": "Your teammate is going to the ball. Where do you go?",
+  "takeaway": {
+    "standard": "When the ball moves across, the cover moves with it: sit behind and inside whichever teammate is pressing, still in front of your centre-backs.",
+    "kid": "When the ball moves across, move across too and stand behind the teammate pressing."
+  },
+  "module": "M1",
+  "moment": "out_of_possession",
+  "phase": "mid_block",
+  "principles": ["D3", "R3"],
+  "learner": {
+    "role": "DM",
+    "start": { "x": 40, "y": 28 }
+  },
+  "timeline": {
+    "duration": 5.2,
+    "freezeAt": 3.6,
+    "ball": [
+      { "t": 0, "x": 48.5, "y": 27, "event": "carry" },
+      { "t": 0.7, "x": 47, "y": 28, "event": "pass" },
+      { "t": 1.9, "x": 45, "y": 46.5, "event": "carry" },
+      { "t": 2.4, "x": 44, "y": 47 },
+      { "t": 3.0, "x": 42.8, "y": 47.4 },
+      { "t": 3.6, "x": 41.4, "y": 47.8 },
+      { "t": 5.2, "x": 38, "y": 48.3 }
+    ],
+    "possession": [
+      { "t": 0, "team": "them" }
+    ],
+    "carrier": [
+      { "t": 0, "id": "them-RCM" },
+      { "t": 0.7, "id": null },
+      { "t": 1.9, "id": "them-LCM" }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "them-LCM",
+          "keys": [
+            { "t": 0, "x": 50, "y": 45 },
+            { "t": 0.7, "x": 48.5, "y": 45.8 },
+            { "t": 1.9, "x": 45.6, "y": 46.6 },
+            { "t": 2.4, "x": 44.6, "y": 47.1 },
+            { "t": 3.0, "x": 43.4, "y": 47.5 },
+            { "t": 3.6, "x": 42.0, "y": 47.9 },
+            { "t": 5.2, "x": 38.6, "y": 48.4 }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      { "t": 0, "carrierFacing": "forward" },
+      { "t": 1.9, "carrierFacing": "forward" }
+    ]
+  },
+  "answer": {
+    "mode": "engine",
+    "ideal": { "x": 35.5, "y": 43.5 }
+  },
+  "misconceptions": [
+    {
+      "id": "stayed-on-the-old-side",
+      "region": { "type": "circle", "x": 39, "y": 31, "r": 3 },
+      "text": "You stayed where the ball was; when it is switched, the cover has to switch with it.",
+      "textKid": "The ball moved across, so you need to move across with it."
+    },
+    {
+      "id": "level-with-the-presser",
+      "region": { "type": "circle", "x": 40.5, "y": 43.5, "r": 2 },
+      "text": "You stepped up level with your #8, so one pass beats you both; drop in behind them at an angle.",
+      "textKid": "Don't stand next to your teammate; stand behind them."
+    }
+  ],
+  "difficulty": 0,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  }
+}

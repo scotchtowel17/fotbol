@@ -25,11 +25,19 @@ export const dataUrl = (path) => new URL(path, ROOT).href;
 /**
  * Fetch JSON. Returns `fallback` (and warns once) on a network error, non-2xx status or bad JSON.
  * @param {string} path repo-relative
- * @param {{ fallback?: any, fetchImpl?: typeof fetch, quiet?: boolean }} [opts]
+ * @param {{ fallback?: any, fetchImpl?: typeof fetch, quiet?: boolean, retries?: number }} [opts]
+ *   retries: extra tries after a network error (a dropped connection), 300 ms apart; HTTP errors are not retried
  */
-export async function fetchJSON(path, { fallback = null, fetchImpl = globalThis.fetch, quiet = false } = {}) {
+export async function fetchJSON(path, { fallback = null, fetchImpl = globalThis.fetch, quiet = false, retries = 1 } = {}) {
   try {
-    const res = await fetchImpl(dataUrl(path));
+    let res;
+    for (let attempt = 0; ; attempt++) {
+      try { res = await fetchImpl(dataUrl(path)); break; } catch (err) {
+        // A dropped connection (not an HTTP error): try again once before falling back.
+        if (attempt >= retries) throw err;
+        await new Promise((r) => setTimeout(r, 300));
+      }
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (err) {

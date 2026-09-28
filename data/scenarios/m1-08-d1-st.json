@@ -1,0 +1,86 @@
+{
+  "id": "m1-08-d1-st",
+  "title": "Press the square pass",
+  "titleKid": "Chase the pass across",
+  "brief": "You are pressing their centre-back high up the pitch. Watch where the ball goes.",
+  "briefKid": "You are chasing their defender near their goal. Watch the ball.",
+  "question": "They have passed it across to their other centre-back. Where do you go?",
+  "questionKid": "They passed to their other defender. Where do you go?",
+  "takeaway": {
+    "standard": "A pass across their back line is your cue: sprint to the new receiver and arrive goal-side, a couple of metres away, so they can't play forward.",
+    "kid": "A pass across is your signal: sprint to the new player and get close."
+  },
+  "module": "M1",
+  "moment": "out_of_possession",
+  "phase": "high_press",
+  "principles": ["D1", "D2", "R5"],
+  "learner": {
+    "role": "ST",
+    "start": { "x": 83.8, "y": 23.2 }
+  },
+  "timeline": {
+    "duration": 5.0,
+    "freezeAt": 3.4,
+    "ball": [
+      { "t": 0, "x": 87, "y": 22.5, "event": "carry" },
+      { "t": 0.8, "x": 87.5, "y": 23.5, "event": "pass" },
+      { "t": 2.3, "x": 87.5, "y": 45.5, "event": "carry" },
+      { "t": 2.8, "x": 86.5, "y": 45.7 },
+      { "t": 3.4, "x": 85, "y": 46 },
+      { "t": 5.0, "x": 81, "y": 47 }
+    ],
+    "possession": [
+      { "t": 0, "team": "them" }
+    ],
+    "carrier": [
+      { "t": 0, "id": "them-RCB" },
+      { "t": 0.8, "id": null },
+      { "t": 2.3, "id": "them-LCB" }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "them-LCB",
+          "keys": [
+            { "t": 0, "x": 89, "y": 44 },
+            { "t": 0.8, "x": 89, "y": 44.5 },
+            { "t": 2.3, "x": 88.2, "y": 45.5 },
+            { "t": 2.8, "x": 87.2, "y": 45.7 },
+            { "t": 3.4, "x": 85.7, "y": 46 },
+            { "t": 5.0, "x": 81.7, "y": 47 }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      { "t": 0, "carrierFacing": "sideways" },
+      { "t": 2.3, "carrierFacing": "forward" }
+    ]
+  },
+  "answer": {
+    "mode": "engine",
+    "ideal": { "x": 83.5, "y": 45.5 }
+  },
+  "misconceptions": [
+    {
+      "id": "stayed-on-the-first-centre-back",
+      "region": { "type": "circle", "x": 84, "y": 24, "r": 3 },
+      "text": "You stayed on the first centre-back, so the one with the ball has all the time in the world.",
+      "textKid": "The ball moved, so go to the player who has it now."
+    },
+    {
+      "id": "stood-off",
+      "region": { "type": "circle", "x": 79.5, "y": 41.5, "r": 2.5 },
+      "text": "You stopped too far off, so they have time to look up and pass through you; close them down to a couple of metres.",
+      "textKid": "You are too far away, so get close to the ball."
+    }
+  ],
+  "difficulty": 0,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  }
+}

@@ -1,5 +1,5 @@
 import { test, assert, isNode } from './harness.js';
-import { parseHash, toHash, normalizeSettings, SETTINGS_DEFAULTS, MODE_INFO, NAV_MODES } from '../js/main.js';
+import { parseHash, toHash, normalizeSettings, SETTINGS_DEFAULTS, MODE_INFO, NAV_MODES, settingsLinks, isDevMode } from '../js/main.js';
 import {
   normalizePrinciples, normalizeScenarioIndex, createScenarioStore, buildFormations, loadAppData, DATA_PATHS,
 } from '../js/data.js';
@@ -40,6 +40,18 @@ test('app: every nav mode has title and blurb copy', () => {
 });
 
 // ---- settings
+
+test('app: the learner\'s settings menu has no developer tools unless the address asks for them', () => {
+  const plain = settingsLinks().map((l) => l.href);
+  assert.deepEqual(plain, ['#/credits']);
+  const dev = settingsLinks({ dev: true }).map((l) => l.href);
+  assert.ok(dev.includes('#/dev') && dev.includes('tests.html'));
+  assert.equal(isDevMode(''), false);
+  assert.equal(isDevMode('?t=1'), false);
+  assert.equal(isDevMode('?dev'), true);
+  assert.equal(isDevMode('?debug&x=1'), true);
+  assert.equal(isDevMode('?dev=1'), true);
+});
 
 test('app: normalizeSettings fills defaults and rejects bad values', () => {
   assert.deepEqual(normalizeSettings(undefined), { ...SETTINGS_DEFAULTS });
@@ -162,4 +174,48 @@ test('data: loadAppData reads the real data files (Node, from disk)', async () =
       }
     }
   } finally { console.info = info; }
+});
+
+// ---- components (browser only: they build DOM)
+
+test('app (browser): a dialog closes when the route changes, so it can never be confirmed over another page', async () => {
+  if (isNode) return;
+  const { openModal } = await import('../js/ui/components.js');
+  let closedWith = null;
+  const m = openModal({ title: 'Reset all progress?', content: 'Test', onClose: (v) => { closedWith = v; } });
+  assert.ok(m.el.isConnected, 'open');
+  const closed = new Promise((r) => { m.el.addEventListener('close', r, { once: true }); setTimeout(r, 2000); }); // the close event is queued
+  window.dispatchEvent(new HashChangeEvent('hashchange'));
+  await closed;
+  assert.equal(closedWith, 'route');
+  assert.equal(m.el.isConnected, false, 'removed');
+  m.close('again'); // closing twice is harmless
+  assert.equal(closedWith, 'route');
+});
+
+test('app (browser): a collapsed bottom sheet opens when keyboard focus moves below the fold, and closes when it leaves', async () => {
+  if (isNode) return;
+  const { stageLayout, el } = await import('../js/ui/components.js');
+  const host = el('div', { style: 'position:fixed;left:0;top:0;width:360px;height:640px;opacity:0;pointer-events:none' });
+  document.body.append(host);
+  try {
+    const layout = stageLayout(host, { label: 'Test' });
+    const inActions = el('button', { type: 'button', text: 'Lock in' });
+    const below = el('a', { href: '#/drill/M1', text: 'M1' });
+    layout.panel.actions.append(inActions);
+    layout.panel.body.append(below);
+    const narrow = matchMedia('(max-width: 899.98px)').matches;
+    const expanded = () => layout.panel.root.classList.contains('is-expanded');
+    below.focus();
+    assert.equal(expanded(), narrow, narrow ? 'a phone-width window opens the sheet' : 'a wide window has no sheet to open');
+    inActions.focus();
+    assert.equal(expanded(), false, 'focus back in the always-visible part closes it again');
+    layout.expand();
+    below.focus();
+    inActions.focus();
+    assert.equal(expanded(), true, 'a sheet the learner opened stays open');
+    layout.destroy();
+  } finally {
+    host.remove();
+  }
 });

@@ -1,0 +1,89 @@
+{
+  "id": "m1-03-d4-lb",
+  "title": "Tuck in when they switch",
+  "titleKid": "Ball on the other side? Move in",
+  "brief": "They have the ball on your side of the pitch. Watch where it goes.",
+  "briefKid": "They have the ball near you. Watch where it goes.",
+  "question": "The ball has been switched to the far wing. Where do you go now?",
+  "questionKid": "The ball is on the other side now. Where do you go?",
+  "takeaway": {
+    "standard": "With the ball on the far wing, tuck in toward your centre-back and drop level with the line: the middle matters more than the empty space out wide.",
+    "kid": "When the ball is on the other side, move in toward the middle."
+  },
+  "module": "M1",
+  "moment": "out_of_possession",
+  "phase": "mid_block",
+  "principles": ["D4", "U5", "U4"],
+  "learner": {
+    "role": "LB",
+    "start": { "x": 38, "y": 8.5 }
+  },
+  "timeline": {
+    "duration": 6.5,
+    "freezeAt": 4.9,
+    "ball": [
+      { "t": 0, "x": 58, "y": 9, "event": "carry" },
+      { "t": 0.6, "x": 57, "y": 10, "event": "pass" },
+      { "t": 1.8, "x": 55.5, "y": 29.5, "event": "carry" },
+      { "t": 2.4, "x": 54.5, "y": 31.5, "event": "pass" },
+      { "t": 4.3, "x": 39, "y": 60.5, "event": "carry" },
+      { "t": 4.9, "x": 37, "y": 60 },
+      { "t": 6.5, "x": 32, "y": 58.5 }
+    ],
+    "possession": [
+      { "t": 0, "team": "them" }
+    ],
+    "carrier": [
+      { "t": 0, "id": "them-RB" },
+      { "t": 0.6, "id": null },
+      { "t": 1.8, "id": "them-DM" },
+      { "t": 2.4, "id": null },
+      { "t": 4.3, "id": "them-LW" }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "them-LW",
+          "keys": [
+            { "t": 0, "x": 46, "y": 63.5 },
+            { "t": 2.4, "x": 42.5, "y": 62 },
+            { "t": 4.3, "x": 39.6, "y": 60.6 },
+            { "t": 4.9, "x": 37.6, "y": 60.1 },
+            { "t": 6.5, "x": 32.6, "y": 58.6 }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      { "t": 0, "carrierFacing": "forward" },
+      { "t": 1.8, "carrierFacing": "sideways" },
+      { "t": 4.3, "carrierFacing": "forward" }
+    ]
+  },
+  "answer": {
+    "mode": "engine",
+    "ideal": { "x": 29.5, "y": 26.5 }
+  },
+  "misconceptions": [
+    {
+      "id": "stayed-wide",
+      "region": { "type": "rect", "x0": 30, "y0": 3, "x1": 40, "y1": 14 },
+      "text": "You stayed out wide guarding empty space, while the gap beside your centre-back is where they can hurt us.",
+      "textKid": "Nobody is out wide, so come in toward the middle."
+    },
+    {
+      "id": "tucked-but-high",
+      "region": { "type": "circle", "x": 37, "y": 26, "r": 3 },
+      "text": "You tucked in but stayed high, so a ball over the top gets in behind you; drop level with the back line too.",
+      "textKid": "Good, you came in, but drop back in line with your defenders."
+    }
+  ],
+  "difficulty": -1,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  }
+}

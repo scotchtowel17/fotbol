@@ -1,0 +1,93 @@
+{
+  "id": "m3-02-u4-rb",
+  "title": "Back into the line",
+  "titleKid": "Get back in line",
+  "brief": "You have gone out to engage their winger on your side.",
+  "briefKid": "You went out to their winger near you.",
+  "question": "The winger has played it back inside. Where do you go now?",
+  "questionKid": "Their winger passed it back inside. Where do you go now?",
+  "takeaway": {
+    "standard": "As soon as the ball leaves your winger, get back into the line level with your centre-back, so nobody can run in behind you.",
+    "kid": "When the ball leaves your winger, get back in line with your defenders."
+  },
+  "module": "M3",
+  "moment": "out_of_possession",
+  "phase": "mid_block",
+  "principles": ["U4", "R2"],
+  "learner": {
+    "role": "RB",
+    "start": { "x": 44, "y": 62 }
+  },
+  "timeline": {
+    "duration": 4.5,
+    "freezeAt": 3.8,
+    "ball": [
+      { "t": 0, "x": 49, "y": 65, "event": "carry" },
+      { "t": 1, "x": 46, "y": 63.5 },
+      { "t": 1.8, "x": 45.5, "y": 63, "event": "pass" },
+      { "t": 3, "x": 55, "y": 46, "event": "carry" },
+      { "t": 4.5, "x": 53.5, "y": 44.5 }
+    ],
+    "possession": [
+      { "t": 0, "team": "them" }
+    ],
+    "carrier": [
+      { "t": 0, "id": "them-LW" },
+      { "t": 1.8, "id": null },
+      { "t": 3, "id": "them-LCM" }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "them-LW",
+          "keys": [
+            { "t": 0, "x": 49.8, "y": 65 },
+            { "t": 1, "x": 46.8, "y": 63.5 },
+            { "t": 1.8, "x": 46.3, "y": 63 },
+            { "t": 3, "x": 45, "y": 64 },
+            { "t": 4.5, "x": 44, "y": 64.5 }
+          ]
+        },
+        {
+          "id": "them-LCM",
+          "keys": [
+            { "t": 0, "x": 59, "y": 49 },
+            { "t": 1.8, "x": 57.5, "y": 47.5 },
+            { "t": 3, "x": 55.8, "y": 46 },
+            { "t": 4.5, "x": 54.3, "y": 44.5 }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      { "t": 0, "carrierFacing": "sideways", "pressureOnBall": true },
+      { "t": 3, "carrierFacing": "forward" }
+    ]
+  },
+  "answer": {
+    "mode": "engine",
+    "ideal": { "x": 38.5, "y": 57 }
+  },
+  "misconceptions": [
+    {
+      "id": "stayed-out-wide",
+      "region": { "type": "circle", "x": 44, "y": 62, "r": 4 },
+      "text": "You stayed out with their winger after the ball moved away from them, so the gap between you and your centre-back is open.",
+      "textKid": "The ball has gone inside. Get back in line with your defenders."
+    },
+    {
+      "id": "dropped-too-deep",
+      "region": { "type": "circle", "x": 29, "y": 56, "r": 4 },
+      "text": "You dropped behind your back line, which keeps their forwards onside; get level with your centre-back instead.",
+      "textKid": "Too deep! Stand in line with your other defenders."
+    }
+  ],
+  "difficulty": -1,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  }
+}

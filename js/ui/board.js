@@ -10,6 +10,11 @@
 // Pointer input converts back with getScreenCTM().inverse() on the world group, so any
 // rotation or scaling just works.
 //
+// Small screens: tokens are drawn at least BOARD_DEFAULTS.minTokenPx across (tokenScale; labels likewise,
+// labelScale), and a mode may name the pitch length it needs (setFocus) so that a phone held upright crops
+// the empty length of the pitch rather than shrink everything (focusViewBox). Drags are relative (the token
+// keeps its offset from the pointer); on touch the token eases up above the finger only on a long drag.
+//
 // Pure helpers (pickOrientation, project, keyDelta, pitchMarkings, describeSpot...) are
 // exported for tests; nothing here touches the DOM at import time.
 
@@ -24,11 +29,20 @@ import { fieldImage } from './heatmap.js';
 export const BOARD_DEFAULTS = Object.freeze({
   margin: 3, // [S] ARCHITECTURE §5.8: viewBox margin around the pitch, metres
   portraitMaxWidth: 600, // [S] ARCHITECTURE §5.8: 'auto' goes vertical in a portrait container narrower than this (CSS px)
-  tokenRadius: 1.8, // [D] metres (about 17 px across on a 375 px phone)
-  ballRadius: 0.8, // [D] metres (drawn larger than life so it can be seen and grabbed)
-  grabRadius: 4, // [D] metres: pressing this close to a draggable token picks it up (forgiving on touch)
+  tokenRadius: 1.8, // [D] metres at life size; a small board draws tokens bigger (minTokenPx)
+  minTokenPx: 22, // [D] CSS px: a player token is drawn at least this wide, so its shirt label stays readable on a phone...
+  maxTokenScale: 1.8, // [D] ...but never more than this many times life size (bigger tokens would hide the team's shape)
+  minLabelPx: 11, // [D] CSS px: pitch and marker labels (1.5 m text at life size) grow to stay this tall...
+  maxLabelScale: 2, // [D] ...up to this many times life size
+  ballRadius: 0.8, // [D] metres (drawn larger than life so it can be seen and grabbed; grows with the tokens)
+  grabRadius: 4, // [D] metres: pressing this close to a draggable token picks it up (forgiving on touch; never less than the drawn token)
   dragSlopPx: 6, // [D] CSS px of movement before a press becomes a drag; less is a tap
-  touchOffsetPx: 44, // [D] CSS px the token floats above a finger while dragging, so it stays visible
+  touchOffsetPx: 44, // [D] CSS px the token floats above a finger during a long touch drag, so it stays visible...
+  touchLiftMaxM: 4, // [D] ...but never more than this many metres (on a phone 44 px is 10-14 m of pitch)
+  touchLiftAfterPx: 24, // [D] CSS px of finger travel before the lift starts: a small corrective drag moves the token by exactly the finger's move
+  touchLiftMs: 150, // [D] the lift eases in over this long, so the token never jumps
+  focusMinPxPerM: 5.5, // [D] setFocus crops the pitch length only when the whole pitch would draw at fewer px per metre (portrait phones)
+  focusPad: 6, // [D] metres of pitch kept beyond each end of the focus
   nudge: 0.5, // [S] ARCHITECTURE §5.8: arrow-key step, metres
   nudgeBig: 2, // [S] ARCHITECTURE §5.8: Shift + arrow step, metres
   liveMs: 90, // [D] renders closer together than this are "live": skip easing so tokens don't trail
@@ -56,6 +70,63 @@ export function pickOrientation(requested, width, height, P = BOARD_DEFAULTS) {
 export function viewBoxFor(orientation, margin = BOARD_DEFAULTS.margin) {
   const [w, h] = orientation === 'vertical' ? [WIDTH, LENGTH] : [LENGTH, WIDTH];
   return { x: -margin, y: -margin, width: w + 2 * margin, height: h + 2 * margin };
+}
+
+/** CSS px per metre when viewBox `vb` is drawn into a `box` of CSS px (preserveAspectRatio meet); 0 unmeasured. */
+export function pxPerMetre(box, vb) {
+  return box?.width > 0 && box?.height > 0 && vb?.width > 0 && vb?.height > 0 ? Math.min(box.width / vb.width, box.height / vb.height) : 0;
+}
+
+/**
+ * How much bigger than life to draw the tokens at `pxPerM`, so a player token is at least minTokenPx across
+ * (1 on a big board; capped at maxTokenScale). Rounded to 0.01 so a 1 px resize does not redraw every token.
+ */
+export function tokenScale(pxPerM, P = BOARD_DEFAULTS) {
+  if (!(pxPerM > 0)) return 1;
+  const k = Math.min(P.maxTokenScale, Math.max(1, P.minTokenPx / (2 * P.tokenRadius * pxPerM)));
+  return Math.round(k * 100) / 100;
+}
+
+/** The same for pitch and marker labels (1.5 m text at life size, at least minLabelPx tall, capped at maxLabelScale). */
+export function labelScale(pxPerM, P = BOARD_DEFAULTS) {
+  if (!(pxPerM > 0)) return 1;
+  const k = Math.min(P.maxLabelScale, Math.max(1, P.minLabelPx / (1.5 * pxPerM)));
+  return Math.round(k * 100) / 100;
+}
+
+/**
+ * The viewBox for a board of `box` CSS px that should show the pitch length from focus.x0 to focus.x1 (world
+ * metres). A board that draws the whole pitch at focusMinPxPerM or more, or no focus, shows the whole pitch.
+ * Otherwise (a phone held upright) the full width stays in view and the LENGTH is cropped to what fills the
+ * box at that scale, so everything draws bigger: the window keeps focusPad metres beyond the focus, reaches
+ * back to our goal line when that still fits (the reference for "goal-side"), else centres on the focus (so
+ * play near their goal shows their goal line), and grows (zooming out, up to the whole pitch) when the focus
+ * is longer than the box allows.
+ * @param {'horizontal'|'vertical'} orientation
+ * @param {{width:number, height:number}} box
+ * @param {{x0:number, x1:number}|null} focus
+ * @returns {{x:number, y:number, width:number, height:number}}
+ */
+export function focusViewBox(orientation, box, focus, P = BOARD_DEFAULTS) {
+  const full = viewBoxFor(orientation, P.margin);
+  if (!focus || !Number.isFinite(focus.x0) || !Number.isFinite(focus.x1) || !(box?.width > 0 && box?.height > 0)) return full;
+  if (pxPerMetre(box, full) >= P.focusMinPxPerM) return full;
+  const vertical = orientation === 'vertical';
+  const across = vertical ? full.width : full.height; // the pitch width (plus margins) always stays in view
+  const along = vertical ? full.height : full.width;
+  const scale = (vertical ? box.width : box.height) / across;
+  const fits = (vertical ? box.height : box.width) / scale; // metres of length that fill the box at that scale
+  if (fits >= along) return full;
+  const f0 = Math.min(focus.x0, focus.x1) - P.focusPad, f1 = Math.max(focus.x0, focus.x1) + P.focusPad;
+  const L = Math.min(along, Math.max(fits, f1 - f0));
+  const lo = -P.margin, hi = LENGTH + P.margin;
+  // Our goal line when it fits in with the play; otherwise centred on the play (clamped to the pitch).
+  const w0 = lo + L >= f1 ? lo : Math.max(lo, Math.min(hi - L, (f0 + f1) / 2 - L / 2));
+  const r = (n) => Math.round(n * 100) / 100;
+  // World x runs up the screen in the vertical layout (view y = LENGTH - x) and across it otherwise.
+  return vertical
+    ? { x: full.x, y: r(LENGTH - (w0 + L)), width: full.width, height: r(L) }
+    : { x: r(w0), y: full.y, width: r(L), height: full.height };
 }
 
 /**
@@ -203,6 +274,12 @@ export function createBoard(container, { orientation = 'auto', params } = {}) {
   // ---- state
   let requested = orientation;
   let orient = 'horizontal';
+  let focus = null; // { x0, x1 } pitch length a mode wants in view (setFocus), or null
+  let vb = null; // current viewBox { x, y, width, height }
+  let pxm = 0; // CSS px per metre as drawn
+  let scale = 1; // tokens (and the ghost, and rings bound to tokens) are drawn this much bigger than life
+  let lscale = 1; // pitch and marker labels likewise (CSS --board-label-k)
+  let ghostAt = null;
   let opts = { learnerId: null, highlight: [], labels: 'role', dimOthers: false };
   let lastRenderAt = -Infinity;
   const tokens = new Map(); // id → token record (players and the ball)
@@ -232,7 +309,8 @@ export function createBoard(container, { orientation = 'auto', params } = {}) {
       svgEl(doc, 'circle', { class: 'token-carrier', r: R + 0.45 }, g);
       svgEl(doc, 'circle', { class: 'token-body', r: R }, g);
       const short = ROLE_INFO[role]?.short ?? role;
-      svgEl(doc, 'text', { class: short.length > 2 ? 'token-code token-code--long' : 'token-code', 'text-anchor': 'middle', dy: '0.36em' }, g).textContent = short;
+      const codeClass = short.length > 2 ? 'token-code token-code--long' : short.length < 2 ? 'token-code token-code--one' : 'token-code';
+      svgEl(doc, 'text', { class: codeClass, 'text-anchor': 'middle', dy: '0.36em' }, g).textContent = short;
       const you = svgEl(doc, 'g', { class: 'token-you', transform: `translate(0 ${f3(-(R + 2.2))})` }, g);
       svgEl(doc, 'rect', { x: -2.3, y: -1.05, width: 4.6, height: 2.1, rx: 1.05 }, you);
       svgEl(doc, 'text', { 'text-anchor': 'middle', dy: '0.36em' }, you).textContent = 'YOU';
@@ -249,7 +327,7 @@ export function createBoard(container, { orientation = 'auto', params } = {}) {
   function placeToken(t, p) {
     t.pos = { x: p.x, y: p.y };
     const v = project(p, orient);
-    const tx = `translate(${v.x.toFixed(2)}px, ${v.y.toFixed(2)}px)`;
+    const tx = `translate(${v.x.toFixed(2)}px, ${v.y.toFixed(2)}px)${scale === 1 ? '' : ` scale(${scale})`}`;
     if (tx !== t.tx) { t.g.style.transform = tx; t.tx = tx; }
     if (drag.ids.has(t.id)) {
       const aria = `${tokenName(t.id, opts.learnerId)}, ${describeSpot(p)}`;
@@ -346,9 +424,19 @@ export function createBoard(container, { orientation = 'auto', params } = {}) {
 
   // ---- ghost, zone, heatmap
   function setGhost(p) {
+    ghostAt = p ? { x: p.x, y: p.y } : null;
     if (!p) { ghostEl.setAttribute('display', 'none'); return; }
+    const wasHidden = ghostEl.hasAttribute('display');
     ghostEl.removeAttribute('display');
-    ghostEl.style.transform = `translate(${p.x.toFixed(2)}px, ${p.y.toFixed(2)}px)`;
+    // The ring matches the drawn token size (scale), so "stand here" reads at a glance on a phone too.
+    const transform = `translate(${p.x.toFixed(2)}px, ${p.y.toFixed(2)}px)${scale === 1 ? '' : ` scale(${scale})`}`;
+    if (wasHidden) {
+      // Appear in place: without this the transition runs from the pitch corner (transform: none).
+      ghostEl.style.transition = 'none';
+      ghostEl.style.transform = transform;
+      ghostEl.getBoundingClientRect?.(); // commit the jump before the transition comes back
+      ghostEl.style.transition = '';
+    } else ghostEl.style.transform = transform;
   }
 
   function setZone(zone) {
@@ -425,7 +513,9 @@ export function createBoard(container, { orientation = 'auto', params } = {}) {
       const names = ['Wing', 'Half-space', 'Centre', 'Half-space', 'Wing'];
       for (let i = 0; i < 5; i++) {
         const ym = (LANE_EDGES[i] + LANE_EDGES[i + 1]) / 2;
-        if (orient === 'vertical') text({ x: HALF_X + 2, y: ym }, names[i], 'ov-label--lanes');
+        // Vertical: the lanes run up the screen and the names across it, so the half-spaces get a row of their
+        // own (a name wider than its lane, as on a phone, then never runs into the next one).
+        if (orient === 'vertical') text({ x: HALF_X + 2 + (i % 2 ? 2.2 * lscale + 1 : 0), y: ym }, names[i], 'ov-label--lanes');
         else text({ x: HALF_X + 1.2, y: ym }, names[i], 'ov-label--lanes', 'start');
       }
     }
@@ -481,7 +571,11 @@ export function createBoard(container, { orientation = 'auto', params } = {}) {
         const g = svgEl(doc, 'g', { class: cls('mk-arrow') }, markersW);
         svgEl(doc, 'line', { x1: f3(from.x), y1: f3(from.y), x2: f3(bx), y2: f3(by) }, g);
         svgEl(doc, 'polygon', { points: `${f3(to.x)},${f3(to.y)} ${f3(bx - uy * half)},${f3(by + ux * half)} ${f3(bx + uy * half)},${f3(by - ux * half)}` }, g);
-        if (m.label) drawLabel({ x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 }, m.label, tone);
+        if (m.label) {
+          const a = project(from, orient), b = project(to, orient);
+          if (Math.abs(b.y - a.y) > Math.abs(b.x - a.x)) drawTailLabel(a, b, m.label, tone);
+          else drawLabel({ x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 }, m.label, tone);
+        }
         return;
       }
       case 'segment':
@@ -499,7 +593,8 @@ export function createBoard(container, { orientation = 'auto', params } = {}) {
         const at = m.at ?? (Number.isFinite(m.x) ? { x: m.x, y: m.y } : null);
         const r = m.r ?? (m.id === BALL_ID ? P.ballRadius + 1.4 : P.tokenRadius + 1.3);
         const el = svgEl(doc, 'circle', { class: cls(m.pulse === false ? 'mk-ring' : 'mk-ring mk-pulse'), r: f3(r) }, markersW);
-        if (m.id) boundRings.push({ el, id: m.id });
+        // A ring round a token grows with the drawn token (scale); a ring at a point marks an area in metres.
+        if (m.id) boundRings.push({ el, id: m.id, r });
         else if (at) { el.setAttribute('cx', f3(at.x)); el.setAttribute('cy', f3(at.y)); }
         else el.remove();
         if (m.label && at) drawLabel({ x: at.x, y: at.y }, m.label, tone, r);
@@ -516,42 +611,92 @@ export function createBoard(container, { orientation = 'auto', params } = {}) {
     const v = project(at, orient);
     const t = svgEl(doc, 'text', { class: `mk-label tone-${tone}`, x: f3(v.x), y: f3(v.y - lift - 0.8), 'text-anchor': 'middle' }, markerLabels);
     t.textContent = String(text);
+    keepInView(t, v.x);
+  }
+
+  /** The label of an arrow that runs up or down the screen: just past its tail, lined up with the arrow and
+   *  running away from the nearer touchline, so the text never lies across the arrow or the players beside it. */
+  function drawTailLabel(tail, head, text, tone) {
+    const cx = vb ? vb.x + vb.width / 2 : tail.x;
+    const left = tail.x <= cx;
+    const down = head.y < tail.y ? 1 : -1; // the arrow points up: the label goes below its tail
+    const t = svgEl(doc, 'text', {
+      class: `mk-label tone-${tone}`, x: f3(tail.x + (left ? -0.6 : 0.6)), y: f3(tail.y + down * 1.2), 'text-anchor': left ? 'start' : 'end',
+      'dominant-baseline': down > 0 ? 'hanging' : 'auto',
+    }, markerLabels);
+    t.textContent = String(text);
+  }
+
+  /** Slide a centred label sideways so it stays inside the view (labels grow on small boards). */
+  function keepInView(node, x) {
+    if (!vb) return;
+    let w = 0;
+    try { w = node.getComputedTextLength?.() ?? 0; } catch { w = 0; }
+    if (!(w > 0)) return; // not rendered (hidden board, tests): leave it centred
+    const lo = vb.x + w / 2 + 0.4, hi = vb.x + vb.width - w / 2 - 0.4;
+    const nx = lo > hi ? vb.x + vb.width / 2 : Math.min(hi, Math.max(lo, x));
+    if (Math.abs(nx - x) > 0.01) node.setAttribute('x', f3(nx));
   }
 
   function updateBoundRings() {
-    for (const { el, id } of boundRings) {
+    for (const { el, id, r } of boundRings) {
       const t = tokens.get(id);
       const visible = t?.pos && t.g.getAttribute('display') !== 'none';
       if (!visible) { el.setAttribute('display', 'none'); continue; }
       el.removeAttribute('display');
       el.setAttribute('cx', f3(t.pos.x));
       el.setAttribute('cy', f3(t.pos.y));
+      const rr = f3(r * scale);
+      if (el.getAttribute('r') !== String(rr)) el.setAttribute('r', rr);
     }
   }
 
-  // ---- orientation
+  // ---- layout: orientation, the viewBox (whole pitch, or a focus window on a small board) and the token scale
   function measure() {
     // Measure the container without our own content, so the SVG's aspect ratio can't feed back into the choice.
     root.classList.add('is-measuring');
     const w = container.clientWidth, h = container.clientHeight;
     root.classList.remove('is-measuring');
     const vw = win?.innerWidth ?? w, vh = win?.innerHeight ?? h;
-    return { width: w || vw, height: h > 1 ? h : vh };
+    // The SVG fills the container's content box.
+    let px = 0, py = 0;
+    try {
+      const cs = win?.getComputedStyle?.(container);
+      px = (parseFloat(cs?.paddingLeft) || 0) + (parseFloat(cs?.paddingRight) || 0);
+      py = (parseFloat(cs?.paddingTop) || 0) + (parseFloat(cs?.paddingBottom) || 0);
+    } catch { /* no styles: no padding */ }
+    return { width: w || vw, height: h > 1 ? h : vh, box: { width: Math.max(0, (w || vw) - px), height: Math.max(0, (h > 1 ? h : vh) - py) } };
   }
 
-  function applyOrientation(force = false) {
-    const { width, height } = measure();
+  function relayout(force = false) {
+    const { width, height, box } = measure();
     const next = pickOrientation(requested, width, height, P);
-    if (next === orient && !force) return;
+    const turned = next !== orient;
+    const nextVb = focusViewBox(next, box, focus, P);
+    const px = pxPerMetre(box, nextVb);
+    const k = tokenScale(px, P);
+    const kl = labelScale(px, P);
+    const vbChanged = !vb || ['x', 'y', 'width', 'height'].some((key) => vb[key] !== nextVb[key]);
+    pxm = px;
+    if (!force && !turned && !vbChanged && k === scale && kl === lscale) return;
     orient = next;
-    const vb = viewBoxFor(orient, P.margin);
+    vb = nextVb;
+    scale = k;
+    lscale = kl;
     svg.setAttribute('viewBox', `${vb.x} ${vb.y} ${vb.width} ${vb.height}`);
     const wt = worldTransform(orient);
     if (wt) world.setAttribute('transform', wt); else world.removeAttribute('transform');
     root.dataset.orientation = orient;
-    // Re-project without animating tokens across the pitch.
+    root.style.setProperty('--board-label-k', String(kl));
+    // Re-project (and re-scale) without animating tokens across the pitch.
     root.classList.add('no-anim');
     for (const t of tokens.values()) if (t.pos) { t.tx = ''; placeToken(t, t.pos); }
+    if (ghostAt) {
+      ghostEl.style.transition = 'none';
+      setGhost(ghostAt);
+      ghostEl.getBoundingClientRect?.();
+      ghostEl.style.transition = '';
+    }
     applyOverlays(true);
     setMarkers(markers);
     win?.requestAnimationFrame?.(() => win.requestAnimationFrame(() => root.classList.remove('no-anim')));
@@ -559,7 +704,19 @@ export function createBoard(container, { orientation = 'auto', params } = {}) {
 
   function setOrientation(o = 'auto') {
     requested = o;
-    applyOrientation();
+    relayout();
+  }
+
+  /** Extra (not in §5.8): the pitch length a mode wants in view ({ x0, x1 } world metres, or a list of points),
+   *  or null for the whole pitch. Only a small board (a phone held upright) crops to it: see focusViewBox. */
+  function setFocus(next = null) {
+    let f = null;
+    if (Array.isArray(next)) {
+      const xs = next.map((p) => p?.x).filter(Number.isFinite);
+      if (xs.length) f = { x0: Math.min(...xs), x1: Math.max(...xs) };
+    } else if (next && Number.isFinite(next.x0) && Number.isFinite(next.x1)) f = { x0: Math.min(next.x0, next.x1), x1: Math.max(next.x0, next.x1) };
+    focus = f;
+    relayout();
   }
 
   // ---- pointer + keyboard input
@@ -570,10 +727,11 @@ export function createBoard(container, { orientation = 'auto', params } = {}) {
     return { x: inv.a * clientX + inv.c * clientY + inv.e, y: inv.b * clientX + inv.d * clientY + inv.f };
   }
 
-  function draggableAt(target, w) {
-    const g = target?.closest?.('.token');
-    if (g && drag.ids.has(g.dataset.id)) return g.dataset.id;
-    let best = null, bd = P.grabRadius;
+  /** The draggable token nearest `w` within the grab radius (never less than the drawn token and its glow).
+   *  Decided by distance, not by the event target: a touch browser may retarget a tap near a focusable token to it. */
+  function draggableAt(w) {
+    if (!Number.isFinite(w?.x)) return null;
+    let best = null, bd = Math.max(P.grabRadius, (P.tokenRadius + 1.5) * scale);
     for (const id of drag.ids) {
       const t = tokens.get(id);
       if (!t?.pos || t.g.getAttribute('display') === 'none') continue;
@@ -581,6 +739,14 @@ export function createBoard(container, { orientation = 'auto', params } = {}) {
       if (d <= bd) { bd = d; best = id; }
     }
     return best;
+  }
+
+  /** Is `w` on the drawn token `id` (not just near it)? A tap there toggles it; a tap beyond it is a destination. */
+  function onToken(id, w) {
+    const t = tokens.get(id);
+    if (!t?.pos || !Number.isFinite(w?.x)) return false;
+    const r = (id === BALL_ID ? P.ballRadius + 0.7 : P.tokenRadius + 0.5) * scale;
+    return Math.hypot(t.pos.x - w.x, t.pos.y - w.y) <= r;
   }
 
   function moveTo(id, p, final) {
@@ -609,11 +775,13 @@ export function createBoard(container, { orientation = 'auto', params } = {}) {
   function onPointerDown(e) {
     if (!drag.enabled || active || (e.pointerType === 'mouse' && e.button !== 0)) return;
     const w = toWorld(e.clientX, e.clientY);
-    const id = draggableAt(e.target, w);
+    const id = draggableAt(w);
     const t = id ? tokens.get(id) : null;
     active = {
       id, pointerId: e.pointerId, pointerType: e.pointerType, x0: e.clientX, y0: e.clientY, dragging: false, last: null,
+      // Every drag is relative: the token keeps its offset from where it was picked up, so it never jumps.
       grab: t?.pos ? { x: t.pos.x - w.x, y: t.pos.y - w.y } : { x: 0, y: 0 },
+      liftFrom: null, // time the touch lift started (after touchLiftAfterPx of travel)
     };
     try { svg.setPointerCapture(e.pointerId); } catch { /* synthetic events */ }
     if (id) {
@@ -622,11 +790,24 @@ export function createBoard(container, { orientation = 'auto', params } = {}) {
     }
   }
 
+  /** CSS px a finger-dragged token floats above the finger at most: touchOffsetPx, capped at touchLiftMaxM. */
+  const maxLiftPx = () => Math.min(P.touchOffsetPx, P.touchLiftMaxM * (pxm || 0));
+
   function dragPoint(e) {
-    const w = active.pointerType === 'mouse'
-      ? (({ x, y }) => ({ x: x + active.grab.x, y: y + active.grab.y }))(toWorld(e.clientX, e.clientY))
-      : toWorld(e.clientX, e.clientY - P.touchOffsetPx);
-    return clampToPitch(w);
+    let lift = 0;
+    if (active.pointerType !== 'mouse') {
+      // Touch and pen: once the finger has travelled a little, the token eases up above it so it stays in
+      // sight. A short corrective drag never lifts, so it moves the token exactly as far as the finger.
+      const travel = Math.hypot(e.clientX - active.x0, e.clientY - active.y0);
+      const now = Number.isFinite(e.timeStamp) && e.timeStamp > 0 ? e.timeStamp : (win?.performance?.now?.() ?? Date.now());
+      if (active.liftFrom === null && travel >= P.touchLiftAfterPx) active.liftFrom = now;
+      if (active.liftFrom !== null) {
+        const u = P.touchLiftMs > 0 ? Math.min(1, Math.max(0, (now - active.liftFrom) / P.touchLiftMs)) : 1;
+        lift = maxLiftPx() * (1 - (1 - u) ** 2);
+      }
+    }
+    const w = toWorld(e.clientX, e.clientY - lift);
+    return clampToPitch({ x: w.x + active.grab.x, y: w.y + active.grab.y });
   }
 
   function onPointerMove(e) {
@@ -659,14 +840,20 @@ export function createBoard(container, { orientation = 'auto', params } = {}) {
       return;
     }
     if (e.type === 'pointercancel' || Math.hypot(e.clientX - a.x0, e.clientY - a.y0) >= P.dragSlopPx) return;
-    // A tap: on a draggable token it arms (or disarms) it; elsewhere it moves the armed token there.
-    if (a.id) setArmed(armed === a.id ? null : a.id);
-    else if (armed) {
-      const p = clampToPitch(toWorld(e.clientX, e.clientY));
-      const id = armed;
-      setArmed(null);
-      if (Number.isFinite(p.x)) moveTo(id, p, true);
+    // A tap. With nothing armed, a tap on or near a draggable token arms it. With a token armed, a tap on it
+    // disarms it, a tap on another draggable token arms that one, and a tap anywhere else (however close) moves
+    // the armed token there. Decided by distance, so a short move works on touch screens too.
+    const w = toWorld(e.clientX, e.clientY);
+    if (!armed) {
+      if (a.id) setArmed(a.id);
+      return;
     }
+    if (onToken(armed, w)) { setArmed(null); return; }
+    if (a.id && a.id !== armed && onToken(a.id, w)) { setArmed(a.id); return; }
+    const p = clampToPitch(w);
+    const id = armed;
+    setArmed(null);
+    if (Number.isFinite(p.x)) moveTo(id, p, true);
   }
 
   function onKeyDown(e) {
@@ -708,12 +895,12 @@ export function createBoard(container, { orientation = 'auto', params } = {}) {
   svg.addEventListener('pointercancel', onPointerUp);
   svg.addEventListener('keydown', onKeyDown);
 
-  const onResize = () => applyOrientation();
+  const onResize = () => relayout();
   const ro = win?.ResizeObserver ? new win.ResizeObserver(onResize) : null;
   ro?.observe(container);
   win?.addEventListener('resize', onResize);
 
-  applyOrientation(true);
+  relayout(true);
 
   return {
     el: root,
@@ -728,8 +915,12 @@ export function createBoard(container, { orientation = 'auto', params } = {}) {
     toWorld,
     /** Extra (not in §5.8): switch 'auto' | 'horizontal' | 'vertical' at runtime. */
     setOrientation,
+    /** Extra: the pitch length to keep in view on a small board (see setFocus above). */
+    setFocus,
     /** Extra: the resolved layout, 'horizontal' | 'vertical'. */
     get orientation() { return orient; },
+    /** Extra: how much bigger than life tokens are drawn (1 on a big board). */
+    get tokenScale() { return scale; },
     destroy() {
       ro?.disconnect();
       win?.removeEventListener('resize', onResize);

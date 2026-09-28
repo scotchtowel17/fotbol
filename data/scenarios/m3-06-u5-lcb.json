@@ -1,0 +1,144 @@
+{
+  "id": "m3-06-u5-lcb",
+  "title": "Close the gap to your partner",
+  "titleKid": "Stay close to your partner",
+  "brief": "Their #8 has the ball in midfield and is looking to play it out wide, away from you.",
+  "briefKid": "Their midfielder is about to pass out wide, far from you.",
+  "question": "The ball is out on the far wing: your full-back engages and your partner covers. Where do you go?",
+  "questionKid": "Ball on the other side, and your partner went to help. Where do you go?",
+  "takeaway": {
+    "standard": "With the ball wide, the back four slides across as one: the full-back engages, the near centre-back covers, and you, the far centre-back, slide across to about 10 m from your partner, goal-side of their #9.",
+    "kid": "Ball far away? Slide across near your partner, between their striker and our goal."
+  },
+  "module": "M3",
+  "moment": "out_of_possession",
+  "phase": "mid_block",
+  "principles": ["U5", "R1", "D5"],
+  "learner": {
+    "role": "LCB",
+    "start": { "x": 36, "y": 31 }
+  },
+  "timeline": {
+    "duration": 4.2,
+    "freezeAt": 3.1,
+    "ball": [
+      { "t": 0, "x": 55, "y": 39, "event": "carry" },
+      { "t": 0.9, "x": 53, "y": 38, "event": "pass" },
+      { "t": 2.3, "x": 40, "y": 61, "event": "carry" },
+      { "t": 3.2, "x": 36, "y": 62 },
+      { "t": 4.2, "x": 31, "y": 60.5 }
+    ],
+    "possession": [
+      { "t": 0, "team": "them" }
+    ],
+    "carrier": [
+      { "t": 0, "id": "them-LCM" },
+      { "t": 0.9, "id": null },
+      { "t": 2.3, "id": "them-LW" }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "them-LCM",
+          "keys": [
+            { "t": 0, "x": 55.8, "y": 39 },
+            { "t": 0.9, "x": 53.8, "y": 38 },
+            { "t": 2.3, "x": 50, "y": 41 },
+            { "t": 4.2, "x": 46, "y": 44 }
+          ]
+        },
+        {
+          "id": "them-LW",
+          "keys": [
+            { "t": 0, "x": 47, "y": 63 },
+            { "t": 0.9, "x": 45, "y": 62.5 },
+            { "t": 2.3, "x": 40.8, "y": 61 },
+            { "t": 3.2, "x": 36.8, "y": 62 },
+            { "t": 4.2, "x": 31.8, "y": 60.5 }
+          ]
+        },
+        {
+          "id": "them-ST",
+          "keys": [
+            { "t": 0, "x": 40.6, "y": 37.3 },
+            { "t": 3.1, "x": 31.5, "y": 44 },
+            { "t": 4.2, "x": 27.5, "y": 45.5 }
+          ]
+        },
+        {
+          "id": "them-RCM",
+          "keys": [
+            { "t": 0, "x": 48.3, "y": 23.5 },
+            { "t": 3.1, "x": 41, "y": 33 },
+            { "t": 4.2, "x": 37, "y": 35 }
+          ]
+        },
+        {
+          "id": "us-RB",
+          "keys": [
+            { "t": 0, "x": 37.2, "y": 52.2 },
+            { "t": 0.9, "x": 37, "y": 52.5 },
+            { "t": 2.3, "x": 35.5, "y": 57.5 },
+            { "t": 3.1, "x": 33.9, "y": 60.4 },
+            { "t": 4.2, "x": 29.6, "y": 59.3 }
+          ]
+        },
+        {
+          "id": "us-RCB",
+          "keys": [
+            { "t": 0, "x": 36.3, "y": 41.9 },
+            { "t": 0.9, "x": 36.2, "y": 42 },
+            { "t": 3.1, "x": 28.5, "y": 51.5 },
+            { "t": 4.2, "x": 25.5, "y": 52 }
+          ]
+        },
+        {
+          "id": "us-LB",
+          "keys": [
+            { "t": 0, "x": 37.1, "y": 19 },
+            { "t": 0.9, "x": 36.9, "y": 19.2 },
+            { "t": 3.1, "x": 29.8, "y": 29 },
+            { "t": 4.2, "x": 26.5, "y": 30 }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      { "t": 0, "carrierFacing": "forward" },
+      { "t": 2.3, "carrierFacing": "forward" }
+    ]
+  },
+  "answer": {
+    "mode": "engine",
+    "ideal": { "x": 28, "y": 41.5 }
+  },
+  "misconceptions": [
+    {
+      "id": "held-your-spot",
+      "region": { "type": "rect", "x0": 24, "y0": 22, "x1": 38, "y1": 36.5 },
+      "text": "You held your spot while your partner went across to cover, so there is a big gap between you for their #9 to run into.",
+      "textKid": "Your partner moved across. Slide over too, so there is no big gap."
+    },
+    {
+      "id": "joined-your-partner",
+      "region": { "type": "circle", "x": 27.5, "y": 49.5, "r": 2.5 },
+      "text": "You slid all the way across to your partner, so their #9 is free on your inside and one pass beats you both.",
+      "textKid": "Too close to your partner! Stay between their striker and our goal."
+    },
+    {
+      "id": "stepped-toward-the-ball",
+      "region": { "type": "circle", "x": 34, "y": 46, "r": 3 },
+      "text": "You stepped out of the line toward the ball; your full-back and partner already have it covered, and their #9 can now run in behind you.",
+      "textKid": "Don't chase the ball. Stay in line, between their striker and our goal."
+    }
+  ],
+  "difficulty": 0,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  },
+  "notes": "Re-authored for the far centre-back (U5). It used to be the far full-back tucking in with the ball on the far wing, a duplicate of m1-03 (same role, situation and answer). Now the full-back engages (keyed 3 m off the carrier; the automatic press arrived too late), the near centre-back covers behind it, the far full-back tucks in, and their #9 sits between our centre-backs, so the learner slides across to about 10 m from their partner, goal-side of the #9. Their #8 is keyed as a late runner (left automatic, it sprinted at up to 16 m/s into our back line)."
+}

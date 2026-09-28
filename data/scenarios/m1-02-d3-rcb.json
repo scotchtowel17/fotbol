@@ -1,0 +1,86 @@
+{
+  "id": "m1-02-d3-rcb",
+  "title": "Cover your full-back",
+  "titleKid": "Back up your teammate",
+  "brief": "Their #8 is about to play the ball out wide to their winger.",
+  "briefKid": "Their midfielder is about to pass out wide.",
+  "question": "Your full-back is going to their winger. Where do you go?",
+  "questionKid": "Your teammate is going to their winger. Where do you go?",
+  "takeaway": {
+    "standard": "When your full-back goes to the ball, drop in behind them at an angle, a few metres deeper and nearer the middle, ready to step in if they are beaten.",
+    "kid": "When a teammate goes to the ball, back them up from behind, nearer the middle."
+  },
+  "module": "M1",
+  "moment": "out_of_possession",
+  "phase": "low_block",
+  "principles": ["D3", "R1", "U4"],
+  "learner": {
+    "role": "RCB",
+    "start": { "x": 29.5, "y": 43.5 }
+  },
+  "timeline": {
+    "duration": 5.0,
+    "freezeAt": 3.3,
+    "ball": [
+      { "t": 0, "x": 42, "y": 41, "event": "carry" },
+      { "t": 1.0, "x": 39.5, "y": 43, "event": "pass" },
+      { "t": 2.3, "x": 25, "y": 61.5, "event": "carry" },
+      { "t": 2.8, "x": 23.5, "y": 61.2 },
+      { "t": 3.3, "x": 22, "y": 60.8 },
+      { "t": 5.0, "x": 18, "y": 59 }
+    ],
+    "possession": [
+      { "t": 0, "team": "them" }
+    ],
+    "carrier": [
+      { "t": 0, "id": "them-LCM" },
+      { "t": 1.0, "id": null },
+      { "t": 2.4, "id": "them-LW" }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "them-LW",
+          "keys": [
+            { "t": 0, "x": 36, "y": 63 },
+            { "t": 1.0, "x": 31.5, "y": 62.5 },
+            { "t": 2.3, "x": 25.6, "y": 61.6 },
+            { "t": 2.8, "x": 24.1, "y": 61.3 },
+            { "t": 3.3, "x": 22.6, "y": 60.9 },
+            { "t": 5.0, "x": 18.6, "y": 59.1 }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      { "t": 0, "carrierFacing": "forward" },
+      { "t": 2.4, "carrierFacing": "forward" }
+    ]
+  },
+  "answer": {
+    "mode": "engine",
+    "ideal": { "x": 14.5, "y": 52 }
+  },
+  "misconceptions": [
+    {
+      "id": "doubled-up",
+      "region": { "type": "circle", "x": 20.5, "y": 57, "r": 2.5 },
+      "text": "You went to the ball as well, so if their winger beats your full-back there is nobody behind to stop them.",
+      "textKid": "If you both go to the ball, nobody is there to back up."
+    },
+    {
+      "id": "stayed-central",
+      "region": { "type": "circle", "x": 15.5, "y": 42.5, "r": 2.5 },
+      "text": "You stayed in the middle, which leaves a big gap between you and your full-back for their winger to run into.",
+      "textKid": "You are too far from your teammate, so move across to help."
+    }
+  ],
+  "difficulty": -1,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  }
+}

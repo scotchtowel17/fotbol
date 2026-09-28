@@ -1,0 +1,104 @@
+{
+  "id": "m3-08-r3-dm",
+  "title": "Screen the pass into the #9",
+  "titleKid": "Block the pass to their striker",
+  "brief": "Their #9 has dropped into the space in front of your centre-backs.",
+  "briefKid": "Their striker has come short, into the space in front of your defenders.",
+  "question": "They have moved the ball across. Which pass do you need to block now?",
+  "questionKid": "They moved the ball across. Which pass do you block now?",
+  "takeaway": {
+    "standard": "As the #6, stay in front of your centre-backs and move with the ball so you are always standing in the passing line into their #9.",
+    "kid": "Stand in the path of the pass to their striker, in front of your defenders."
+  },
+  "module": "M3",
+  "moment": "out_of_possession",
+  "phase": "mid_block",
+  "principles": ["R3", "U2"],
+  "learner": {
+    "role": "DM",
+    "start": { "x": 44.5, "y": 41 }
+  },
+  "timeline": {
+    "duration": 4.6,
+    "freezeAt": 3,
+    "ball": [
+      { "t": 0, "x": 58, "y": 46.5, "event": "carry" },
+      { "t": 0.8, "x": 57, "y": 46, "event": "pass" },
+      { "t": 2.2, "x": 57, "y": 23, "event": "carry" },
+      { "t": 3, "x": 55.5, "y": 23.5 },
+      { "t": 3.8, "x": 54, "y": 24.5 },
+      { "t": 4.6, "x": 52.5, "y": 25.5 }
+    ],
+    "possession": [
+      { "t": 0, "team": "them" }
+    ],
+    "carrier": [
+      { "t": 0, "id": "them-LCM" },
+      { "t": 0.8, "id": null },
+      { "t": 2.2, "id": "them-RCM" }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "them-LCM",
+          "keys": [
+            { "t": 0, "x": 58.8, "y": 46.5 },
+            { "t": 0.8, "x": 57.8, "y": 46 },
+            { "t": 2.2, "x": 58, "y": 44 },
+            { "t": 4.6, "x": 56, "y": 41 }
+          ]
+        },
+        {
+          "id": "them-RCM",
+          "keys": [
+            { "t": 0, "x": 60, "y": 26 },
+            { "t": 0.8, "x": 59, "y": 24.5 },
+            { "t": 2.2, "x": 57.8, "y": 23 },
+            { "t": 3, "x": 56.3, "y": 23.5 },
+            { "t": 3.8, "x": 54.8, "y": 24.5 },
+            { "t": 4.6, "x": 53.3, "y": 25.5 }
+          ]
+        },
+        {
+          "id": "them-ST",
+          "keys": [
+            { "t": 0, "x": 41, "y": 40 },
+            { "t": 2.2, "x": 42.5, "y": 36.5 },
+            { "t": 3.8, "x": 43, "y": 35 },
+            { "t": 4.6, "x": 43, "y": 34.5 }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      { "t": 0, "carrierFacing": "forward" },
+      { "t": 2.2, "carrierFacing": "forward" }
+    ]
+  },
+  "answer": {
+    "mode": "engine",
+    "ideal": { "x": 45, "y": 29.5 }
+  },
+  "misconceptions": [
+    {
+      "id": "stayed-on-the-old-lane",
+      "region": { "type": "circle", "x": 44.5, "y": 41, "r": 4 },
+      "text": "You stayed where the ball was, so the pass from its new spot into their #9 is wide open.",
+      "textKid": "The ball moved. Move across to block the pass to their striker."
+    },
+    {
+      "id": "went-to-the-ball",
+      "region": { "type": "circle", "x": 53, "y": 25, "r": 4 },
+      "text": "You went to press the ball, but that leaves the space in front of your centre-backs empty for their #9.",
+      "textKid": "Leave the ball to others. Guard the space in front of your defenders."
+    }
+  ],
+  "difficulty": 0,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  }
+}

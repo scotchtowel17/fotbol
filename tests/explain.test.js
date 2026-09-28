@@ -141,6 +141,54 @@ test('explain: far from the role\'s place with no rule broken, the zone itself i
   assert.ok(both.reasons.length > 1 && both.reasons.slice(0, -1).every((r) => r.ruleId !== 'zone'));
 });
 
+test('explain: what the best spot gives up too is a trade-off, not a reason (so a reason never leads away from it)', () => {
+  const ctx = ctxFor('oopMidBlock', 'us-DM');
+  const R = (id, s, extra = {}) => ({ id, principles: [id === 'screen' ? 'R3' : id === 'cover' ? 'D3' : 'F8'], weight: 2, s, critical: false, vars: {}, ...extra });
+  // The best spot fails screen (0.73) and spacing (0.6) and passes cover.
+  const best = { score: 94, grade: 'S', raw: 94, sZone: 1, center: at(35, 43), rules: [R('cover', 0.95), R('screen', 0.73), R('spacing', 0.6)] };
+  const ghost = { spot: at(35, 43), result: best };
+  const judge = (rules, raw, sZone = 1, spot = at(33, 43)) =>
+    explain({ score: Math.round(raw), grade: raw >= 90 ? 'S' : 'B', raw, sZone, distance: 2, center: at(35, 43), rules }, ctx, spot, { ghost, max: 5 });
+  // On the best spot (the same evaluation): nothing to fix, no cue, but still praise.
+  const on = explain(best, ctx, ghost.spot, { ghost, max: 5 });
+  assert.deepEqual(on.reasons, []);
+  assert.equal(on.cue, null);
+  assert.equal(on.fix, null);
+  // Elsewhere: screen no worse than at the best spot is dropped; cover (which the best spot passes) is kept;
+  // spacing much worse than at the best spot is kept.
+  const e = judge([R('cover', 0.2), R('screen', 0.7), R('spacing', 0.3)], 80);
+  assert.deepEqual(e.reasons.map((r) => r.ruleId), ['cover', 'spacing']);
+  assert.equal(e.cue.ruleId, 'cover');
+  // Screen clearly worse than at the best spot (more than tradeoffMargin) is a reason again.
+  assert.ok(judge([R('cover', 0.95), R('screen', 0.73 - EXPLAIN_DEFAULTS.tradeoffMargin - 0.05), R('spacing', 0.6)], 88).reasons.some((r) => r.ruleId === 'screen'));
+  // Scoring at least the best spot's score: no reasons and no cue, whatever the rules say.
+  const level = judge([R('cover', 0.8), R('screen', 0.9), R('spacing', 0.6)], 94.2);
+  assert.deepEqual(level.reasons, []);
+  assert.equal(level.cue, null);
+  // A broken critical rule is always a reason, even at the best spot's score.
+  const crit = judge([{ ...R('screen', 0.73), id: 'goal-side', principles: ['D5'], critical: true }], 94.2);
+  assert.equal(crit.reasons[0].ruleId, 'goal-side');
+  assert.equal(crit.reasons[0].critical, true);
+  // Without the best spot's evaluation (a plain fix target), every failing rule is a reason, as before.
+  const plain = explain({ score: 80, grade: 'A', raw: 80, sZone: 1, center: at(35, 43), rules: [R('screen', 0.73), R('spacing', 0.6)] }, ctx, at(33, 43), { ghost: ghost.spot, max: 5 });
+  assert.deepEqual(plain.reasons.map((r) => r.ruleId), ['spacing', 'screen']);
+});
+
+test('explain: with every rule met or shared with the best spot, a zone that costs points is the reason (F2)', () => {
+  const ctx = ctxFor('oopMidBlock', 'us-DM');
+  const best = { score: 100, grade: 'S', raw: 100, sZone: 1, center: at(35, 43), rules: [] };
+  const ghost = { spot: at(35, 43), result: best };
+  const ev = (sZone) => ({ score: 80, grade: 'A', raw: 100 * (0.55 * sZone + 0.45), sZone, distance: 6, center: at(35, 43), rules: [] });
+  const e = explain(ev(0.8), ctx, at(35, 49), { ghost }); // 11 points lost to the zone alone
+  assert.equal(e.reasons.length, 1);
+  assert.equal(e.reasons[0].ruleId, ZONE_REASON.id);
+  assert.equal(e.reasons[0].principleId, 'F2');
+  assert.ok(e.cue.text.endsWith('?'));
+  // A zone costing less than zoneGap points is left alone.
+  const small = 1 - (EXPLAIN_DEFAULTS.zoneGap - 1) / (100 * 0.55);
+  assert.deepEqual(explain(ev(small), ctx, at(35, 45), { ghost }).reasons, []);
+});
+
 test('explain: every headline grade has both wordings', () => {
   const ctx = ctxFor('ipBuildUp', 'us-DM');
   const expected = { S: 'Spot on.', A: 'Great position.', B: 'Good — small adjustment.', C: 'Close, but…', D: 'Not quite.', F: 'Out of position.' };

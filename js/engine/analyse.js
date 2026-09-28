@@ -38,6 +38,9 @@ export function analyseScene({ tags, context, ghost: ghostOpts, ...sceneOpts }) 
 /**
  * Score a spot for the scene's learner and phrase the feedback (fix = toward the ghost). The zone is the
  * ghost search's: its centre and tolerance, so a spot on the ghost scores exactly the ghost's score.
+ * The ghost's own evaluation goes to explain() too, so what the best spot itself gives up (a trade-off,
+ * such as a covering #6 standing a little deeper than a screen would) is never a reason to move, and
+ * standing on the ghost gets no reasons and no cue.
  * @param {{ ctx: object, ghost: { spot: {x:number,y:number}, result: object } }} scene  from analyseScene()
  * @param {{x:number, y:number}} spot
  * @param {{ wording?: 'standard'|'kid', principles?: object, rules?: object[] }} [opts]
@@ -47,6 +50,6 @@ export function analyseScene({ tags, context, ghost: ghostOpts, ...sceneOpts }) 
 export function judgeSpot({ ctx, ghost }, spot, { wording, principles, rules } = {}) {
   // Same zone as the ghost search: its centre (the base, or an authored ideal passed as ghost.base) and tolerance.
   const result = evaluate(ctx, spot, { rules, center: ghost.result.center, tol: ghost.result.tol });
-  const feedback = explain(result, ctx, spot, { wording, principles, rules, ghost: ghost.spot });
+  const feedback = explain(result, ctx, spot, { wording, principles, rules, ghost: { spot: ghost.spot, result: ghost.result } });
   return { result, feedback };
 }

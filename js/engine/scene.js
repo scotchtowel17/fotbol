@@ -12,10 +12,10 @@
 // presser jump. The timeline instead commits to autoRoles() decisions at key times (see timeline.js).
 
 import { dist, dot, sub, norm, clamp, lerp, nearest } from './geometry.js';
-import { OWN_GOAL, OPP_GOAL, HALF_X, LENGTH, clampToPitch } from './pitch.js';
+import { OWN_GOAL, OPP_GOAL, HALF_X, LENGTH, MID_Y, clampToPitch } from './pitch.js';
 import { ROLES, ROLE_INFO, playerId } from './roles.js';
 import { teamTargets } from './formation.js';
-import { engageBias } from './context.js';
+import { engageBias, pressLean } from './context.js';
 
 export const SCENE_DEFAULTS = Object.freeze({
   carrierOffset: 0.8, // [D] carrier stands this far behind the ball, towards its own goal
@@ -24,9 +24,15 @@ export const SCENE_DEFAULTS = Object.freeze({
   pressFade: 6, // [D] ...and not at all beyond pressRadius + pressFade (linear in between)
   pressHandover: 3, // [D] press ramps in as the nearest defender's lead over the next grows 0 → this; 0 = hard switch
   pressPastWeight: 2, // [D] each metre a defender's spot is past the ball (the ball has gone by them) counts as this many extra metres
+  pressZoneFree: 8, // [D] playback (rankFrom): a defender ranks on where he stands while his formation spot ranks within this of the ball...
+  pressZoneWeight: 1, // [D] ...and each metre beyond it counts this much extra (D7: the ball has left his zone, so he hands it over)
   pressFbEngage: 10, // [D] R2/U5: the ball-side full-back ranks this much nearer with the ball wide in the defending team's half (CONTEXT_DEFAULTS.fbEngage)
   pressFbEngageFrom: 45, // [D] ...fully with the ball at or behind this x (own frame)... (CONTEXT_DEFAULTS.fbEngageFrom)
   pressFbEngageTo: 55, // [D] ...fading out by this x (CONTEXT_DEFAULTS.fbEngageTo)
+  pressAim: 25, // [D] D2/R5: in the attacking team's half the presser stands this many degrees inside the ball → own-goal line (PRESS_DEFAULTS.centralAim)...
+  pressLeanCentre: 2, // [D] ...fading in from this far off y = 34 to the half-space (PRESS_DEFAULTS.leanCentre)...
+  pressLeanFrom: 45, // [D] ...and with the ball's x (the defending team's frame) from here... (PRESS_DEFAULTS.leanFrom)
+  pressLeanTo: 55, // [D] ...to here (PRESS_DEFAULTS.leanTo): context.js pressLean()
   onsideMargin: 0.5, // [D] attackers stay this far onside of the offside line
   settleReach: 6, // [D] D5/R4: out of possession an #8 stays goal-side of any opponent within this of his spot (a winger of the full-back on his flank)...
   settleFade: 4, // [D] ...fading out over this many metres beyond it (so an opponent coming near never makes him jump)
@@ -66,6 +72,10 @@ const depth = (p) => DEPTH[ROLE_INFO[p.role]?.family] ?? 3;
  * @param {boolean} [opts.inFlight=false]  ball in flight: no auto carrier and no press (timeline sets this when the carrier is null)
  * @param {{x:number,y:number}} [opts.shapeBall]  ball the shape reacts to (default `ball`; the timeline passes a lagged, averaged ball).
  *   It drives the formation targets and who presses; the carrier, press spot and onside line use `ball`.
+ * @param {Object<string,{x:number,y:number}>} [opts.rankFrom]  where the players actually are (playback: the frame at a key time).
+ *   The automatic press then ranks each defender from here on `ball` (not his formation spot on the shape ball), plus
+ *   pressZoneWeight per metre his formation spot ranks beyond pressZoneFree, so a defender the play has left behind is
+ *   never sent to press past a teammate who is already goal-side, and one far out of his zone hands over.
  * @param {object} [opts.params]           overrides for SCENE_DEFAULTS; params.shape (an object) overrides SHAPE_DEFAULTS
  *   of the phase shape (formation.js) for both teams
  * @returns {import('./types.js').Frame}   t = 0, tags = {}
@@ -85,8 +95,7 @@ export function autoFrame(opts) {
       if (p && p.team === defending && p.role !== 'GK' && p !== carrier && !pinned.has(p.id)) { presser = p; w = 1; }
     }
     if (presser) {
-      const g = norm(sub(defending === 'us' ? OWN_GOAL : OPP_GOAL, ball));
-      const target = { x: ball.x + g.x * P.pressDistance, y: ball.y + g.y * P.pressDistance };
+      const target = pressSpot(defending, ball, P);
       Object.assign(presser, clampToPitch({ x: lerp(presser.x, target.x, w), y: lerp(presser.y, target.y, w) }));
       mobility.set(presser.id, 1 - w);
     }
@@ -140,8 +149,7 @@ export function learnerBase(opts) {
     const S = setup({ ...opts, learnerId: undefined, overrides });
     const d = (opts.autoPress ?? S.P.autoPress) && !S.inFlight ? decidePress({ ...S, defending: 'us' }) : null;
     if (d?.p.id === id) {
-      const g = norm(sub(OWN_GOAL, S.ball));
-      const target = clampToPitch({ x: S.ball.x + g.x * S.P.pressDistance, y: S.ball.y + g.y * S.P.pressDistance });
+      const target = clampToPitch(pressSpot('us', S.ball, S.P));
       return { x: lerp(me.x, target.x, d.w), y: lerp(me.y, target.y, d.w) };
     }
   }
@@ -221,6 +229,7 @@ function setup(opts) {
 
   return {
     P, ball, shapeBall, possession, attacking, defending, inFlight, players, byId, pinned, overridden, mobility, carrier,
+    rankFrom: opts.rankFrom ?? null,
     autoPress: opts.autoPress ?? P.autoPress,
     onsideClamp: opts.onsideClamp ?? P.onsideClamp,
   };
@@ -256,21 +265,50 @@ function settle(players, teams, overridden, carrier, P) {
 }
 
 /**
- * The automatic press: the defending outfielder whose formation spot is nearest the (shape) ball,
- * unless that is the learner (who must decide) or an override (the author decided). "Nearest"
- * counts each metre a spot is past the ball as pressPastWeight metres, so a goal-side defender
- * takes over from one the ball has gone by, and, with the ball wide in the defending team's half,
- * the ball-side full-back as pressFbEngage metres nearer (R2, U5: he engages the winger; context.js
- * engageBias(), the same ranking buildContext() uses for the first defender). The weight ramps with the lead over the next defender
+ * Where a presser stands (D1, D2): pressDistance from the ball, goal-side, on the ball → own-goal line
+ * turned pressAim x pressLean() degrees toward the middle of the pitch (in the attacking team's half a
+ * carrier off the middle is pressed from the inside; the same lean as the press rule). Not clamped.
+ */
+function pressSpot(defending, ball, P) {
+  const g = norm(sub(defending === 'us' ? OWN_GOAL : OPP_GOAL, ball));
+  const lean = pressLean(defending, ball, { leanCentre: P.pressLeanCentre, leanFrom: P.pressLeanFrom, leanTo: P.pressLeanTo });
+  // Turn toward y = 34: counter-clockwise (x → y) turns a goalward vector toward smaller y when it points to -x.
+  const a = ((lean * P.pressAim * Math.PI) / 180) * (ball.y >= MID_Y ? 1 : -1) * (g.x <= 0 ? 1 : -1);
+  const c = Math.cos(a), s = Math.sin(a);
+  const dx = g.x * c - g.y * s, dy = g.x * s + g.y * c;
+  return { x: ball.x + dx * P.pressDistance, y: ball.y + dy * P.pressDistance };
+}
+
+/**
+ * The automatic press: the defending outfielder nearest the ball, unless that is the learner (who
+ * must decide) or an override (the author decided). "Nearest" counts each metre a spot is past the
+ * ball as pressPastWeight metres, so a goal-side defender takes over from one the ball has gone by,
+ * and, with the ball wide in the defending team's half, the ball-side full-back as pressFbEngage
+ * metres nearer (R2, U5: he engages the winger; context.js engageBias(), the same ranking
+ * buildContext() uses for the first defender). A static scene ranks the formation spots on the
+ * shape ball. In playback (rankFrom) it ranks where each defender actually is on the ball itself, so
+ * one the play has left behind is never sent back past the carrier while a teammate is goal-side;
+ * and a defender whose formation spot (on the shape ball) ranks more than pressZoneFree from it
+ * counts pressZoneWeight metres extra per metre beyond, so the press stays with the unit whose zone
+ * the ball is in (a #9 on a switch across their back line, R5) and one who has followed the ball
+ * out of his zone hands it over (D7). The weight ramps with the lead over the next defender
  * (pressHandover) and fades beyond pressRadius (pressFade).
  * @returns {{p: object, w: number}|null}
  */
-function decidePress({ P, shapeBall, players, pinned, carrier, defending }) {
-  const g = norm(sub(defending === 'us' ? OWN_GOAL : OPP_GOAL, shapeBall));
-  const fb = engageBias(defending, shapeBall, { fbEngage: P.pressFbEngage, fbEngageFrom: P.pressFbEngageFrom, fbEngageTo: P.pressFbEngageTo });
+function decidePress({ P, ball, shapeBall, players, pinned, carrier, defending, rankFrom }) {
+  const goal = defending === 'us' ? OWN_GOAL : OPP_GOAL;
+  const b = rankFrom ? ball : shapeBall;
+  const fb = engageBias(defending, b, { fbEngage: P.pressFbEngage, fbEngageFrom: P.pressFbEngageFrom, fbEngageTo: P.pressFbEngageTo });
+  const g = norm(sub(goal, b)), gShape = norm(sub(goal, shapeBall));
+  const rank = (q, at, dir) => dist(q, at) + P.pressPastWeight * Math.max(0, -dot(sub(q, at), dir));
+  const reach = (p) => {
+    const at = rankFrom?.[p.id];
+    const r = at ? rank(at, b, g) + P.pressZoneWeight * Math.max(0, rank(p, shapeBall, gShape) - P.pressZoneFree) : rank(p, b, g);
+    return r - (p.role === fb.role ? fb.bias : 0);
+  };
   const ranked = players
     .filter((p) => p.team === defending && p.role !== 'GK' && p !== carrier)
-    .map((p) => ({ p, d: dist(p, shapeBall) + P.pressPastWeight * Math.max(0, -dot(sub(p, shapeBall), g)) - (p.role === fb.role ? fb.bias : 0) }))
+    .map((p) => ({ p, d: reach(p) }))
     .sort((a, b) => a.d - b.d); // stable: ties keep role order
   const [first, second] = ranked;
   if (!first || pinned.has(first.p.id)) return null;

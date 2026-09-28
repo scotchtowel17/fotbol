@@ -433,6 +433,26 @@ test('spacing: applies in every moment, but never to the keeper', () => {
   assert.equal(spacing.weight(ctxFor('ipBuildUp', 'us-GK')), 0);
 });
 
+test('spacing: out of possession only the maximum applies, and never to the first defender (defenders stand close on purpose)', () => {
+  // Covering at D3 distance, doubling up, a compact bank, centre-backs packed on a cross: none is "one opponent marks you both".
+  const lcb = ctxFor('oopMidBlock', 'us-LCB'); // our right centre-back stands at (28, 40)
+  const close = spacing.evaluate(lcb, at(28, 37)); // 3 m from him
+  assert.equal(close.s, 1);
+  assert.equal(close.vars.min, 0);
+  assert.equal(spacing.text.standard.ok(close.vars), 'You stay close enough to your teammates to help them.');
+  const cut = spacing.evaluate(lcb, at(10, 4)); // 20+ m from everyone: still too far to help
+  assert.ok(cut.s < 1);
+  assert.match(spacing.text.standard.fail(cut.vars), /close the gap to stay connected/);
+  // A loose ball is defended the same way.
+  assert.equal(spacing.evaluate(ctxFor('oopMidBlock', 'us-LCB', { possession: 'none', carrierId: null }), at(28, 37)).s, 1);
+  // The first defender presses wherever the others are: the press rule sets his spot.
+  const fd = ctxFor('oopMidBlock', 'us-RCM');
+  assert.equal(fd.duty, 'first-defender');
+  assert.equal(spacing.weight(fd), 0);
+  // In possession the minimum still holds (one opponent could mark you both).
+  assert.equal(spacing.evaluate(ctxFor('ipBuildUp', 'us-LCM'), at(33, 31)).s, 0);
+});
+
 // ---------------------------------------------------------------- shared properties
 
 /** Every (rule, context) pair where the rule applies, for the sweep tests below. */

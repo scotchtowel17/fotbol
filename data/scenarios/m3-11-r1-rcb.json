@@ -1,0 +1,118 @@
+{
+  "id": "m3-11-r1-rcb",
+  "title": "One steps, one covers",
+  "titleKid": "One goes, one backs up",
+  "brief": "Your #6 has gone to press, and their #9 is dropping off your back line to ask for the ball.",
+  "briefKid": "Your midfielder went to the ball, and their striker comes short for a pass.",
+  "question": "Your partner has stepped out to their #9. Where do you go?",
+  "questionKid": "Your partner went to their striker. Where do you go?",
+  "takeaway": {
+    "standard": "When your centre-back partner steps out, you never step with them: hold the line and slide across behind and inside them, so you can cover if they are turned.",
+    "kid": "When your partner goes to the ball, stay behind them to help."
+  },
+  "module": "M3",
+  "moment": "out_of_possession",
+  "phase": "mid_block",
+  "principles": ["R1", "D3", "U4"],
+  "learner": {
+    "role": "RCB",
+    "start": { "x": 40.5, "y": 41 }
+  },
+  "timeline": {
+    "duration": 4.4,
+    "freezeAt": 2.8,
+    "ball": [
+      { "t": 0, "x": 63, "y": 38, "event": "carry" },
+      { "t": 0.8, "x": 62, "y": 37, "event": "pass" },
+      { "t": 1.9, "x": 45, "y": 33.5, "event": "carry" },
+      { "t": 2.4, "x": 44.6, "y": 33.2 },
+      { "t": 3, "x": 44.2, "y": 33.6 },
+      { "t": 3.6, "x": 44, "y": 34 },
+      { "t": 4.4, "x": 43.3, "y": 35 }
+    ],
+    "possession": [
+      { "t": 0, "team": "them" }
+    ],
+    "carrier": [
+      { "t": 0, "id": "them-DM" },
+      { "t": 0.8, "id": null },
+      { "t": 1.9, "id": "them-ST" }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "them-DM",
+          "keys": [
+            { "t": 0, "x": 63.8, "y": 38 },
+            { "t": 0.8, "x": 62.8, "y": 37 },
+            { "t": 1.9, "x": 60, "y": 37 },
+            { "t": 4.4, "x": 56, "y": 38.5 }
+          ]
+        },
+        {
+          "id": "them-ST",
+          "keys": [
+            { "t": 0, "x": 40, "y": 36 },
+            { "t": 0.8, "x": 42, "y": 35 },
+            { "t": 1.9, "x": 45.8, "y": 33.5 },
+            { "t": 2.4, "x": 45.4, "y": 33.2 },
+            { "t": 3, "x": 45, "y": 33.6 },
+            { "t": 3.6, "x": 44.8, "y": 34 },
+            { "t": 4.4, "x": 44.1, "y": 35 }
+          ]
+        },
+        {
+          "id": "us-LCB",
+          "keys": [
+            { "t": 0, "x": 38.5, "y": 29 },
+            { "t": 0.8, "x": 38.5, "y": 29.5 },
+            { "t": 1.9, "x": 41.5, "y": 32.5 },
+            { "t": 2.4, "x": 42.3, "y": 32.8 },
+            { "t": 3, "x": 42, "y": 33.2 },
+            { "t": 3.6, "x": 41.8, "y": 33.6 },
+            { "t": 4.4, "x": 41.1, "y": 34.6 }
+          ]
+        },
+        {
+          "id": "us-DM",
+          "keys": [
+            { "t": 0, "x": 60.6, "y": 37.3 },
+            { "t": 0.8, "x": 59.8, "y": 36.6 },
+            { "t": 1.9, "x": 56.5, "y": 36 },
+            { "t": 4.4, "x": 49, "y": 35 }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      { "t": 0, "carrierFacing": "forward" },
+      { "t": 1.9, "carrierFacing": "backward", "pressureOnBall": true }
+    ]
+  },
+  "answer": {
+    "mode": "engine",
+    "ideal": { "x": 33, "y": 36.5 }
+  },
+  "misconceptions": [
+    {
+      "id": "stayed-level",
+      "region": { "type": "circle", "x": 40.5, "y": 41, "r": 3 },
+      "text": "You stayed level with your partner and wide of them, so if their #9 turns your partner there is nobody behind to cover; drop and slide across behind them.",
+      "textKid": "Don't stay level with your partner. Drop behind them to help."
+    },
+    {
+      "id": "stepped-with-partner",
+      "region": { "type": "rect", "x0": 39, "y0": 33.5, "x1": 45, "y1": 38 },
+      "text": "You stepped in beside your partner, so one touch round them takes you both out; hold the line behind them instead.",
+      "textKid": "Don't go to the ball too. Stay behind your partner."
+    }
+  ],
+  "difficulty": 1,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  }
+}

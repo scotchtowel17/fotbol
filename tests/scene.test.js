@@ -106,6 +106,56 @@ test('autoPress: the nearest defender stands pressDistance from the ball on the 
   approx(cross(sub(q, { x: 70, y: 30 }), sub(OPP_GOAL, { x: 70, y: 30 })), 0, 1e-9);
 });
 
+test("autoPress: in the attacking team's half the presser curves onto the carrier's inside (pressAim, D2/R5), continuously", () => {
+  const P = SCENE_DEFAULTS;
+  // Degrees the presser stands off the ball → goal line, positive toward the middle of the pitch.
+  const angleOff = (p, ball, goal) => {
+    const a = sub(p, ball), g = sub(goal, ball);
+    const deg = (Math.atan2(cross(g, a), dot(g, a)) * 180) / Math.PI;
+    return deg * (ball.y >= 34 ? 1 : -1) * (g.x <= 0 ? 1 : -1);
+  };
+  const press = (ball, presserId, possession) => byId(autoFrame({ formations, ball, possession, presserId, params: NO_RECOVERY }))[presserId];
+  // Their centre-back on the ball deep in their half, off the middle: our #9 presses from his inside.
+  const ball = { x: 85, y: 22 };
+  const p = press(ball, 'us-ST', 'them');
+  approx(dist(p, ball), P.pressDistance, 1e-9);
+  approx(angleOff(p, ball, OWN_GOAL), P.pressAim, 1e-9);
+  // Mirrored for them: their #9 presses our centre-back in our half from his inside.
+  const m = { x: 105 - ball.x, y: 68 - ball.y };
+  approx(angleOff(press(m, 'them-ST', 'us'), m, OPP_GOAL), P.pressAim, 1e-9);
+  // In our half, and in the middle of the pitch, the press stays on the line to goal (D1).
+  approx(angleOff(press({ x: 40, y: 22 }, 'us-DM', 'them'), { x: 40, y: 22 }, OWN_GOAL), 0, 1e-9);
+  approx(angleOff(press({ x: 85, y: 34 }, 'us-ST', 'them'), { x: 85, y: 34 }, OWN_GOAL), 0, 1e-9);
+  // The lean grows smoothly with the ball: no jump as it crosses into their half or out of the middle.
+  let prev = null;
+  for (let x = 40; x <= 60; x += 0.25) {
+    const b = { x, y: 22 };
+    const a = angleOff(press(b, 'us-RCM', 'them'), b, OWN_GOAL);
+    if (prev !== null) assert.ok(a >= prev - 1e-9 && a - prev <= P.pressAim / 30, `lean jumps ${prev.toFixed(2)} -> ${a.toFixed(2)} at x ${x}`);
+    prev = a;
+  }
+  approx(prev, P.pressAim, 1e-9);
+});
+
+test('autoRoles with rankFrom (playback): the press goes to who is placed to press, not to a formation spot the play has left behind', () => {
+  const ball = { x: 60, y: 40 };
+  const opts = { formations, ball, possession: 'them', params: { ...NO_RECOVERY, pressHandover: 0 } };
+  const first = autoRoles(opts).presser.id; // on formation spots
+  const s = spots('us', ball, 'them', NO_RECOVERY.shape);
+  // Everyone where the formation puts them: the same choice.
+  assert.equal(autoRoles({ ...opts, rankFrom: s }).presser.id, first);
+  // The same player left 6 m past the ball (say, still up the pitch after a turnover): a better-placed teammate presses.
+  const behind = autoRoles({ ...opts, rankFrom: { ...s, [first]: { x: ball.x + 6, y: s[first].y } } }).presser.id;
+  assert.notEqual(behind, first);
+  assert.ok(s[behind].x < ball.x + 6, `${behind} is not as far past the ball`);
+  // Someone who has followed the ball far out of his own zone hands it over, even standing right by it (D7).
+  const far = autoRoles({ ...opts, rankFrom: { ...s, 'us-LB': { x: ball.x - 2, y: ball.y } } }).presser.id;
+  assert.notEqual(far, 'us-LB');
+  // But within his zone, the player actually nearest the ball takes it.
+  const second = rankedByBall('us', ball, 'them', [first], false, NO_RECOVERY.shape)[0];
+  assert.equal(autoRoles({ ...opts, rankFrom: { ...s, [second]: { x: ball.x - 2, y: ball.y } } }).presser.id, second);
+});
+
 test('autoPress ramps in with the lead over the next defender and fades beyond pressRadius', () => {
   const ball = { x: 40, y: 40 };
   const [first, second] = rankedByBall('us', ball, 'them', [], true, NO_RECOVERY.shape);

@@ -1,0 +1,95 @@
+{
+  "id": "m3-09-u6-rcm",
+  "title": "Low block: the second bank",
+  "titleKid": "Near our goal: make a wall",
+  "brief": "They are pushing your team back toward your own box down the far flank.",
+  "briefKid": "They are attacking down the other side, near our goal.",
+  "question": "Their winger is driving into your third. Where do you go?",
+  "questionKid": "Their winger is running at our goal. Where do you go?",
+  "takeaway": {
+    "standard": "Once they get into your third the block drops low: the midfield forms a second narrow bank just in front of the defenders, around the edge of the box.",
+    "kid": "Near our goal, drop back and make a tight wall in front of your defenders."
+  },
+  "module": "M3",
+  "moment": "out_of_possession",
+  "phase": "low_block",
+  "principles": ["U6", "U1", "D4"],
+  "learner": {
+    "role": "RCM",
+    "start": { "x": 43, "y": 41.5 }
+  },
+  "timeline": {
+    "duration": 4.5,
+    "freezeAt": 4,
+    "ball": [
+      { "t": 0, "x": 54, "y": 22.5, "event": "carry" },
+      { "t": 0.8, "x": 52.5, "y": 21.5, "event": "pass" },
+      { "t": 2.1, "x": 38, "y": 7, "event": "carry" },
+      { "t": 2.9, "x": 34.5, "y": 7.5 },
+      { "t": 3.7, "x": 31, "y": 8 },
+      { "t": 4.5, "x": 27.5, "y": 8.5 }
+    ],
+    "possession": [
+      { "t": 0, "team": "them" }
+    ],
+    "carrier": [
+      { "t": 0, "id": "them-RCM" },
+      { "t": 0.8, "id": null },
+      { "t": 2.1, "id": "them-RW" }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "them-RCM",
+          "keys": [
+            { "t": 0, "x": 54.8, "y": 22.5 },
+            { "t": 0.8, "x": 53.3, "y": 21.5 },
+            { "t": 2.1, "x": 50, "y": 22 },
+            { "t": 4.5, "x": 42, "y": 23 }
+          ]
+        },
+        {
+          "id": "them-RW",
+          "keys": [
+            { "t": 0, "x": 43, "y": 5 },
+            { "t": 0.8, "x": 41, "y": 6 },
+            { "t": 2.1, "x": 38.8, "y": 7 },
+            { "t": 2.9, "x": 35.3, "y": 7.5 },
+            { "t": 3.7, "x": 31.8, "y": 8 },
+            { "t": 4.5, "x": 28.3, "y": 8.5 }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      { "t": 0, "carrierFacing": "forward" },
+      { "t": 2.1, "carrierFacing": "forward" }
+    ]
+  },
+  "answer": {
+    "mode": "engine",
+    "ideal": { "x": 28.5, "y": 32.5 }
+  },
+  "misconceptions": [
+    {
+      "id": "stayed-up-for-the-counter",
+      "region": { "type": "circle", "x": 42, "y": 41, "r": 6 },
+      "text": "You stayed up the pitch, so there is a huge gap in front of your defenders for their #8 to receive in.",
+      "textKid": "Too far up! Drop back and help in front of your defenders."
+    },
+    {
+      "id": "dropped-into-the-back-line",
+      "region": { "type": "circle", "x": 22, "y": 36, "r": 3 },
+      "text": "You dropped right into the back line; stay a few metres in front of it so the midfield bank screens the edge of the box.",
+      "textKid": "Too deep! Stay a few steps in front of your defenders."
+    }
+  ],
+  "difficulty": 0,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  }
+}

@@ -1,8 +1,11 @@
 // Cover (D3): the second defender sits goal-side of the presser on a diagonal,
 // never level with them and never straight behind. Closer when play is central
 // and near our goal, further when it is wide and far. A back-liner who covers never
-// covers from ahead of his own line (U4): the depth band starts at the line, so a
-// presser far ahead of it is covered from the line, not from in front of it.
+// covers from ahead of his own line (U4, R1): when his partner steps out further than
+// the D3 depth, he covers from the line, and how far above it he stands is the level-line
+// rule's to judge ("drop and get level with your back line"). This rule then only judges
+// the angle and that he is not too deep, so it never tells him to hang 10 m off a partner
+// "so one dribble can't beat you both" when the real reason is the line.
 
 import { lerp } from '../geometry.js';
 import { MID_Y } from '../pitch.js';
@@ -36,15 +39,17 @@ const prep = perContext((ctx) => {
   const far = clamp01((b.x - D.farFrom) / (D.farTo - D.farFrom));
   const f = (wide + far) / 2;
   let dLo = lerp(D.depthNear[0], D.depthFar[0], f), dHi = lerp(D.depthNear[1], D.depthFar[1], f);
-  // A covering back-liner stays at or behind his line (U4; level-line allows no step above it either).
+  // A covering back-liner stays at or behind his line (U4): past the D3 depth the line sets his depth, and
+  // standing above it is level-line's (U4) to put into words, so this rule stops judging "too tight" there.
   const line = isBackLiner(ctx) ? backLineRef(ctx)?.x : undefined;
-  if (Number.isFinite(line) && F.x - line > dLo) { dHi += F.x - line - dLo; dLo = F.x - line; }
+  let softLo = D.depthSoftLo;
+  if (Number.isFinite(line) && F.x - line > dLo) { dHi += F.x - line - dLo; dLo = F.x - line; softLo = Infinity; }
   const iLo = D.inside[0], iHi = lerp(D.inside[1], D.insideWide, wide);
   // +1: inside means larger y; -1: smaller y; 0: presser is central, either side will do.
   const side = F.y > MID_Y + D.centralBand ? -1 : F.y < MID_Y - D.centralBand ? 1 : 0;
   const tSide = side || Math.sign(ctx.learner.base.y - F.y) || 1;
   return {
-    D, w, fx: F.x, fy: F.y, side, dLo, dHi, iLo, iHi,
+    D, w, fx: F.x, fy: F.y, side, dLo, dHi, iLo, iHi, softLo,
     tx: F.x - (dLo + dHi) / 2, ty: F.y + tSide * (iLo + iHi) / 2,
     mate: nameOf(F, ctx), mateKid: kidNameOf(F, ctx), want: whole((dLo + dHi) / 2),
   };
@@ -62,7 +67,7 @@ export default {
     const depth = p.fx - spot.x;
     const dy = spot.y - p.fy;
     const inside = p.side ? dy * p.side : Math.abs(dy);
-    const sd = band2(depth, p.dLo, p.dHi, D.depthSoftLo, D.depthSoftHi);
+    const sd = band2(depth, p.dLo, p.dHi, p.softLo, D.depthSoftHi);
     const si = band2(inside, p.iLo, p.iHi, D.insideSoft, D.insideSoft);
     const s = sd * si;
     let issue = 'ok';

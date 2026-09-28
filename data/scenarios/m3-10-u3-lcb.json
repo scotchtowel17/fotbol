@@ -1,0 +1,98 @@
+{
+  "id": "m3-10-u3-lcb",
+  "title": "Drop when the ball is free",
+  "titleKid": "Free player on the ball? Step back",
+  "brief": "Their #8 is finding space between your midfield and your back line.",
+  "briefKid": "Their midfielder is finding space in front of your defenders.",
+  "question": "Their #8 has turned and nobody is pressing. What does your back line do?",
+  "questionKid": "Their midfielder turned, and nobody is near them. What do you do?",
+  "takeaway": {
+    "standard": "When the player on the ball is facing forward with nobody pressing them, the back line drops a few metres together: they can see the pass in behind, so take that space away.",
+    "kid": "If their player has time to look up, take a few steps back together."
+  },
+  "module": "M3",
+  "moment": "out_of_possession",
+  "phase": "mid_block",
+  "principles": ["U3", "U4", "R1"],
+  "learner": {
+    "role": "LCB",
+    "start": { "x": 41.5, "y": 27 }
+  },
+  "timeline": {
+    "duration": 4.4,
+    "freezeAt": 3.2,
+    "ball": [
+      { "t": 0, "x": 65, "y": 37, "event": "carry" },
+      { "t": 0.8, "x": 64, "y": 36, "event": "pass" },
+      { "t": 1.7, "x": 51.5, "y": 28.5, "event": "carry" },
+      { "t": 2.3, "x": 50.5, "y": 29 },
+      { "t": 3, "x": 47.5, "y": 29.5 },
+      { "t": 3.7, "x": 44.5, "y": 30 },
+      { "t": 4.4, "x": 41.5, "y": 30.5 }
+    ],
+    "possession": [
+      { "t": 0, "team": "them" }
+    ],
+    "carrier": [
+      { "t": 0, "id": "them-DM" },
+      { "t": 0.8, "id": null },
+      { "t": 1.7, "id": "them-RCM" }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "them-DM",
+          "keys": [
+            { "t": 0, "x": 65.8, "y": 37 },
+            { "t": 0.8, "x": 64.8, "y": 36 },
+            { "t": 1.7, "x": 63, "y": 37 },
+            { "t": 4.4, "x": 60, "y": 38.5 }
+          ]
+        },
+        {
+          "id": "them-RCM",
+          "keys": [
+            { "t": 0, "x": 55, "y": 25 },
+            { "t": 0.8, "x": 53.5, "y": 27 },
+            { "t": 1.7, "x": 52.3, "y": 28.5 },
+            { "t": 2.3, "x": 51.3, "y": 29 },
+            { "t": 3, "x": 48.3, "y": 29.5 },
+            { "t": 3.7, "x": 45.3, "y": 30 },
+            { "t": 4.4, "x": 42.3, "y": 30.5 }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      { "t": 0, "carrierFacing": "forward" },
+      { "t": 1.7, "carrierFacing": "sideways", "pressureOnBall": false },
+      { "t": 2.3, "carrierFacing": "forward", "pressureOnBall": false }
+    ]
+  },
+  "answer": {
+    "mode": "engine",
+    "ideal": { "x": 34.5, "y": 29.5 }
+  },
+  "misconceptions": [
+    {
+      "id": "held-too-high",
+      "region": { "type": "circle", "x": 41.5, "y": 27.5, "r": 3.5 },
+      "text": "You held your line with nobody pressing the ball, so one pass over the top puts their runner through on goal.",
+      "textKid": "They have time to pass behind you. Take a few steps back."
+    },
+    {
+      "id": "stepped-out-to-the-ball",
+      "region": { "type": "circle", "x": 45, "y": 30.5, "r": 2.5 },
+      "text": "You stepped out toward the ball and left a hole in the back line behind you; drop with your line instead.",
+      "textKid": "Stay in your line and step back with your defenders."
+    }
+  ],
+  "difficulty": 1,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  }
+}

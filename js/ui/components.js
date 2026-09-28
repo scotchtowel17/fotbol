@@ -164,14 +164,19 @@ export function toast(message, { tone = 'info', timeout = 3500 } = {}) {
 }
 
 /**
- * Modal dialog built on <dialog> (focus trap and Esc for free).
+ * Modal dialog built on <dialog> (focus trap and Esc for free). A dialog belongs to the page that opened it:
+ * any route change (Back, a link) closes it with the value 'route', so it can never be confirmed over
+ * another page.
  * @param {{ title: string, content?: any, actions?: (close) => any[] | any[], onClose?: (value) => void, className?: string }} opts
  * @returns {{ el: HTMLDialogElement, close: (value?: string) => void }}
  */
 export function openModal({ title, content, actions = [], onClose, className } = {}) {
   const titleId = uid('modal-title');
   const dlg = el('dialog', { class: ['modal', className], 'aria-labelledby': titleId });
-  const close = (value = '') => (dlg.open ? dlg.close(value) : null);
+  const close = (value = '') => {
+    if (dlg.open) dlg.close(value);
+    else if (dlg.isConnected) { dlg.returnValue = value; dlg.dispatchEvent(new Event('close')); } // no showModal(): the fallback
+  };
   dlg.append(
     el('div', { class: 'modal-head' }, [
       el('h2', { id: titleId, class: 'modal-title', text: title }),
@@ -180,8 +185,14 @@ export function openModal({ title, content, actions = [], onClose, className } =
     el('div', { class: 'modal-body' }, content),
     el('div', { class: 'modal-actions' }, typeof actions === 'function' ? actions(close) : actions),
   );
+  const onRoute = () => close('route');
+  window.addEventListener('hashchange', onRoute);
   dlg.addEventListener('click', (e) => { if (e.target === dlg) close('dismiss'); });
-  dlg.addEventListener('close', () => { dlg.remove(); onClose?.(dlg.returnValue); });
+  dlg.addEventListener('close', () => {
+    window.removeEventListener('hashchange', onRoute);
+    dlg.remove();
+    onClose?.(dlg.returnValue);
+  }, { once: true });
   document.body.append(dlg);
   if (typeof dlg.showModal === 'function') dlg.showModal();
   else dlg.setAttribute('open', '');
@@ -215,12 +226,30 @@ export function stageLayout(root, { label = 'Instructions and feedback', expande
   const stage = el('div', { class: 'stage' }, [board, panelRoot]);
   root.append(stage);
 
+  let autoExpanded = false; // expanded because keyboard focus moved into the part of the sheet below the fold
   const setExpanded = (on) => {
+    autoExpanded = false;
     panelRoot.classList.toggle('is-expanded', on);
     handle.setAttribute('aria-expanded', String(on));
     handle.lastChild.textContent = on ? 'Show less' : 'Show more';
   };
   setExpanded(expanded);
+
+  // Narrow screens: the collapsed sheet shows only the handle, head and actions; the rest sits below the
+  // screen. Focus moving there (Tab past the actions) opens the sheet so the focused control is visible,
+  // and focus leaving that part closes it again (unless the learner opened it themselves).
+  const isSheet = () => { try { return window.matchMedia('(max-width: 899.98px)').matches; } catch { return false; } };
+  panelRoot.addEventListener('focusin', (e) => {
+    if (!scroll.contains(e.target) || panelRoot.classList.contains('is-expanded') || !isSheet()) return;
+    setExpanded(true);
+    autoExpanded = true;
+  });
+  panelRoot.addEventListener('focusout', (e) => {
+    if (!autoExpanded || scroll.contains(e.relatedTarget)) return;
+    // Focus left the lower part (to the actions, the board, or out of the page): put the sheet back.
+    if (!e.relatedTarget) return; // the page lost focus (another window): leave the sheet as it is
+    setExpanded(false);
+  });
 
   // Tap toggles; a swipe on the handle expands (up) or collapses (down) and swallows the click that follows.
   let y0 = null, swiped = false;

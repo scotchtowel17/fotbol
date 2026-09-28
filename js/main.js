@@ -5,14 +5,14 @@
 // and is loaded with a dynamic import(), so a mode that doesn't exist yet shows a
 // friendly "coming soon" card instead of breaking the app.
 //
-// Pure helpers (parseHash, normalizeSettings, MODE_INFO) are exported for tests; the
-// app only boots when the page has a #app element.
+// Pure helpers (parseHash, normalizeSettings, MODE_INFO, settingsLinks, isDevMode) are exported for
+// tests; the app only boots when the page has a #app element.
 
 import * as store from './store.js';
 import { loadAppData } from './data.js';
 import { createBoard } from './ui/board.js';
 import { LEARNABLE_ROLES } from './engine/roles.js';
-import { el, icon, notice, linkButton, segmented, toggleSwitch, announce } from './ui/components.js';
+import { el, icon, notice, button, linkButton, segmented, toggleSwitch, announce } from './ui/components.js';
 
 /** Every route the app knows, with the copy used in nav, titles and "coming soon" cards. */
 export const MODE_INFO = Object.freeze({
@@ -73,6 +73,29 @@ export function normalizeSettings(raw) {
 
 /** URL of a mode module. */
 export const modeUrl = (mode) => new URL(`./ui/modes/${mode}.js`, import.meta.url).href;
+
+/** True when the address asks for contributor tools: '?dev' or '?debug' (e.g. index.html?dev#/drill). */
+export function isDevMode(search = '') {
+  try {
+    const q = new URLSearchParams(search);
+    return q.has('dev') || q.has('debug');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Links at the foot of the settings menu. The engine playground and the test runner are contributor tools, so
+ * a learner never lands in them by accident: they are listed only in dev mode (isDevMode) and stay reachable
+ * by their URLs (#/dev, tests.html).
+ * @returns {{ href: string, text: string }[]}
+ */
+export function settingsLinks({ dev = false } = {}) {
+  return [
+    { href: '#/credits', text: 'Credits' },
+    ...(dev ? [{ href: '#/dev', text: 'Engine playground' }, { href: 'tests.html', text: 'Run tests' }] : []),
+  ];
+}
 
 const EMPTY_DATA = Object.freeze({
   principles: { list: [], byId: {} },
@@ -159,11 +182,7 @@ function buildSettingsMenu(app, menu) {
       onChange: (reducedMotion) => app.setSettings({ reducedMotion }),
     }),
     persistent ? null : el('p', { class: 'menu-note', text: 'This browser window cannot save progress (private mode or blocked storage). Settings last until you close it.' }),
-    el('div', { class: 'menu-links' }, [
-      el('a', { href: '#/credits', text: 'Credits' }),
-      el('a', { href: '#/dev', text: 'Engine playground' }),
-      el('a', { href: 'tests.html', text: 'Run tests' }),
-    ]),
+    el('div', { class: 'menu-links' }, settingsLinks({ dev: isDevMode(location.search) }).map((l) => el('a', { href: l.href, text: l.text }))),
   ].filter(Boolean));
 }
 
@@ -225,8 +244,24 @@ function failed(mode, err) {
     tone: 'bad',
     title: `${MODE_INFO[mode]?.title ?? mode} couldn't start`,
     text: `Something went wrong while loading this page (${err?.message ?? err}). Details are in the browser console.`,
-    actions: [linkButton('Back to home', '#/home', { variant: 'primary' })],
+    // A dropped connection is the usual cause (a busy local server): a reload usually fixes it.
+    actions: [button('Try again', { variant: 'primary', icon: 'arrow', onClick: () => location.reload() }), linkButton('Back to home', '#/home')],
   });
+}
+
+/**
+ * Import a mode module, retrying once after a dropped connection (busy local servers drop requests
+ * when a cold browser loads every module at once); the second try uses a fresh URL in case the
+ * browser remembers the failed one. A real error (a syntax error, a missing file) still throws.
+ */
+async function importMode(mode) {
+  try {
+    return await import(modeUrl(mode));
+  } catch (err) {
+    await new Promise((r) => setTimeout(r, 400));
+    try { return await import(modeUrl(mode)); } catch { /* try a fresh URL */ }
+    try { return await import(`${modeUrl(mode)}?retry=${Date.now()}`); } catch { throw err; }
+  }
 }
 
 async function moduleExists(mode) {
@@ -258,7 +293,7 @@ async function route() {
 
   let mod;
   try {
-    mod = await import(modeUrl(mode));
+    mod = await importMode(mode);
   } catch (err) {
     if (token !== current.token) return;
     const exists = await moduleExists(mode);

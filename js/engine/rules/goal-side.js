@@ -3,7 +3,10 @@
 // play is far away (the line and zonal rules take over there). Critical when the
 // opponent is inside our box and you are not goal-side of them. A full-back who covers
 // (second defender) marks nobody, but must never end up on the wrong side of the winger
-// on his flank (R2, D5): for him only the side is judged, at a lower weight.
+// on his flank (R2, D5): for him only the side is judged, at a lower weight. The first defender
+// is judged here only with the carrier in our box, and only on the side, which keeps the in-box
+// critical: elsewhere the press rule owns his distance, angle and side (including the curved run
+// onto the carrier's inside, D2), so the same "get goal-side" is never said twice.
 
 import { band } from '../geometry.js';
 import { OWN_GOAL, inOwnBox } from '../pitch.js';
@@ -11,7 +14,7 @@ import { perContext, paramsFor, notApplicable, defending, nameOf, kidNameOf, ban
 
 export const GOAL_SIDE_DEFAULTS = Object.freeze({
   weights: { CB: 3, FB: 3, DM: 2, CM: 2, W: 1.5, ST: 0 }, // [S] RESEARCH 5.6 back line 3, #6 2; CM/W [D]; the #9 doesn't track (5.6)
-  firstDefenderWeight: 1, // [D] press judges the carrier; this keeps the in-box critical live
+  firstDefenderWeight: 1, // [D] with the carrier in our box: only the side, so the in-box critical stays live (press judges the rest)
   coverSideWeight: 1.5, // [D] R2: a covering full-back stays goal-side of the winger on his flank (only the side is judged)
   sideMargin: 0.5, // [D] metres nearer our goal than the opponent for full credit
   sideSoft: 2, // [D] level with them (0 m) scores 0.75; 1.5 m the wrong side scores 0
@@ -48,7 +51,10 @@ const prep = perContext((ctx) => {
     sideOnly = !!A;
   }
   if (!A) return null;
-  const w = sideOnly ? D.coverSideWeight : ctx.duty === 'first-defender' ? D.firstDefenderWeight : D.weights[ctx.learner.family] ?? 0;
+  const first = ctx.duty === 'first-defender';
+  if (first && !inOwnBox(A)) return null; // the press rule judges the first defender (D1, D2)
+  if (first) sideOnly = true; // in our box: the side, and the critical
+  const w = first ? D.firstDefenderWeight : sideOnly ? D.coverSideWeight : D.weights[ctx.learner.family] ?? 0;
   if (!w) return null;
   const gx = OWN_GOAL.x - A.x, gy = OWN_GOAL.y - A.y;
   const la = Math.hypot(gx, gy) || 1e-6;

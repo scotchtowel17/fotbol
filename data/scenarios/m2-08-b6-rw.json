@@ -1,0 +1,151 @@
+{
+  "id": "m2-08-b6-rw",
+  "title": "Full-back overlaps: come inside",
+  "titleKid": "Teammate runs past? Come inside",
+  "brief": "Your #8 has the ball facing forward, and your full-back sprints up the touchline past you.",
+  "briefKid": "Your midfielder has the ball. Your defender sprints up the sideline, past you.",
+  "question": "Your full-back now holds the width. Where do you go?",
+  "questionKid": "Your defender is out wide now. Where do you go?",
+  "takeaway": {
+    "standard": "The full-back and winger never share the touchline: when the full-back overlaps, you come inside into the half-space between their lines, which drags their full-back inside and frees yours.",
+    "kid": "Teammate runs past you on the outside? Move inside into your own lane."
+  },
+  "module": "M2",
+  "moment": "in_possession",
+  "phase": "progression",
+  "principles": [
+    "B6",
+    "P1",
+    "P2"
+  ],
+  "learner": {
+    "role": "RW",
+    "start": {
+      "x": 70,
+      "y": 64
+    }
+  },
+  "timeline": {
+    "duration": 5.0,
+    "freezeAt": 3.0,
+    "ball": [
+      {
+        "t": 0,
+        "x": 52,
+        "y": 40,
+        "event": "carry"
+      },
+      {
+        "t": 1.5,
+        "x": 57,
+        "y": 41
+      },
+      {
+        "t": 3.0,
+        "x": 61.5,
+        "y": 41.5
+      },
+      {
+        "t": 5.0,
+        "x": 66,
+        "y": 42
+      }
+    ],
+    "possession": [
+      {
+        "t": 0,
+        "team": "us"
+      }
+    ],
+    "carrier": [
+      {
+        "t": 0,
+        "id": "us-RCM"
+      }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "us-RB",
+          "keys": [
+            {
+              "t": 0,
+              "x": 52,
+              "y": 60
+            },
+            {
+              "t": 1.5,
+              "x": 60,
+              "y": 63
+            },
+            {
+              "t": 3.0,
+              "x": 68,
+              "y": 65
+            },
+            {
+              "t": 5.0,
+              "x": 76,
+              "y": 65
+            }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      {
+        "t": 0,
+        "carrierFacing": "forward",
+        "pressureOnBall": false
+      },
+      {
+        "t": 1.5,
+        "widthHolders": [
+          "RB",
+          "LW"
+        ]
+      }
+    ]
+  },
+  "answer": {
+    "mode": "authored",
+    "ideal": {
+      "x": 71,
+      "y": 50.5
+    }
+  },
+  "notes": "Authored answer (engine disagreement). Layer A ignores tags.widthHolders and the overridden full-back, so the winger's base stays on the touchline beside the overlapping full-back: base (70.7, 64.0). In engine mode the ghost is (71.7, 60.0), still in the wing lane 5 m from the full-back, and the start spot (70, 64), 2 m from him, scores 90 (S). B6 says the winger comes inside when the full-back overlaps, so the zone is centred on the half-space pocket between their full-back and centre-back, in front of their back line; the rules agree there (ghost 98: lane-open, occupancy, support-distance and offside 1.00, between-lines 0.78 because their lines are only 4.7 m apart).",
+  "misconceptions": [
+    {
+      "id": "shared-the-touchline",
+      "region": {
+        "type": "rect",
+        "x0": 62,
+        "y0": 59,
+        "x1": 80,
+        "y1": 68
+      },
+      "text": "You stayed on the touchline with your full-back, so one defender can mark you both and the overlap is wasted.",
+      "textKid": "You and your defender are in the same lane. Move inside."
+    },
+    {
+      "id": "too-central",
+      "region": {
+        "type": "circle",
+        "x": 71,
+        "y": 39,
+        "r": 3.5
+      },
+      "text": "You came all the way into the middle next to your #9, so their centre-back can mark you both; stop in the channel between their full-back and centre-back.",
+      "textKid": "Too far inside. Stop in the gap between their defenders."
+    }
+  ],
+  "difficulty": 0,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  }
+}

@@ -1,0 +1,97 @@
+{
+  "id": "m3-05-u6-lw",
+  "title": "Mid block: back to halfway",
+  "titleKid": "Ball past you? Back to halfway",
+  "brief": "Your team is in a mid block, but you have gone high to press their full-back.",
+  "briefKid": "Your team waits near halfway, but you ran forward to chase their defender.",
+  "question": "Their #8 has turned and is running at your midfield. Where do you go?",
+  "questionKid": "Their midfielder got past you with the ball. Where do you go?",
+  "takeaway": {
+    "standard": "In a mid block the front players sit around the halfway line, just in front of the midfield: once the ball gets past you, get back there so the block stays short with no space between the lines.",
+    "kid": "When the ball gets past you, run back to halfway, close to your team."
+  },
+  "module": "M3",
+  "moment": "out_of_possession",
+  "phase": "mid_block",
+  "principles": ["U6", "U1", "R4"],
+  "learner": {
+    "role": "LW",
+    "start": { "x": 69.5, "y": 9 }
+  },
+  "timeline": {
+    "duration": 5.5,
+    "freezeAt": 3.6,
+    "ball": [
+      { "t": 0, "x": 72, "y": 8, "event": "carry" },
+      { "t": 1.2, "x": 71.5, "y": 8.5, "event": "pass" },
+      { "t": 2.4, "x": 61, "y": 24, "event": "carry" },
+      { "t": 3.4, "x": 56, "y": 25 },
+      { "t": 4.6, "x": 50, "y": 26.5 },
+      { "t": 5.5, "x": 46, "y": 27 }
+    ],
+    "possession": [
+      { "t": 0, "team": "them" }
+    ],
+    "carrier": [
+      { "t": 0, "id": "them-RB" },
+      { "t": 1.2, "id": null },
+      { "t": 2.4, "id": "them-RCM" }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "them-RB",
+          "keys": [
+            { "t": 0, "x": 72.8, "y": 8 },
+            { "t": 1.2, "x": 72.3, "y": 8.5 },
+            { "t": 3, "x": 66, "y": 9 },
+            { "t": 5.5, "x": 58, "y": 10 }
+          ]
+        },
+        {
+          "id": "them-RCM",
+          "keys": [
+            { "t": 0, "x": 64, "y": 27 },
+            { "t": 1.2, "x": 63, "y": 25.5 },
+            { "t": 2.4, "x": 61.8, "y": 24 },
+            { "t": 3.4, "x": 56.8, "y": 25 },
+            { "t": 4.6, "x": 50.8, "y": 26.5 },
+            { "t": 5.5, "x": 46.8, "y": 27 }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      { "t": 0, "carrierFacing": "forward", "pressureOnBall": true },
+      { "t": 2.4, "carrierFacing": "forward", "pressureOnBall": false }
+    ]
+  },
+  "answer": {
+    "mode": "authored",
+    "ideal": { "x": 54, "y": 11 },
+    "tol": { "tx": 3, "ty": 4 }
+  },
+  "misconceptions": [
+    {
+      "id": "stayed-high",
+      "region": { "type": "rect", "x0": 59, "y0": 0, "x1": 76, "y1": 20 },
+      "text": "You stayed up the pitch after the ball went past you, so your team is split in two with a big gap in front of your midfield.",
+      "textKid": "You stayed too far up. Run back so there is no big gap."
+    },
+    {
+      "id": "dropped-into-the-back-line",
+      "region": { "type": "circle", "x": 42, "y": 11, "r": 4 },
+      "text": "You dropped all the way back to your full-back; one of you is enough there, so stay just in front of your midfield.",
+      "textKid": "Too far back! Stay just in front of your midfielders."
+    }
+  ],
+  "difficulty": 0,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  },
+  "notes": "Authored answer: the engine's best spot is the winger's layer-A spot (about (60.4, 10)), 5 m past the ball and 8 m into their half, which contradicts the lesson (back to halfway, just in front of the midfield, goal-side of the ball). The coach's spot is (54, 11) with a winger zone narrowed to tx 3, so a spot still past the ball drops out of S (the old engine spot scores about 73). stayed-high covers everything from 4 m past the ball up the flank; it holds no S spot. History: the ideal was (58.5, 15.5), then the engine's (60.5, 10)."
+}

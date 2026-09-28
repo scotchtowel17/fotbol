@@ -20,6 +20,8 @@ export const MOMENTS = Object.freeze(['in_possession', 'out_of_possession', 'att
 export const EVENTS = Object.freeze(['pass', 'carry', 'cross', 'shot', 'clearance', 'throw-in', 'goal-kick', 'corner', 'free-kick']);
 export const ANSWER_MODES = Object.freeze(['engine', 'authored']);
 export const REGION_TYPES = Object.freeze(['circle', 'rect', 'polygon']);
+/** Phase labels (scenario.phase and frame.tags.phase), snake_case. Descriptive only: no rule reads them. */
+export const PHASES = Object.freeze(['build_up', 'progression', 'final_third', 'high_press', 'mid_block', 'low_block', 'counter_attack', 'counter_press', 'recovery', 'set_piece', 'open_play']);
 const TEAMS = ['us', 'them', 'none'];
 const FACINGS = ['forward', 'backward', 'sideways'];
 const MOMENT_POSSESSION = { in_possession: 'us', out_of_possession: 'them' };
@@ -61,7 +63,11 @@ export function validateScenario(s, { principles, params } = {}) {
   if (typeof s.id !== 'string' || !ID_RE.test(s.id)) err(`id ${fmt(s.id)} must be kebab-case (a-z, 0-9, single dashes)`);
   if (typeof s.title !== 'string' || !s.title.trim()) err('title is missing');
   if (s.brief !== undefined && typeof s.brief !== 'string') err('brief must be a string');
+  // Optional learner text (§5.3): <field>Kid siblings hold the kid wording; the takeaway is a pair.
+  for (const k of ['briefKid', 'question', 'questionKid', 'notes']) if (s[k] !== undefined && typeof s[k] !== 'string') err(`${k} must be a string`);
+  if (s.takeaway !== undefined && !(typeof s.takeaway === 'string' || (isObj(s.takeaway) && typeof s.takeaway.standard === 'string' && (s.takeaway.kid === undefined || typeof s.takeaway.kid === 'string')))) err('takeaway must be { standard, kid } (strings; kid optional)');
   if (!MOMENTS.includes(s.moment)) err(`moment ${fmt(s.moment)} must be one of ${MOMENTS.join(', ')}`);
+  if (s.phase !== undefined && !PHASES.includes(s.phase)) err(`phase ${fmt(s.phase)} must be one of ${PHASES.join(', ')}`);
   if (s.difficulty !== undefined && !isNum(s.difficulty)) err('difficulty must be a number (logit scale, 0 = average)');
   if (s.params !== undefined && !isObj(s.params)) err('params must be an object');
 
@@ -213,6 +219,7 @@ export function validateScenario(s, { principles, params } = {}) {
       if (a.mode === 'authored' && a.ideal === undefined) err("answer.mode 'authored' needs answer.ideal");
       if (a.ideal !== undefined) point(a.ideal, 'answer.ideal');
       if (a.tol !== undefined && !(isObj(a.tol) && a.tol.tx > 0 && a.tol.ty > 0)) err('answer.tol must be {tx, ty} with positive numbers');
+      if (a.hold !== undefined && typeof a.hold !== 'boolean') err('answer.hold must be true or false');
     }
   }
   if (s.misconceptions !== undefined) {
@@ -222,6 +229,7 @@ export function validateScenario(s, { principles, params } = {}) {
       if (!isObj(m)) return err(`${path} must be an object`);
       if (typeof m.id !== 'string' || !ID_RE.test(m.id)) err(`${path}.id ${fmt(m.id)} must be kebab-case`);
       if (m.text !== undefined && typeof m.text !== 'string') err(`${path}.text must be a string`);
+      if (m.textKid !== undefined && typeof m.textKid !== 'string') err(`${path}.textKid must be a string`);
       regionErrors(m.region, `${path}.region`, point).forEach(err);
     });
   }

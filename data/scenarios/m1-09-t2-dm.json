@@ -1,0 +1,113 @@
+{
+  "id": "m1-09-t2-dm",
+  "title": "Drop and screen on the counter",
+  "titleKid": "Run back in front of your defenders",
+  "brief": "We have the ball in their half. Watch what happens next.",
+  "briefKid": "We have the ball near their goal. Watch what happens.",
+  "question": "They have won it and are breaking past you. Where do you go?",
+  "questionKid": "They won the ball and are running at our goal. Where do you go?",
+  "takeaway": {
+    "standard": "If the counter has already gone past you, don't chase the ball: drop into the middle in front of your centre-backs and slow the attack until help arrives.",
+    "kid": "If you can't catch the ball, run back in front of your defenders."
+  },
+  "module": "M1",
+  "moment": "defensive_transition",
+  "phase": "recovery",
+  "principles": ["T2", "R3", "D3"],
+  "learner": {
+    "role": "DM",
+    "start": { "x": 59, "y": 38 }
+  },
+  "timeline": {
+    "duration": 5.5,
+    "freezeAt": 3.4,
+    "ball": [
+      { "t": 0, "x": 64, "y": 45, "event": "carry" },
+      { "t": 0.9, "x": 66.5, "y": 46.5, "event": "pass" },
+      { "t": 1.2, "x": 70.5, "y": 48, "event": "carry" },
+      { "t": 2.0, "x": 66, "y": 46 },
+      { "t": 2.8, "x": 61, "y": 44 },
+      { "t": 3.4, "x": 57, "y": 42.5 },
+      { "t": 5.5, "x": 45, "y": 38 }
+    ],
+    "possession": [
+      { "t": 0, "team": "us" },
+      { "t": 1.2, "team": "them" }
+    ],
+    "carrier": [
+      { "t": 0, "id": "us-RCM" },
+      { "t": 0.9, "id": null },
+      { "t": 1.2, "id": "them-LCM" }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "them-LCM",
+          "keys": [
+            { "t": 0, "x": 72, "y": 47 },
+            { "t": 0.9, "x": 71.3, "y": 47.8 },
+            { "t": 1.2, "x": 71.2, "y": 48.1 },
+            { "t": 2.0, "x": 66.7, "y": 46.1 },
+            { "t": 2.8, "x": 61.7, "y": 44.1 },
+            { "t": 3.4, "x": 57.7, "y": 42.6 },
+            { "t": 5.5, "x": 45.7, "y": 38.1 }
+          ]
+        },
+        {
+          "id": "us-RCM",
+          "keys": [
+            { "t": 0, "x": 63.2, "y": 45 },
+            { "t": 0.9, "x": 65.4, "y": 47 },
+            { "t": 1.2, "x": 65, "y": 48 },
+            { "t": 2.0, "x": 62.5, "y": 47 },
+            { "t": 2.8, "x": 58.5, "y": 45.3 },
+            { "t": 3.4, "x": 55, "y": 43.8 },
+            { "t": 5.5, "x": 43, "y": 39.5 }
+          ]
+        },
+        {
+          "id": "us-ST",
+          "keys": [
+            { "t": 0, "x": 75.7, "y": 43.5 },
+            { "t": 1.2, "x": 76.5, "y": 44 },
+            { "t": 2.0, "x": 72.5, "y": 44.5 },
+            { "t": 2.8, "x": 67, "y": 44 },
+            { "t": 3.4, "x": 62.5, "y": 43.5 },
+            { "t": 5.5, "x": 52, "y": 40 }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      { "t": 0, "carrierFacing": "forward" },
+      { "t": 1.2, "carrierFacing": "forward" }
+    ]
+  },
+  "answer": {
+    "mode": "engine",
+    "ideal": { "x": 49, "y": 40 }
+  },
+  "misconceptions": [
+    {
+      "id": "chased-the-ball",
+      "region": { "type": "circle", "x": 55.5, "y": 40.5, "r": 2.5 },
+      "text": "You chased the ball from behind; you won't catch it, and now nobody is screening in front of your centre-backs.",
+      "textKid": "You can't catch the ball from behind, so drop back into the middle."
+    },
+    {
+      "id": "dropped-into-the-back-line",
+      "region": { "type": "circle", "x": 42.5, "y": 38, "r": 2.5 },
+      "text": "You dropped all the way into your back line, so the space in front of it is free for them to play into.",
+      "textKid": "You are too deep, so stay a few steps in front of your defenders."
+    }
+  ],
+  "difficulty": 1,
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": []
+  },
+  "notes": "The #8 who gave the ball away (us-RCM) is keyed to back off 2-4 m goal-side of the carrier, so they are the first defender delaying the counter (T2), and the #9 is keyed to trail the break at up to 7.5 m/s. Left automatic, the #9 raced 22 m in 2.2 s (peak 11.8 m/s) past the dribbler and pressed from the front, so the #6 was judged as covering the #9, which contradicted the brief. The ideal moved 1 m to the engine's (49, 40)."
+}
