@@ -468,6 +468,7 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
   let requested = orientation;
   let orient = 'horizontal';
   let focus = null; // { x0, x1 } pitch length a mode wants in view (setFocus), or null
+  let focusForced = false; // setFocus(…, { force: true }): crop even a board big enough to show the whole pitch
   let vb = null; // current viewBox { x, y, width, height }
   let pxm = 0; // CSS px per metre as drawn
   let scale = 1; // tokens (and the ghost, and rings bound to tokens) are drawn this much bigger than life
@@ -1222,7 +1223,7 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     const { width, height, box } = measure();
     const next = pickOrientation(requested, width, height, P);
     const turned = next !== orient;
-    const nextVb = focusViewBox(next, box, focus, P);
+    const nextVb = focusViewBox(next, box, focus, focusForced ? { ...P, focusMinPxPerM: Infinity } : P);
     const px = pxPerMetre(box, nextVb);
     const k = tokenScale(px, P);
     const kl = labelScale(px, LP);
@@ -1266,14 +1267,17 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
   }
 
   /** Extra (not in §5.8): the pitch length a mode wants in view ({ x0, x1 } world metres, or a list of points),
-   *  or null for the whole pitch. Only a small board (a phone held upright) crops to it: see focusViewBox. */
-  function setFocus(next = null) {
+   *  or null for the whole pitch. Only a small board (a phone held upright) crops to it: see focusViewBox.
+   *  `force`: crop whatever the board's size (a zoomed reveal widens the board past focusMinPxPerM, and the whole
+   *  pitch would then sit in the middle with empty space either side); any later call without it clears it. */
+  function setFocus(next = null, { force = false } = {}) {
     let f = null;
     if (Array.isArray(next)) {
       const xs = next.map((p) => p?.x).filter(Number.isFinite);
       if (xs.length) f = { x0: Math.min(...xs), x1: Math.max(...xs) };
     } else if (next && Number.isFinite(next.x0) && Number.isFinite(next.x1)) f = { x0: Math.min(next.x0, next.x1), x1: Math.max(next.x0, next.x1) };
     focus = f;
+    focusForced = !!(force && f);
     relayout();
   }
 

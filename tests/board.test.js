@@ -254,6 +254,20 @@ test('board: a phone held upright crops the pitch length to the focus; a big boa
   assert.deepEqual(focusViewBox('vertical', { width: 552, height: 740 }, { x0: 5, x1: 54 }), full, 'a narrow desktop window');
 });
 
+test('board: a forced focus crops even a board wide enough to draw the whole pitch (the pass reveal\'s zoom)', () => {
+  // A phone's pass reveal widens the board 1.7×: the whole pitch would draw at ≥ focusMinPxPerM and sit centred with
+  // empty space either side. setFocus(…, { force: true }) passes focusMinPxPerM: Infinity, so the length is cropped.
+  const zoomed = { width: 727, height: 627 };
+  const full = viewBoxFor('vertical');
+  assert.ok(pxPerMetre(zoomed, full) >= BOARD_DEFAULTS.focusMinPxPerM, 'this box would normally show the whole pitch');
+  assert.deepEqual(focusViewBox('vertical', zoomed, { x0: 30, x1: 60 }), full, 'unforced: whole pitch');
+  const forced = focusViewBox('vertical', zoomed, { x0: 30, x1: 60 }, { ...BOARD_DEFAULTS, focusMinPxPerM: Infinity });
+  assert.equal(forced.width, full.width, 'the whole width stays in view');
+  approx(forced.height / forced.width, zoomed.height / zoomed.width, 0.01, 'the pitch fills the widened board (no side gaps)');
+  const top = LENGTH - forced.y, bottom = LENGTH - (forced.y + forced.height);
+  assert.ok(bottom <= 30 && top >= 60, `the play stays in view (${bottom}..${top})`);
+});
+
 test('board (browser): a touch drag moves the token by the finger\'s move (never the other way), with a lift capped in metres on a long drag', async () => {
   if (isNode) return;
   await withBoard(async (board) => {

@@ -1169,6 +1169,9 @@ export async function mount(root, app, params = []) {
     try { board.setOrientation?.('vertical'); } catch { /* keeps its own */ } // a wide board must not turn sideways
     Object.assign(els.board.style, { flex: 'none', width: `${z.width}px`, marginLeft: `${-z.offset}px` });
     els.board.dataset.zoom = String(z.z);
+    // Widened past focusMinPxPerM, the board would stop cropping and centre the whole pitch with empty space either
+    // side: force the crop to the reveal's play so the pitch fills the zoomed width (revealZoom's offset assumes it).
+    try { board.setFocus?.(revealFocus(area) ?? rep.view, { force: true }); } catch { /* optional */ }
     return true;
   }
   function unzoomBoard() {
