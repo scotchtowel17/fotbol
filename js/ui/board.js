@@ -164,6 +164,13 @@ export function describeSpot(p) {
   return `${Math.round(p.x)} metres from our goal line, ${LANE_NAMES[laneOf(p.y)]}, ${THIRD_NAMES[thirdOf(p.x)]}`;
 }
 
+/** The tag drawn over the learner's token: `label` in capitals (a nickname, at most 12 characters), else 'YOU';
+ *  `width` (metres) grows with the text so a longer name still fits its pill. */
+export function youTag(label) {
+  const text = String(label ?? '').trim().toLocaleUpperCase().slice(0, 12) || 'YOU';
+  return { text, width: Math.max(4.6, Math.round((0.84 * [...text].length + 1.5) * 100) / 100) };
+}
+
 /** Accessible name for a token. */
 export function tokenName(id, learnerId) {
   if (id === BALL_ID) return 'Ball';
@@ -234,9 +241,10 @@ export function drawPitch(parent, { margin = BOARD_DEFAULTS.margin, stripes = BO
 /**
  * Create a board inside `container` (which should give it a size; the SVG keeps its aspect ratio).
  * @param {HTMLElement} container
- * @param {{ orientation?: 'auto'|'horizontal'|'vertical', params?: object }} [opts]
+ * @param {{ orientation?: 'auto'|'horizontal'|'vertical', params?: object, youLabel?: string }} [opts]
+ *   youLabel: the tag over the learner (default 'YOU'; the app passes the learner's nickname); render() can change it
  */
-export function createBoard(container, { orientation = 'auto', params } = {}) {
+export function createBoard(container, { orientation = 'auto', params, youLabel = 'YOU' } = {}) {
   const P = { ...BOARD_DEFAULTS, ...params };
   const doc = container.ownerDocument;
   const win = doc.defaultView;
@@ -280,6 +288,7 @@ export function createBoard(container, { orientation = 'auto', params } = {}) {
   let scale = 1; // tokens (and the ghost, and rings bound to tokens) are drawn this much bigger than life
   let lscale = 1; // pitch and marker labels likewise (CSS --board-label-k)
   let ghostAt = null;
+  let you = youTag(youLabel); // { text, width } of the learner's tag
   let opts = { learnerId: null, highlight: [], labels: 'role', dimOthers: false };
   let lastRenderAt = -Infinity;
   const tokens = new Map(); // id → token record (players and the ball)
@@ -291,6 +300,24 @@ export function createBoard(container, { orientation = 'auto', params } = {}) {
   let armed = null; // id selected by a tap (two-tap move)
 
   // ---- tokens
+  /** Write the current learner tag (text and pill width) into a token's tag group. */
+  function drawYouTag(tag) {
+    const rect = tag.querySelector('rect'), text = tag.querySelector('text');
+    rect.setAttribute('x', f3(-you.width / 2));
+    rect.setAttribute('width', f3(you.width));
+    text.textContent = you.text;
+  }
+
+  function setYouLabel(label) {
+    const next = youTag(label);
+    if (next.text === you.text) return;
+    you = next;
+    for (const t of tokens.values()) {
+      const tag = t.g.querySelector('.token-you');
+      if (tag) drawYouTag(tag);
+    }
+  }
+
   function makeToken(id) {
     const isBall = id === BALL_ID;
     const g = svgEl(doc, 'g', { class: isBall ? 'token token-ball' : `token team-${parsePlayerId(id).team}`, 'data-id': id, 'aria-hidden': 'true' }, tokenLayer);
@@ -311,9 +338,10 @@ export function createBoard(container, { orientation = 'auto', params } = {}) {
       const short = ROLE_INFO[role]?.short ?? role;
       const codeClass = short.length > 2 ? 'token-code token-code--long' : short.length < 2 ? 'token-code token-code--one' : 'token-code';
       svgEl(doc, 'text', { class: codeClass, 'text-anchor': 'middle', dy: '0.36em' }, g).textContent = short;
-      const you = svgEl(doc, 'g', { class: 'token-you', transform: `translate(0 ${f3(-(R + 2.2))})` }, g);
-      svgEl(doc, 'rect', { x: -2.3, y: -1.05, width: 4.6, height: 2.1, rx: 1.05 }, you);
-      svgEl(doc, 'text', { 'text-anchor': 'middle', dy: '0.36em' }, you).textContent = 'YOU';
+      const tag = svgEl(doc, 'g', { class: 'token-you', transform: `translate(0 ${f3(-(R + 2.2))})` }, g);
+      svgEl(doc, 'rect', { y: -1.05, height: 2.1, rx: 1.05 }, tag);
+      svgEl(doc, 'text', { 'text-anchor': 'middle', dy: '0.36em' }, tag);
+      drawYouTag(tag);
       svgEl(doc, 'circle', { class: 'token-focus', r: R + 1.1 }, g);
     }
     // First placement must not animate in from the origin.
@@ -375,6 +403,7 @@ export function createBoard(container, { orientation = 'auto', params } = {}) {
   // ---- render
   function render(frame, nextOpts = {}) {
     opts = { learnerId: null, highlight: [], labels: 'role', dimOthers: false, ...nextOpts };
+    if (nextOpts.youLabel !== undefined) setYouLabel(nextOpts.youLabel);
     const now = win?.performance?.now?.() ?? Date.now();
     root.classList.toggle('is-live', now - lastRenderAt < P.liveMs);
     lastRenderAt = now;

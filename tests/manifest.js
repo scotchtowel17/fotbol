@@ -31,5 +31,7 @@ export const TEST_FILES = Object.freeze([
   'heatmap.test.js',
   'reveal.test.js',
   'session.test.js',
+  'rewards.test.js',
+  'celebrate.test.js',
   'manifest.test.js',
 ]);

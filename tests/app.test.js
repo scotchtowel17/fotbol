@@ -65,6 +65,19 @@ test('app: normalizeSettings fills defaults and rejects bad values', () => {
   assert.equal(normalizeSettings({ speed: 1.25 }).speed, 1.25, 'unknown keys from other modes survive');
 });
 
+test('app: sound effects are on by default; only false switches them off', () => {
+  assert.equal(SETTINGS_DEFAULTS.sound, true);
+  assert.equal(normalizeSettings({}).sound, true);
+  assert.equal(normalizeSettings({ sound: false }).sound, false);
+  assert.equal(normalizeSettings({ sound: 'off' }).sound, true, 'a damaged value keeps the default');
+  assert.equal(normalizeSettings({ sound: true }).sound, true);
+});
+
+test('app: the trophy room is a known route', () => {
+  assert.deepEqual(parseHash('#/trophies/kit/sky'), { mode: 'trophies', params: ['kit', 'sky'] });
+  assert.ok(MODE_INFO.trophies?.title && MODE_INFO.trophies?.blurb);
+});
+
 // ---- data loaders
 
 test('data: principles normalise from array, {principles}, or an id-keyed object', () => {

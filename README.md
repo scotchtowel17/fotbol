@@ -2,6 +2,8 @@
 
 **Learn where to stand.** fotbol is a free browser game that teaches football (soccer) positioning. You take one position in a 4-3-3, watch a passage of play unfold, and when it freezes you drag yourself to where you should be. fotbol scores your spot out of 100, shows you the best spot, and tells you *why* in one plain sentence tied to a named principle, such as "cover at an angle" or "tuck in when the ball is on the far side".
 
+**▶ Play it now: <https://scotchtowel17.github.io/fotbol/>** (works on phones, tablets and computers)
+
 No account, no ads, no tracking. Your progress stays in your browser.
 
 ![A drill after the reveal: the left back has not tucked in far enough. The panel shows the grade (B, 76/100), the two reasons with their principles (U2 slide, don't cross; D4 weak side tucks in) and the fix, "Come 7 m inside". On the pitch, an arrow runs from the player to the best spot.](docs/screenshots/drill-reveal.png)

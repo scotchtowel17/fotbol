@@ -6,7 +6,8 @@
 // second to find the S spot, then move the ball and find it again.
 //
 // The scene is kept for the session (module state), so a trip to a principle page and back finds
-// the ball where you left it. S-spot counts are saved under the store key 'explore'.
+// the ball where you left it. S-spot counts are saved under the store key 'explore'; a counted find also
+// earns rewards (rewardFind, ARCHITECTURE §5.13), shown in the reveal.
 
 import { el, button, icon, segmented, toggleSwitch, stageLayout, announce, toast, uid } from '../components.js';
 import { BALL_ID } from '../board.js';
@@ -20,6 +21,7 @@ import { LEARNABLE_ROLES, ROLE_INFO, playerId } from '../../engine/roles.js';
 import { HALF_X, MID_Y, clampToPitch } from '../../engine/pitch.js';
 import { dist } from '../../engine/geometry.js';
 import { orientationFor } from '../session.js';
+import { award } from '../rewards-store.js';
 
 export const EXPLORE_DEFAULTS = Object.freeze({
   startBall: Object.freeze({ x: 64, y: 18 }), // [D] ball wide in midfield: every role has a clear job
@@ -386,11 +388,18 @@ export async function mount(root, app, params) {
     }
     toast(counted ? C.found : C.foundPeeked, { tone: counted ? 'good' : 'info' });
     state.fullShown = true;
-    reveal.showFull(state.judged, { onNext: newBall, nextLabel: C.newBall, takeaway: C.takeaway, focus: false });
+    const slot = counted ? el('div', { class: 'ex-reward' }) : null;
+    reveal.showFull(state.judged, { onNext: newBall, nextLabel: C.newBall, takeaway: C.takeaway, focus: false, reward: slot });
+    if (counted) rewardFind(slot);
     layout.panel.feedback.parentElement?.scrollTo?.({ top: 0 });
     // On a phone the reveal sits in the bottom sheet: open it for the celebration ("Move the ball for me" closes it).
     if (globalThis.matchMedia?.('(max-width: 899.98px)').matches) layout.expand();
     draw();
+  }
+
+  /** Rewards (ARCHITECTURE §5.13) for a counted S spot, shown in the reveal under the grade. */
+  function rewardFind(slot) {
+    award(app, { type: 'explore-s' }, { grade: 'S', host: slot });
   }
 
   function newBall() {

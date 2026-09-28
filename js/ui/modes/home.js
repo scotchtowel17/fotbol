@@ -1,6 +1,6 @@
-// Home: what fotbol is, "pick your position", your path through the modules, and the ways in
-// (Learn, Explore, Drill, Live). The chosen role is saved in settings (app.settings.role) for every
-// other mode to use.
+// Home: what fotbol is, your player card (kit, level, stars: js/ui/celebrate.js), "pick your position",
+// your path through the modules, and the ways in (Learn, Explore, Drill, Live). The chosen role is saved in
+// settings (app.settings.role) for every other mode to use.
 //
 // Module cards (M0-M3, data/curriculum.json) read progress only: the tutorial from the store key
 // 'tutorial' (learn.js) and mastery stars from 'skills' (elo.mastery). A module is finished when the
@@ -16,6 +16,8 @@ import { teamTargets, linearTarget } from '../../engine/formation.js';
 import { MODE_INFO } from '../../main.js';
 import { mastery } from '../../engine/elo.js';
 import { normalizeTutorialProgress, TUTORIAL_KEY } from './learn.js';
+import { playerCard } from '../celebrate.js';
+import { loadRewards, onRewards } from '../rewards-store.js';
 
 export const HOME_DEFAULTS = Object.freeze({
   pictureBall: { x: 52.5, y: MID_Y }, // [D] ball at kick-off for the formation picture
@@ -346,6 +348,9 @@ function modeCards(app) {
 export async function mount(root, app) {
   const positions = picturePositions(app.data.formations);
   let pitch = null;
+  // The player card (ARCHITECTURE §5.13): your kit, level and stars, and the way into the trophy room.
+  const cardSlot = el('div', { class: 'hm-player' });
+  const drawCard = () => cardSlot.replaceChildren(playerCard(app, loadRewards(app)));
 
   function render() {
     const w = app.settings.wording;
@@ -361,10 +366,12 @@ export async function mount(root, app) {
       if (radio && !radio.checked) radio.checked = true;
       setChosen();
       cardsSlot.replaceChildren(modeCards(app));
+      drawCard(); // the shirt number follows the position (unless the kit sets one)
     };
     pitch = miniPitch(positions, app.settings.role, pick);
     setChosen();
     cardsSlot.replaceChildren(modeCards(app));
+    drawCard();
     const progress = readProgress(app);
     const P = PATH_COPY[w === 'kid' ? 'kid' : 'standard'];
 
@@ -380,6 +387,7 @@ export async function mount(root, app) {
             : linkButton(P.explore, '#/explore', { icon: 'explore' }),
         ]),
       ]),
+      cardSlot,
       el('section', { class: 'picker', 'aria-labelledby': 'pick-title' }, [
         el('div', { class: 'picker-head' }, [
           el('h2', { id: 'pick-title', text: copy.pick }),
@@ -418,6 +426,7 @@ export async function mount(root, app) {
   const off = app.onSettings?.((s) => {
     if (s.wording !== lastWording) { lastWording = s.wording; render(); }
   });
-  return () => off?.();
+  const offRewards = onRewards(drawCard);
+  return () => { off?.(); offRewards(); };
 }
 

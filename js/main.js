@@ -13,6 +13,9 @@ import { loadAppData } from './data.js';
 import { createBoard } from './ui/board.js';
 import { LEARNABLE_ROLES } from './engine/roles.js';
 import { el, icon, notice, button, linkButton, segmented, toggleSwitch, announce } from './ui/components.js';
+import { createCelebrations, renderPill } from './ui/celebrate.js';
+import { createSound } from './ui/sound.js';
+import { loadRewards, applyKit, onRewards, youLabel } from './ui/rewards-store.js';
 
 /** Every route the app knows, with the copy used in nav, titles and "coming soon" cards. */
 export const MODE_INFO = Object.freeze({
@@ -22,6 +25,7 @@ export const MODE_INFO = Object.freeze({
   drill: { title: 'Drill', icon: 'drill', blurb: 'Watch the play, it freezes, you drag yourself to the right spot and see why.' },
   live: { title: 'Live', icon: 'live', blurb: 'Play runs on and you keep adjusting. Your score is how well you held your spot.' },
   progress: { title: 'Progress', icon: 'progress', blurb: 'Your stars for each principle, your history, and export or import of your progress.' },
+  trophies: { title: 'Trophies', icon: 'trophy', blurb: 'Your level, badges, sticker album and kit.' },
   author: { title: 'Author', icon: 'code', blurb: 'Build a scenario, let the engine key it, and export the JSON.' },
   credits: { title: 'Credits', blurb: 'The data, libraries and sources fotbol is built on.' },
   dev: { title: 'Playground', icon: 'pitch', blurb: 'Developer playground for the engine: drag yourself or the ball and see the ghost, score and reasons live.' },
@@ -35,6 +39,7 @@ export const SETTINGS_DEFAULTS = Object.freeze({
   theme: 'auto', // 'auto' | 'light' | 'dark'
   reducedMotion: false, // true forces reduced motion; false follows the system setting
   role: 'LCB', // chosen learner role (one of LEARNABLE_ROLES)
+  sound: true, // sound effects (js/ui/sound.js): the whistle, star ticks, dings, the cheer and the level-up fanfare
 });
 
 const MODE_RE = /^[a-z][a-z0-9-]*$/;
@@ -68,6 +73,7 @@ export function normalizeSettings(raw) {
     theme: ['auto', 'light', 'dark'].includes(s.theme) ? s.theme : SETTINGS_DEFAULTS.theme,
     reducedMotion: s.reducedMotion === true,
     role: LEARNABLE_ROLES.includes(s.role) ? s.role : SETTINGS_DEFAULTS.role,
+    sound: s.sound !== false, // on unless switched off
   };
 }
 
@@ -142,11 +148,16 @@ function createApp() {
       if (location.hash === hash) route();
       else location.hash = hash;
     },
-    createBoard,
+    /** board.js createBoard, with the learner's nickname (if set) as the tag over their token. */
+    createBoard: (container, opts = {}) => createBoard(container, { youLabel: youLabel(loadRewards(app)), ...opts }),
     /** Extra: the current route. */
     route: { mode: 'home', params: [] },
   };
   applySettings(app.settings);
+  // Extras (§5.13): sound effects, the celebrations, and the chosen kit on every board.
+  app.sound = createSound({ enabled: () => app.settings.sound !== false });
+  app.celebrate = createCelebrations(app);
+  applyKit(loadRewards(app));
   return app;
 }
 
@@ -157,6 +168,18 @@ function updateNav(mode) {
     if (a.dataset.nav === mode) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   }
+}
+
+/** The level pill ("Lv 3" and the rank's icon) before the settings button: a way into the trophy room (§5.13). */
+function wireLevelPill(app, header) {
+  const pill = el('a', { class: 'rw-pill', href: '#/trophies', 'data-nav': 'trophies' });
+  header.insertBefore(pill, header.querySelector('.settings'));
+  const update = (state) => renderPill(pill, state ?? loadRewards(app), app.settings.wording);
+  update();
+  onRewards(update);
+  app.onSettings((_s, patch) => { if ('wording' in (patch ?? {})) update(); });
+  // A drill holds the pill back until it reveals a rep (rewards-store.js award): leaving before that catches up here.
+  window.addEventListener('hashchange', () => update());
 }
 
 function buildSettingsMenu(app, menu) {
@@ -181,6 +204,14 @@ function buildSettingsMenu(app, menu) {
       hint: 'When off, fotbol follows your device setting.',
       onChange: (reducedMotion) => app.setSettings({ reducedMotion }),
     }),
+    toggleSwitch({
+      label: 'Sound', checked: app.settings.sound !== false,
+      hint: 'Whistle, dings and cheers.',
+      onChange: (sound) => {
+        app.setSettings({ sound });
+        if (sound) app.sound?.play('good');
+      },
+    }),
     persistent ? null : el('p', { class: 'menu-note', text: 'This browser window cannot save progress (private mode or blocked storage). Settings last until you close it.' }),
     el('div', { class: 'menu-links' }, settingsLinks({ dev: isDevMode(location.search) }).map((l) => el('a', { href: l.href, text: l.text }))),
   ].filter(Boolean));
@@ -195,6 +226,7 @@ function wireHeader(app) {
 
   const header = document.querySelector('.app-header');
   if (header) {
+    wireLevelPill(app, header);
     const setH = () => document.documentElement.style.setProperty('--header-h', `${header.offsetHeight}px`);
     setH();
     if (typeof ResizeObserver === 'function') new ResizeObserver(setH).observe(header);

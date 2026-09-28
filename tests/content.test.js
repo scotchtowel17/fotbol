@@ -142,6 +142,27 @@ test('principles: learner text is present and within length limits', () => {
   }
 });
 
+test('principles: kidName is a unique 2-4 word Title Case name of at most 24 characters', () => {
+  // Shown on sticker cards and chips for ~11-year-olds: plain words, no gendered pronouns, no left/right, no jargon.
+  const minor = new Set(['a', 'an', 'and', 'as', 'at', 'but', 'by', 'for', 'in', 'nor', 'of', 'on', 'or', 'the', 'to']);
+  const seen = new Map();
+  for (const p of principles) {
+    const k = p.kidName;
+    assert.ok(isText(k), `${p.id} kidName`);
+    assert.equal(k, k.trim().replace(/\s+/g, ' '), `${p.id} kidName "${k}" has stray spaces`);
+    assert.ok(words(k) >= 2 && words(k) <= 4, `${p.id} kidName "${k}" is ${words(k)} words`);
+    assert.ok(k.length <= 24, `${p.id} kidName "${k}" is ${k.length} characters`);
+    k.split(/[\s-]+/).forEach((w, i) => {
+      if (i === 0 || !minor.has(w.toLowerCase())) assert.match(w, /^[^a-z]/, `${p.id} kidName "${k}" is not Title Case`);
+    });
+    assert.doesNotMatch(k, /\b(he|she|him|her|his|hers|left|right)\b/i, `${p.id} kidName "${k}" has a gendered or side word`);
+    assert.doesNotMatch(k, /half-?space|transition|compact/i, `${p.id} kidName "${k}" has jargon`);
+    const key = k.toLowerCase();
+    assert.ok(!seen.has(key), `${p.id} kidName "${k}" repeats ${seen.get(key)}`);
+    seen.set(key, p.id);
+  }
+});
+
 test('principles: families are valid, and every v1 principle suits a learnable role', () => {
   for (const p of principles) {
     assert.ok(Array.isArray(p.families) && p.families.length > 0, `${p.id} families`);

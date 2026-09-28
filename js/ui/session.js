@@ -9,11 +9,13 @@
 //   history  HistoryEntry[] (newest last, capped at SESSION_DEFAULTS.historyMax)
 //   streak   { day: { current, best, last }, reps: { current, best } }
 //   live     { best: { [role]: { score, grade, seed, at } } }
+// A reset and an import also cover 'tutorial', 'explore' and 'rewards' (RESET_KEYS, IMPORT_KEYS).
 
 import { createSkills, pickNext, mastery, principleTheta, roleTheta, predict, ELO_DEFAULTS } from '../engine/elo.js';
 import { gradeOf } from '../engine/score.js';
 import { ROLE_INFO, LEARNABLE_ROLES, familyOf, sideOf, mirrorRole } from '../engine/roles.js';
 import { dist } from '../engine/geometry.js';
+import { normalizeRewards } from '../rewards.js';
 
 export const SESSION_DEFAULTS = Object.freeze({
   reps: 6, // [S] task spec: a drill session is 6 reps, then a summary
@@ -34,9 +36,10 @@ export const SESSION_DEFAULTS = Object.freeze({
 export const STORE_KEYS = Object.freeze({ skills: 'skills', history: 'history', streak: 'streak', live: 'live' });
 /** Keys a progress reset clears (settings stay). */
 export const PROGRESS_KEYS = Object.freeze(Object.values(STORE_KEYS));
-/** Keys "Reset progress" clears: the progress keys plus the tutorial and Explore records (learn.js, explore.js).
- *  Settings and the author's scenario draft ('author:draft') are kept. */
-export const RESET_KEYS = Object.freeze([...PROGRESS_KEYS, 'tutorial', 'explore']);
+/** Keys "Reset progress" clears: the progress keys plus the tutorial and Explore records (learn.js, explore.js)
+ *  and the rewards (XP, badges, stickers, kit: ui/rewards-store.js). Settings and the author's scenario draft
+ *  ('author:draft') are kept. */
+export const RESET_KEYS = Object.freeze([...PROGRESS_KEYS, 'tutorial', 'explore', 'rewards']);
 /** Keys a progress import replaces (the same set): a file never overwrites settings or a scenario draft
  *  (parseProgressFile hands the file's settings back separately, for the learner to opt in). */
 export const IMPORT_KEYS = RESET_KEYS;
@@ -327,6 +330,7 @@ export function resumableSession(saved, { key, now }, P = SESSION_DEFAULTS) {
     .map((r) => ({
       id: String(r.id ?? r.baseId), baseId: r.baseId, title: String(r.title ?? r.baseId), score: r.score, grade: r.grade,
       principles: Array.isArray(r.principles) ? r.principles.filter((id) => typeof id === 'string') : [],
+      ...(typeof r.titleKid === 'string' && r.titleKid ? { titleKid: r.titleKid } : {}),
     }));
   if (!reps.length || reps.length >= repsTotal) return null;
   const played = Array.isArray(saved.played) ? saved.played.filter((id) => typeof id === 'string') : reps.map((r) => r.baseId);
@@ -467,7 +471,7 @@ export function summarizeSession({ reps = [], before, after }) {
     grade: gradeOf(average),
     best: scores.length ? Math.max(...scores) : 0,
     run: longestRun(scores),
-    reps: reps.map((r) => ({ id: r.id, baseId: r.baseId, title: r.title, score: r.score, grade: r.grade })),
+    reps: reps.map((r) => ({ id: r.id, baseId: r.baseId, title: r.title, score: r.score, grade: r.grade, ...(r.titleKid ? { titleKid: r.titleKid } : {}) })),
     principles,
     improved: principles.filter((p) => p.stars[1] > p.stars[0]).map((p) => p.id),
     weakest: weakestPrinciple(A, ids),
@@ -583,6 +587,9 @@ export function parseProgressFile(text) {
     return { ok: false, error: 'The live scores in this file are damaged, so it was not imported.' };
   }
   const clean = Object.fromEntries(keys.map((k) => [k, data[k]]));
+  // Rewards are sanitised on the way in (js/rewards.js normalizeRewards): a damaged entry reads as a fresh start,
+  // never as a reason to refuse the file (a locked kit or a bad nickname is simply dropped).
+  if (clean['fotbol:rewards'] !== undefined) clean['fotbol:rewards'] = normalizeRewards(clean['fotbol:rewards']);
   const settings = isObj(data['fotbol:settings']) ? data['fotbol:settings'] : null;
   return {
     ok: true,

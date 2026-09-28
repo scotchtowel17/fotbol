@@ -18,9 +18,10 @@ index.html                 app shell (single page, hash router)
 tests.html                 runs tests/*.test.js in the browser (list: tests/manifest.js)
 css/app.css                design tokens (light/dark), layout, components
 assets/                    favicon
-js/main.js                 boot: load data, route #/home | #/learn | #/explore | #/drill | #/live | #/progress | #/author | #/credits | #/dev
+js/main.js                 boot: load data, route #/home | #/learn | #/explore | #/drill | #/live | #/progress | #/trophies | #/author | #/credits | #/dev
 js/data.js                 browser-side loaders (fetch JSON, one retry after a dropped connection) → plain objects passed to the engine
 js/store.js                localStorage wrapper (try/catch), progress export/import
+js/rewards.js              PURE game layer: XP, levels and ranks, stars, badges, sticker cards, kit unlocks (§5.13)
 js/engine/                 PURE (no DOM, no fetch)
   geometry.js              vectors, projection, barycentric, band()
   pitch.js                 IFAB constants, lanes, thirds, zone 14, frame transforms
@@ -44,7 +45,10 @@ js/ui/
   reveal.js                the shared feedback panel: live hot/cold readout, beat 1 (cue), beat 2 (full reveal) (§5.12)
   session.js               pure session helpers: persistence, drill selection, streaks, summaries (§5.12)
   components.js            small DOM helpers (el(), buttons, toasts, stageLayout)
-  modes/                   one file per route (§5.9): home learn explore drill live progress author credits dev
+  rewards-store.js         rewards in the app: store key 'rewards', award(), the kit on the page (§5.13)
+  celebrate.js             celebrations and every reward visual: stars + XP row, level-up screen, player card, level bar (§5.13)
+  sound.js                 tiny WebAudio synth: whistle, star, good, cheer, levelup (no audio files) (§5.13)
+  modes/                   one file per route (§5.9): home learn explore drill live progress trophies author credits dev
 data/formations/helios-433.json   ball→11 positions table (converted from HELIOS, MIT; 48 documented edits)
 data/principles.json              principle catalogue (IDs, names, text, links)
 data/curriculum.json              modules → principles → scenario IDs
@@ -486,10 +490,11 @@ export function kFactor(n, params?), principleTheta, roleTheta, targetFor(skills
 ```js
 // js/ui/board.js
 export const BALL_ID = 'ball';                         // the ball's id in enableDrag ids, highlight lists and onMove/onEnd
-export function createBoard(container, { orientation = 'auto', params } = {}) → Board   // params: BOARD_DEFAULTS overrides
+export function createBoard(container, { orientation = 'auto', params, youLabel = 'YOU' } = {}) → Board   // params: BOARD_DEFAULTS overrides;
+//   youLabel: the tag over the learner (app.createBoard passes the learner's nickname, §5.13)
 // Board = {
 //   el, orientation (getter), setOrientation('auto'|'horizontal'|'vertical'),
-//   render(frame, { learnerId, highlight: string[], labels: 'role'|'none', dimOthers: boolean }),
+//   render(frame, { learnerId, highlight: string[], labels: 'role'|'none', dimOthers: boolean, youLabel?: string }),   // youLabel changes the tag
 //   setGhost(Vec|null), setZone({ center, tol }|null), setHeatmap(field|null),
 //   setOverlays({ thirds, lanes, zone14, offsideLine: number|null, backLine: number|null }),   // merges partial patches
 //   setMarkers([ arrow {from,to,tone?,label?} | segment {a,b,tone?,dashed?,label?} | ring {at?|id?, r?, tone?, pulse?, label?}
@@ -497,7 +502,8 @@ export function createBoard(container, { orientation = 'auto', params } = {}) �
 //   enableDrag({ ids: string[], onMove(id, Vec), onEnd(id, Vec) }), disableDrag(),
 //   toWorld(clientX, clientY) → Vec, destroy()
 // }
-// also pure helpers: pickOrientation, viewBoxFor, project/unproject, worldTransform, keyDelta, describeSpot, tokenName, pitchMarkings, drawPitch
+// also pure helpers: pickOrientation, viewBoxFor, project/unproject, worldTransform, keyDelta, describeSpot, tokenName, pitchMarkings, drawPitch,
+//   youTag(label) → { text, width }   // the learner's tag: the label in capitals (≤ 12 characters) or 'YOU', and its pill width in metres
 ```
 
 The shared feedback panel (`js/ui/reveal.js`) is specified in §5.12.
@@ -524,10 +530,13 @@ export async function mount(root /* a fresh <div class="view view--<mode>"> per 
     scenarios: { index: ScenarioMeta[], meta(id), load(id) → Promise<Scenario> },
   },
   store,          // js/store.js
-  settings,       // { wording: 'standard'|'kid', theme: 'auto'|'light'|'dark', reducedMotion: boolean, role: LEARNABLE_ROLES } (persisted; unknown keys kept)
+  settings,       // { wording: 'standard'|'kid', theme: 'auto'|'light'|'dark', reducedMotion: boolean, role: LEARNABLE_ROLES, sound: boolean /* default true */ }
+                  //   (persisted; unknown keys kept)
   setSettings(patch), onSettings(fn) → unsubscribe,
   navigate(hash), route: { mode, params },
-  createBoard,    // js/ui/board.js
+  createBoard,    // js/ui/board.js, with { youLabel: the learner's nickname or 'YOU' } by default
+  sound,          // extra (§5.13): js/ui/sound.js createSound({ enabled: () => settings.sound })
+  celebrate,      // extra (§5.13): js/ui/celebrate.js createCelebrations(app)
 }
 ```
 
@@ -541,13 +550,14 @@ Routes (`#/<mode>[/<arg>...]`; a bad argument never dead-ends: it falls back to 
 | `#/explore`, `#/explore/<ROLE>` | free play on a static scene (sets settings.role; role changes rewrite the hash with replaceState) |
 | `#/drill`, `#/drill/<M1-M3>`, `#/drill/p/<ID>`, `#/drill/s/<scenarioId>` | a 6-rep drill session: first unfinished module, one module, one principle, one scenario then its module (`-m` suffix: mirrored; `_example` and other unindexed files load by id) |
 | `#/live`, `#/live/<seed>[/<45\|60>]` | a live sequence; a fresh seed is written into the URL (replaceState) so a link replays it |
-| `#/progress` | level, streaks, stars, positions, history, export / import / reset |
+| `#/progress` | level, streaks, stars, positions, history, the way into the trophy room, export / import / reset |
+| `#/trophies`, `#/trophies/badges`, `#/trophies/album`, `#/trophies/kit[/<paletteId>]` | the trophy room (§5.13): player card and tiles, badges, the sticker album, the kit locker (a palette id pre-selects that unlocked kit to try on) |
 | `#/author`, `#/author/<scenarioId>` | the scenario editor |
 | `#/credits`, `#/dev` | credits and licences; the engine playground |
 
 A mode module that fails to load is retried once (a dropped connection), then shows a card with Try again (reload) and Back to home.
 
-Store keys (all under the `fotbol:` prefix): `settings` (main.js), `skills`, `history`, `streak`, `live` (session.js, §5.12), `tutorial` `{ completed, completedAt, done: stepId[], step }` (learn.js `normalizeTutorialProgress`), `explore` `{ found, best }` (explore.js), `author:draft` `{ version: 1, scenario, savedAt, origin: {id}|null }` (author.js). "Reset progress" clears `session.js RESET_KEYS` (the progress keys, `tutorial` and `explore`); settings and the author draft stay. Every key degrades to its default when storage is blocked or corrupt (store.js), and the UI says when progress cannot be saved.
+Store keys (all under the `fotbol:` prefix): `settings` (main.js), `skills`, `history`, `streak`, `live` (session.js, §5.12), `tutorial` `{ completed, completedAt, done: stepId[], step }` (learn.js `normalizeTutorialProgress`), `explore` `{ found, best }` (explore.js), `rewards` (js/rewards.js state, ui/rewards-store.js; §5.13), `author:draft` `{ version: 1, scenario, savedAt, origin: {id}|null }` (author.js). "Reset progress" clears `session.js RESET_KEYS` (the progress keys, `tutorial`, `explore` and `rewards`); settings and the author draft stay. An import replaces the same keys (`IMPORT_KEYS`); `parseProgressFile` passes a file's rewards through `normalizeRewards` (a damaged entry reads as a fresh start, never a refusal). Every key degrades to its default when storage is blocked or corrupt (store.js), and the UI says when progress cannot be saved.
 
 `js/store.js`:
 ```js
@@ -603,15 +613,18 @@ Live (`js/ui/modes/live.js`) scores at `sampleHz` (10 Hz) off the render path: t
 export function createFeedbackPanel(container, { app }) → { el, showLive, showCue, showFull, clear, destroy }
 //   showLive(judgement)                           every drag move: score, grade, hot/cold word and meter, the top line (text only)
 //   showCue(judgement, { onReveal, focus = true }) beat 1: a cue question (feedback.cue, never the grade) and "Show me"
-//   showFull(judgement, { onNext, onReplay, takeaway, misconception, principleLinks = true, nextLabel, replayLabel, focus = true })
+//   showFull(judgement, { onNext, onReplay, takeaway, misconception, principleLinks = true, nextLabel, replayLabel, focus = true, animate = true, reward })
 //                                                 beat 2: count-up score, grade badge, reasons with principle chips, the fix, praise,
 //                                                 takeaway and misconception notes (string or { standard, kid }); S = confetti unless
 //                                                 reduced motion. Drill and Live pass principleLinks: false (a link would leave the
 //                                                 session) and keep Replay / Next in the stage's action bar instead of onNext/onReplay.
+//                                                 reward: a node shown under the grade (Drill and Explore pass a slot the
+//                                                 celebration draws the stars and XP into, §5.13).
 //   judgement = judgeSpot() output; the board side (cue highlight, ghost, zone, heatmap) is the caller's job.
 export const REVEAL_DEFAULTS, HOT_COLD_BANDS /* on fire ≥ 90, hot ≥ 70, warm ≥ 50, else cold */, GRADE_COLORS, GRADE_INK
 export function hotCold(score), gradeColor(grade), pickText(v, wording), topLine(feedback), revealModel(judgement, opts) /* pure */
 export function starRating(n, { max, label, size }), principleChip(principle, { wording, className })   // small DOM helpers
+export function principleLabel(principle, wording) // kidName in Kid wording (when present), else short; revealModel's chips use it
 
 // js/ui/session.js: PURE (the store, the day and the time are passed in).
 export const SESSION_DEFAULTS   // reps: 6 per drill session, historyMax: 500, goodScore: 70, liveWorst: 3, liveWorstBelow: 90, ...
@@ -629,6 +642,66 @@ export const STORE_KEYS = { skills, history, streak, live }, PROGRESS_KEYS, RESE
 ```
 
 History entries: drill `{ t, mode: 'drill', id, baseId, title, module, principles, role, score, grade, dist, ms, confidence: 'sure'|'unsure'|null, misconception, mirrored, reasons: ruleIds }`; live `{ t, mode: 'live', id, seed, title, role, score, grade, assisted, duration, speed, recovery, onSpot, early }`. Elo keys items by `baseId` and uses the role actually played; a drill rep updates Elo with `score / 100` as partial credit and the scenario's `difficulty` as the prior.
+
+### 5.13 Rewards (`js/rewards.js`, pure) and celebrations (`js/ui/celebrate.js`)
+
+Game layer for younger learners (about age 11 and up). Rewards follow effort, improvement and mastery, never raw scores alone. There are no leaderboards, no random prizes, and no streak that punishes a missed day (training days only add up). Store key: `'rewards'` (included in progress export/import).
+
+```js
+// js/rewards.js: pure (no DOM, storage or clock; the UI passes the local day 'YYYY-MM-DD')
+createRewards() → RewardsState    normalizeRewards(raw) → RewardsState   // sanitises imports and corrupt storage
+applyEvent(state, event, { day }) → { state, gained }                    // immutable
+//  event: { type: 'rep', scenarioId, role, grade, score }   after each drill rep is judged
+//       | { type: 'session', grades }                       when a drill session ends
+//       | { type: 'live', average }                         when a Live run ends
+//       | { type: 'explore-s' }                             when Explore's "find the S spot" succeeds
+//       | { type: 'tutorial-complete' }
+//       | { type: 'mastery', principleId, stars }           after each rep, for each principle, with elo.mastery()
+//  gained: { xp, stars (rep only), newBest, improved, badges: [id], cards: [{ id, tier, upgrade }],
+//            levelUp: null | { from, to, rank, rankUp, unlocks: [paletteId] } }
+levelFor(xp) → { level, rank, xp, levelXp, nextXp, progress }   starsFor(grade) → 0..3 (S 3, A 2, B 1)
+BADGES, badgeProgress(state), CARD_TIERS (1 bronze, 2 silver, 3 gold), cardTier(state, principleId)
+KIT_PALETTES (light shirts only: colour-blind safe against --kit-them), kitOptions(state), setKit(state, patch), cleanNickname(s)
+```
+
+Mirrored drills (`<id>-m`) share one best-score record with their original. `REWARDS_DEFAULTS`, `LEVEL_XP` and `RANKS` hold every tunable number.
+
+```js
+// js/ui/rewards-store.js: rewards in the app (the store, the clock, the page)
+REWARDS_KEY = 'rewards'; REWARDS_EVENT = 'fotbol:rewards' (window event, detail { state }); KIT_VARS = { shirt: '--kit-us', edge: '--kit-us-edge', ink: '--kit-us-ink' }
+todayLocal(now?) → 'YYYY-MM-DD' (local)       loadRewards(app) → normalizeRewards(store 'rewards')
+saveRewards(app, state, { notify = true })    // store, applyKit, then REWARDS_EVENT unless notify: false
+refreshRewards(app)                           // after an import or a reset, and when a drill reveals a rep: re-apply the kit, fire the event
+onRewards(fn) → unsubscribe
+award(app, event, { celebrate = true, grade, host, card, now }) → gained   // applyEvent with todayLocal(), save, app.celebrate.show(gained, ...);
+                                                                           //   a rep's gained also gets firstTry; never throws (logs, empty gains)
+                                                                           //   celebrate: false = the caller shows it later (also holds back the event)
+emptyGains(), cleanGains(raw), mergeGains(a, b)   // one celebration for a rep and its stickers; a session's running total
+kitVars(state), paletteVars(p), applyKit(state)   // classic clears the inline values (css/app.css defaults = the classic palette)
+youLabel(state) → nickname | 'YOU';  shirtNumber(state, roleNum);  totalStars(state)
+
+// js/ui/celebrate.js: every reward visual (restyle here)
+createCelebrations(app) → { show(gained, { grade, host, card = true, quiet }), destroy }
+//   host (an element): the row is drawn in place (the Drill and Explore reveals); quiet redraws it with no sounds or burst.
+//   no host: a floating card under the header, one at a time (queued), auto-dismissed after showMs (3.5 s), paused while
+//   hovered or focused, with a dismiss button (Live, the tutorial). card: false = sounds, burst and level-up only (the drill summary).
+//   One celebration = the star row (the lit stars pop in one at a time, a 'star' tick each) and "+N XP", a short kid headline
+//   ("Brilliant!"), "New best!" / "You improved!", and one chip per badge or sticker (≤ 6 words and an icon; "+N more" past maxChips).
+//   An S grade or a level-up bursts confetti (DOM pieces, Web Animations; none under reduced motion). A level-up then opens the
+//   level-up screen (openModal: focus trapped, Esc or the close button, focus returned): "Level up!", the level, big, the rank and
+//   one button: "Try it on" → #/trophies/kit/<id> when a kit was unlocked, else "Keep going". Only that screen blocks play.
+//   Announced once through its own polite live region (not again when the host is inside a live region, like the reveal).
+celebrationModel, rewardChips, soundPlan, levelModel, pillModel, levelUpModel, starSlots, confettiPieces   // pure
+starRow, rewardRow, kitToken, levelBar, playerCard, sessionCard, renderPill, starIcon                     // DOM builders
+CELEBRATE_DEFAULTS, RANK_ICONS (rookie 🌱, academy ⚽, first-team 👕, captain 🧢, legend 🏆), TIER_ICONS (🥉 🥈 🥇)
+
+// js/ui/sound.js
+createSound({ enabled, volume, win }) → { play(name, { index }?) → boolean, unlock(), ready, destroy() }
+SOUND_NAMES = ['whistle', 'star', 'good', 'cheer', 'levelup']   // synthesised (oscillators, filtered noise); SOUND_DEFAULTS
+//   The AudioContext is made on the first user gesture while sound is on; no WebAudio (or any failure) → play() returns false.
+```
+
+Hooks (each a small named function in its mode, so the presentation can change without touching them): Drill `rewardRep` (when a rep is judged: the rep with its played id, `-m` included, then a `mastery` event for each of its principles whose `elo.mastery` with the updated skills beats `cardTier`; `celebrate: false`) and `rewardSlot` (beat 2: the row under the grade, and the header pill catches up; beat 1 never gives the grade away), `rewardSession` and `sessionRewards` (the summary: the session bonus, then XP this session, stars won, the level bar and the badges and stickers of the session; an unfinished session keeps its gains); Live `rewardRun` (a run played to the end without the best spot on show); Explore `rewardFind` (a counted S spot, in the reveal); Learn `rewardCompletion` (once per completion). A drill freezing plays the whistle. The header's level pill (main.js) links to `#/trophies`; Home shows the player card; Progress links to the trophy room.
 
 ## 6. Adding things
 

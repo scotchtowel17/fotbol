@@ -391,6 +391,48 @@ test('import: damaged live bests and skills never show as undefined or NaN, and 
   assert.ok(roles.every((r) => Number.isFinite(r.p) && Number.isFinite(r.attempts)), 'no NaN on the Progress page');
 });
 
+test('import: rewards travel with the progress, sanitised on the way in; a reset clears them', async () => {
+  const { createRewards, applyEvent, LEVEL_XP } = await import('../js/rewards.js');
+  assert.ok(RESET_KEYS.includes('rewards') && IMPORT_KEYS.includes('rewards'), 'rewards are progress');
+  let rewards = createRewards();
+  rewards = applyEvent(rewards, { type: 'rep', scenarioId: 'm1-01-d1-lcm', role: 'LCM', grade: 'S', score: 95 }, { day: '2026-09-27' }).state;
+  const a = memStore();
+  a.set('rewards', { ...rewards, kit: { palette: 'gold', number: 7, nickname: '<b>Mia</b>' } });
+  a.set('history', [{ mode: 'drill', score: 95 }]);
+  const parsed = parseProgressFile(JSON.stringify({ app: 'fotbol', data: a.exportAll() }));
+  assert.equal(parsed.ok, true);
+  assert.ok(parsed.keys.includes('fotbol:rewards'));
+  const r = parsed.data['fotbol:rewards'];
+  assert.equal(r.xp, rewards.xp);
+  assert.equal(r.kit.palette, 'classic', 'a kit this level has not unlocked is refused');
+  assert.equal(r.kit.number, 7);
+  assert.equal(r.kit.nickname, 'bMiab', 'the nickname is cleaned');
+  assert.ok(r.badges['first-s']);
+  const b = memStore();
+  for (const k of IMPORT_KEYS) b.remove(k);
+  b.importAll(parsed.data);
+  assert.equal(b.get('rewards').xp, rewards.xp);
+  // A damaged rewards entry reads as a fresh start; it never makes the file fail.
+  const junk = parseProgressFile(JSON.stringify({ 'fotbol:rewards': 'junk', 'fotbol:history': [] }));
+  assert.equal(junk.ok, true);
+  assert.deepEqual(junk.data['fotbol:rewards'], createRewards());
+  const unlocked = parseProgressFile(JSON.stringify({ 'fotbol:rewards': { xp: LEVEL_XP[9], kit: { palette: 'gold' } } }));
+  assert.equal(unlocked.data['fotbol:rewards'].kit.palette, 'gold', 'an unlocked kit is kept');
+  // Reset: what progress.js does.
+  for (const k of RESET_KEYS) b.remove(k);
+  assert.equal(b.get('rewards'), null);
+});
+
+test('drill resume: a rep keeps its kid title through a saved session and the summary', () => {
+  const key = drillSessionKey({ kind: 'module', module: 'M1' }, 'LCB');
+  const reps = [{ id: 's1', baseId: 's1', title: 'Cover your partner', titleKid: 'Help your friend', score: 80, grade: 'A', principles: ['D3'] }];
+  const r = resumableSession({ key, reps, played: ['s1'], before: createSkills(), repsTotal: 6, at: 1000 }, { key, now: 2000 });
+  assert.equal(r.reps[0].titleKid, 'Help your friend');
+  assert.equal(summarizeSession({ reps: r.reps, before: createSkills(), after: createSkills() }).reps[0].titleKid, 'Help your friend');
+  const plain = resumableSession({ key, reps: [{ ...reps[0], titleKid: 42 }], played: ['s1'], before: createSkills(), repsTotal: 6, at: 1000 }, { key, now: 2000 });
+  assert.equal('titleKid' in plain.reps[0], false, 'a bad kid title is dropped');
+});
+
 test('live: the address of a sequence carries its length', () => {
   assert.equal(liveHash('abc', 60), '#/live/abc/60');
   assert.equal(liveHash('abc', 45), '#/live/abc/45');

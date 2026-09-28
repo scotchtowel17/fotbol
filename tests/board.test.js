@@ -1,7 +1,7 @@
 import { test, assert, approx, isNode } from './harness.js';
 import {
   createBoard, BOARD_DEFAULTS, BALL_ID, pickOrientation, viewBoxFor, project, unproject, worldTransform,
-  keyDelta, describeSpot, tokenName, pitchMarkings, tokenScale, labelScale, pxPerMetre, focusViewBox,
+  keyDelta, describeSpot, tokenName, pitchMarkings, tokenScale, labelScale, pxPerMetre, focusViewBox, youTag,
 } from '../js/ui/board.js';
 import { LENGTH, WIDTH, MID_Y, PENALTY_AREA, PENALTY_SPOT_DIST, CIRCLE_RADIUS, POSTS, GOAL_DEPTH } from '../js/engine/pitch.js';
 
@@ -160,6 +160,36 @@ test('board (browser): render wins over the pointer during a drag, so a mode can
     assert.deepEqual([x, y], [32, 30], `token at ${g.style.transform}`);
     svg.dispatchEvent(ev('pointerup', { x: 40, y: 30 }));
   });
+});
+
+test('board: the tag over the learner says YOU, or the nickname in capitals in a pill that fits it', () => {
+  assert.deepEqual(youTag(), { text: 'YOU', width: 4.6 });
+  assert.deepEqual(youTag('  '), { text: 'YOU', width: 4.6 });
+  assert.equal(youTag('Leo').text, 'LEO');
+  assert.equal(youTag('Leo').width, 4.6, 'a short name keeps the YOU pill');
+  const long = youTag('Alexandrina');
+  assert.equal(long.text, 'ALEXANDRINA');
+  assert.ok(long.width > 4.6 && long.width < 12, `${long.width} m`);
+  assert.equal(youTag('abcdefghijklmnop').text.length, 12, 'capped');
+});
+
+test('board (browser): a nickname replaces YOU over the learner, and render() can change it', async () => {
+  if (isNode) return;
+  const container = document.createElement('div');
+  container.style.cssText = 'position:fixed;left:0;top:0;width:630px;height:444px;opacity:0;pointer-events:none';
+  document.body.appendChild(container);
+  const board = createBoard(container, { orientation: 'horizontal', youLabel: 'Mia' });
+  try {
+    board.render(frameWith({ x: 30, y: 30 }), { learnerId: 'us-LCB' });
+    const tag = () => board.el.querySelector('.token[data-id="us-LCB"] .token-you text').textContent;
+    assert.equal(tag(), 'MIA');
+    board.render(frameWith({ x: 30, y: 30 }), { learnerId: 'us-LCB', youLabel: 'Alexandrina' });
+    assert.equal(tag(), 'ALEXANDRINA');
+    const rect = board.el.querySelector('.token[data-id="us-LCB"] .token-you rect');
+    assert.ok(Number(rect.getAttribute('width')) > 4.6, 'the pill grows with the name');
+    board.render(frameWith({ x: 30, y: 30 }), { learnerId: 'us-LCB', youLabel: '' });
+    assert.equal(tag(), 'YOU');
+  } finally { board.destroy(); container.remove(); }
 });
 
 test('board (browser): setHeatmap with the same field object does not re-encode the image', async () => {
