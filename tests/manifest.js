@@ -40,6 +40,8 @@ export const TEST_FILES = Object.freeze([
   'player-play.test.js',
   'player-pass.test.js',
   'road.test.js',
+  'road-sets-back.test.js',
+  'road-sets-front.test.js',
   'player-shell.test.js',
   'manifest.test.js',
 ]);

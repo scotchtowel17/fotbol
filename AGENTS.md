@@ -1,6 +1,6 @@
 # Guide for coding agents
 
-fotbol is a zero-build browser app that teaches soccer positioning. The learner takes a role, watches play unfold, drags themselves to where they should be, and is scored and told *why*.
+fotbol is a zero-build browser app that teaches soccer positioning. The learner takes a role, watches play unfold, drags themselves to where they should be, and is scored and told *why*. It has two modes: **Player mode** (the default, kid-first: `js/ui/player/`, spec in [docs/KID_REDESIGN.md](docs/KID_REDESIGN.md)) and **Coach mode** (the full app: `js/ui/modes/`).
 
 Read these first:
 1. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): module contracts, data shapes, the coordinate frame. **Binding.**
@@ -40,5 +40,7 @@ npm run sanity      # node scripts/sanity.mjs > docs/sanity-output.txt: the engi
 | Change feedback wording | the `text` block of each rule, `js/engine/explain.js` |
 | Add or fix a scenario | `#/author` in the app, then `data/scenarios/<id>.json`, its module in `data/curriculum.json`, `npm run index`, `npm run check` (ARCHITECTURE §6) |
 | Change a mode (Drill, Live, Explore, Learn...) | `js/ui/modes/<mode>.js`; shared pieces in `js/ui/reveal.js` (feedback panel) and `js/ui/session.js` (selection, persistence, summaries) |
+| Change a Player screen (home, kick-off, a set, "Who's open?", Match day, the card) | `js/ui/player/<name>.js` (ARCHITECTURE §5.16); its words are in the module's `STRINGS` (`tests/copy.test.js` checks them) |
+| Change the Road or how its sets are built | `data/road.json`, `js/ui/player/road.js` (`buildSet`); `tests/road-sets-*.test.js` sweeps every node for every position |
 | Change the curriculum | `data/curriculum.json`, `data/principles.json` |
 | Change the look | `css/app.css` (tokens at the top), `js/ui/board.js` |

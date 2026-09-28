@@ -1,11 +1,12 @@
 // '#/pass' and '#/pass/<nodeId>': "Who's open?", the Player-mode passing set (docs/KID_REDESIGN.md §4.4).
 //
-//   #/pass            a quick set: PASS_DEFAULTS.reps generated pass drills for your position (mixed lessons)
+//   #/pass            a quick set: PASS_DEFAULTS.reps generated pass drills for your position, mixed lessons (road.js buildQuickPassSet)
 //   #/pass/<nodeId>   a Road pass node (road.js buildSet); a spot node sends you to #/play/<nodeId>
 //
 // One rep (about 15 s):
 //   set      "You've got the ball" over the pitch; YOU is the carrier (spotlight: the ball, YOU, the teammates to pass to)
-//   watch    2-3 s of build-up (timeline frameAt), then the whistle and the freeze
+//   watch    2-3 s of build-up (passdrill.js passDrillPlayback: nobody held back, so YOU run onto the ball), then the
+//            whistle and the freeze (passDrillFrame, the frame the engine rated)
 //   choose   the teammates are big numbered targets: a first tap previews a dotted pass line, a second tap (or Pass) plays it
 //   result   the ball travels: "Cut out!" (the defender who got it flashes, a groan), "Safe" (quiet), "Line broken!" (a lift)
 //   reveal   every option labelled on the pitch with a shape and a colour (★ Best, ✓ Good, ! Risky, ✗ Cut out), the lanes
@@ -22,14 +23,14 @@
 // tests/player-pass.test.js.
 
 import { el, button, icon, notice, linkButton, announce } from '../components.js';
-import { frameAt, timing } from '../../engine/timeline.js';
+import { timing } from '../../engine/timeline.js';
 import { update as eloUpdate, mastery } from '../../engine/elo.js';
 import { ROLE_INFO, LEARNABLE_ROLES, parsePlayerId, playerId } from '../../engine/roles.js';
 import { dist, clamp, lerpPoint } from '../../engine/geometry.js';
 import * as Rewards from '../../rewards.js';
 import { award, loadRewards, refreshRewards, mergeGains, emptyGains } from '../rewards-store.js';
 import * as S from '../session.js';
-import { STRINGS as SHARED, starWord } from './strings.js';
+import { STRINGS as SHARED, starWord, roleCard } from './strings.js';
 
 /** The ball's id in board spotlight lists (ARCHITECTURE §5.8 board.js BALL_ID; not imported, so the board loads with the stage). */
 const BALL_ID = 'ball';
@@ -37,7 +38,8 @@ const BALL_ID = 'ball';
 export const PASS_DEFAULTS = Object.freeze({
   reps: 5, // [S] KID_REDESIGN §3: a set is 5 reps
   watch: 2.5, // [S] §4.4: 2-3 s of build-up play before the freeze
-  setCardMs: 1300, // [D] the "You've got the ball" card holds this long (a tap skips it)
+  setCardMs: 1300, // [D] the "You've got the ball" card holds this long (a tap skips it)...
+  roleChangedMs: 2300, // [D] ...longer when you play another position ("Now you're the left centre-back", as play.js)
   ballSpeed: 15, // [S] research/passing.md §4.3 ballSpeed, m/s: the pass travels at match speed...
   flightMin: 0.55, // [D] ...but takes at least this long (s), so a short pass can be followed...
   flightMax: 1.3, // [D] ...and at most this long
@@ -397,14 +399,17 @@ export function pickLine(explain, { good = false } = {}, P = PASS_DEFAULTS) {
 
 /**
  * The "Why?" sheet (§4.3 step 7; reveal.js keeps it to 60 words): the idea's name and one-line summary in simple
- * wording (the best pass's idea after a miss, yours after the best), then
+ * wording (the rep's lesson, drill.principles, when the explanation is about it: a "Find the Free Player" rep missed
+ * through a blocked lane says "Pick a Clear Path"; else the best pass's idea after a miss, yours after the best), then
  *   a miss: the best pass's reason, then more about yours (explainPass `more`, problems first);
  *   the best (or a good pass): what else you got right (the strengths among `more`).
  * `option` (the rated option) tells a strength from a problem by its tags; the line on the card is never repeated.
  */
 export function whyFor({ explain, principles = {}, drill = null, isBest = false, option = null, line = '' } = {}) {
   const yours = explain?.yours ?? null, best = explain?.best ?? null;
-  const pid = (isBest ? yours?.principleId ?? best?.principleId : best?.principleId ?? yours?.principleId) ?? drill?.principles?.[0] ?? null;
+  const explained = [yours?.principleId, best?.principleId, ...(explain?.more ?? []).map((m) => m?.principleId)].filter(Boolean);
+  const lesson = (drill?.principles ?? []).find((p) => explained.includes(p)) ?? null;
+  const pid = lesson ?? (isBest ? yours?.principleId ?? best?.principleId : best?.principleId ?? yours?.principleId) ?? drill?.principles?.[0] ?? null;
   const byId = principles?.byId ?? principles ?? {};
   const kid = (p) => (typeof p?.summary === 'string' ? p.summary : p?.summary?.kid) || '';
   // The idea from the catalogue; else the drill's own lesson (the generator names it); else a plain one.
@@ -445,13 +450,26 @@ export function briefOf(drill) {
   return typeof b === 'string' && b.trim() && wordCount(b) <= 12 ? b : '';
 }
 
-/** The history entry of a pass rep (ARCHITECTURE §5.12 plus research/passing.md §4.5: mode, choice, outcome). */
+/** The history entry of a pass rep (ARCHITECTURE §5.12 plus research/passing.md §4.5: mode, choice, outcome; nodeId as play.js). */
 export function historyEntry({ t, drill, role, option, graded, bestId = null, ms = null, nodeId = null }) {
   return {
     t, mode: 'pass', id: drill?.id ?? null, title: drill?.title ?? drill?.titleKid ?? STRINGS.title,
     principles: [...(drill?.principles ?? [])], role, score: graded?.score ?? 0, grade: graded?.grade ?? null,
-    choice: option?.id ?? null, outcome: outcomeKey(option, graded), best: bestId, ms, node: nodeId,
+    choice: option?.id ?? null, outcome: outcomeKey(option, graded), best: bestId, ms, nodeId,
   };
+}
+
+/**
+ * The id Elo and the rewards keep a pass rep's record under (as play.js recordIdOf): an authored drill's own id; one
+ * per lesson and position family for generated drills ('gen-PA5-FB'), since each generated drill is new and a record
+ * per drill would only grow (and "beat your best" means that lesson in that position).
+ */
+export function passRecordId(drill) {
+  if (drill?.source?.kind === 'generated' || /^pass-/.test(String(drill?.id ?? ''))) {
+    const role = roleOfDrill(drill);
+    return `gen-${drill?.principles?.[0] ?? 'PA'}-${ROLE_INFO[role]?.family ?? 'x'}`;
+  }
+  return String(drill?.id ?? '');
 }
 
 // ---------------------------------------------------------------- the set (pure, deps passed in)
@@ -504,11 +522,12 @@ export async function generateReps({
 /**
  * The reps of a set.
  *   A Road node: road.buildSet's pass reps; a node that gives only spot reps → { redirect: '#/play/<id>' }.
- *   No node (the quick set): the engine's generatePassSet, mixed lessons with a forward best in 3 of 5 (against the
- *   "always pass back" trap, research/passing.md §6.4).
+ *   No node (the quick set): road.buildQuickPassSet, mixed lessons built as a Road pass set is (a forward best in 3 of
+ *   5 against the "always pass back" trap, research/passing.md §6.4; no two reps that look the same); without it, the
+ *   engine's generatePassSet.
  * Either way a set still short of `count` is topped up with generatePassDrill (on the node's principles).
  * @param {{ node?, road?, profile?, role, seed, formations, catalogue?, index?, rewards?, skills?, count? }} ctx
- * @param {{ buildSet?, generatePassSet?, generatePassDrill?, warn? }} deps  warn: where failures are logged (console.warn)
+ * @param {{ buildSet?, buildQuickPassSet?, generatePassSet?, generatePassDrill?, warn? }} deps  warn: where failures are logged (console.warn)
  * @returns {Promise<{ reps: { kind: 'pass', drill }[], redirect?: string }>}
  */
 export async function assembleSet(ctx, deps = {}) {
@@ -518,11 +537,19 @@ export async function assembleSet(ctx, deps = {}) {
   if (ctx.node && typeof deps.buildSet === 'function') {
     let built = [];
     try {
-      built = await deps.buildSet(ctx.node, { road: ctx.road, profile: ctx.profile, index: ctx.index ?? [], rewards: ctx.rewards, skills: ctx.skills, seed: ctx.seed, formations: ctx.formations });
+      built = await deps.buildSet(ctx.node, {
+        road: ctx.road, profile: ctx.profile, index: ctx.index ?? [], rewards: ctx.rewards, skills: ctx.skills, seed: ctx.seed, formations: ctx.formations,
+        catalogue: ctx.catalogue, // data/principles.json: the generated drills' names and takeaways
+      });
     } catch (err) { warn('[fotbol] pass: buildSet failed', err); }
     built = Array.isArray(built) ? built : [];
     reps = built.filter((r) => r?.kind === 'pass' && r.drill);
     if (!reps.length && built.some((r) => r?.kind === 'spot')) return { reps: [], redirect: `#/play/${encodeURIComponent(ctx.node.id)}` };
+  } else if (!ctx.node && typeof deps.buildQuickPassSet === 'function') {
+    try {
+      const built = await deps.buildQuickPassSet({ road: ctx.road, profile: ctx.profile, seed: ctx.seed ?? 1, count, formations: ctx.formations, catalogue: ctx.catalogue });
+      reps = (Array.isArray(built) ? built : []).filter((r) => r?.kind === 'pass' && r.drill?.id);
+    } catch (err) { warn('[fotbol] pass: buildQuickPassSet failed', err); }
   } else if (!ctx.node && typeof deps.generatePassSet === 'function') {
     try {
       const drills = deps.generatePassSet({ seed: ctx.seed ?? 1, count, role: ctx.role, formations: ctx.formations, catalogue: ctx.catalogue });
@@ -579,7 +606,8 @@ export async function mount(root, app, params = []) {
   const deps = await loadDeps();
   if (!root.isConnected) return () => {}; // a newer route took over while this one loaded
   const passing = deps.passing, passdrill = deps.passdrill;
-  if (typeof passing?.rateOptions !== 'function' || typeof passing?.gradePass !== 'function' || typeof passdrill?.generatePassDrill !== 'function') {
+  if (typeof passing?.gradePass !== 'function' || typeof passing?.explainPass !== 'function' || typeof passdrill?.generatePassDrill !== 'function'
+    || typeof passdrill?.passDrillFrame !== 'function' || typeof passdrill?.passDrillPlayback !== 'function') {
     root.replaceChildren(notice({ title: STRINGS.soonTitle, text: STRINGS.soonText, actions: [linkButton(STRINGS.back, '#/', { variant: 'primary', icon: 'arrow' })] }));
     return () => { alive = false; };
   }
@@ -612,7 +640,7 @@ export async function mount(root, app, params = []) {
       node, road: roadData, profile, role, seed, formations, catalogue: app.data?.principles, index: app.data?.scenarios?.index ?? [],
       rewards: loadRewards(app), skills: S.loadSkills(app.store),
     },
-    { buildSet: roadMod?.buildSet, generatePassSet: passdrill.generatePassSet, generatePassDrill: passdrill.generatePassDrill },
+    { buildSet: roadMod?.buildSet, buildQuickPassSet: roadMod?.buildQuickPassSet, generatePassSet: passdrill.generatePassSet, generatePassDrill: passdrill.generatePassDrill },
   );
   if (!root.isConnected) return () => {};
   if (redirect) { app.navigate(redirect); return () => { alive = false; }; }
@@ -726,13 +754,15 @@ export async function mount(root, app, params = []) {
     const { drill } = set.reps[i];
     const { freezeAt } = timing(drill);
     const from = Math.max(0, freezeAt - P.watch);
-    // Played and judged as the engine checked it (passdrill.js): nobody held back, YOU on the ball at the freeze.
-    const at = (t) => (typeof passdrill.passDrillFrame === 'function' ? passdrill.passDrillFrame(drill, t, { formations }) : frameAt(drill, t, { formations, learnerId: null }));
-    let freeze, rating;
+    // Played and judged as the engine checked it (passdrill.js): nobody held back (timeline.js frameAt's default holds
+    // the learner, who would never reach the ball), YOU on the ball at the freeze; graded on the drill's own rating.
+    let at, freeze, rating;
     try {
-      freeze = at(freezeAt);
-      rep = { drill, carrierId: carrierOf(drill, freeze), accept: drill.answer?.accept ?? [] };
-      rating = typeof passdrill.passDrillRating === 'function' ? passdrill.passDrillRating(drill, { formations }) : passing.rateOptions(freeze, rep.carrierId, drill.params?.pass);
+      const playback = passdrill.passDrillPlayback(drill, { formations });
+      at = (t) => playback.frameAt(t);
+      freeze = passdrill.passDrillFrame(drill, freezeAt, { formations });
+      rep = { drill, carrierId: carrierOf(drill, freeze), accept: drill.answer?.accept ?? [], focus: [...(drill.principles ?? [])] };
+      rating = drill.rating?.options?.length ? drill.rating : passdrill.passDrillRating(drill, { formations });
     } catch (err) {
       console.warn('[fotbol] pass: could not rate', drill?.id, err);
       return nextRep();
@@ -759,13 +789,17 @@ export async function mount(root, app, params = []) {
     setMarkers([]);
     draw(rep.at(rep.from));
     spotlight([BALL_ID, rep.carrierId, ...rep.targets]);
-    showCard(STRINGS.setCard);
-    announce(STRINGS.setCard);
+    // A rep played as a teammate in your group (road.js: a full-back's "free side" is a centre-back's) says so.
+    const card = roleCard(roleOfDrill(rep.drill), role);
+    const text = card.changed ? card.text : STRINGS.setCard;
+    showCard(text);
+    els.card.classList.toggle('is-changed', card.changed);
+    announce(text);
     setLine('');
     setActions();
     const go = () => { if (rep && view.dataset.phase === 'set') showWatch(); };
     els.card.onclick = go;
-    later(P.setCardMs, go);
+    later(card.changed ? P.roleChangedMs : P.setCardMs, go);
   }
 
   function showWatch() {
@@ -829,7 +863,7 @@ export async function mount(root, app, params = []) {
     graded ??= { score: option.score ?? 0 };
     const outcome = passOutcome(option, graded);
     let explain = null;
-    try { explain = passing.explainPass?.(rep.rating, option.id, { wording: 'kid', accept: rep.accept }) ?? null; } catch (err) { console.warn('[fotbol] pass: could not explain', err); }
+    try { explain = passing.explainPass(rep.rating, option.id, { wording: 'kid', accept: rep.accept, focus: rep.focus }) ?? null; } catch (err) { console.warn('[fotbol] pass: could not explain', err); }
     const stars = starsOf(graded);
     const attempt = { option, graded, outcome, explain, stars, ms };
     rep.tries += 1;
@@ -890,7 +924,7 @@ export async function mount(root, app, params = []) {
     const score = Number.isFinite(a.graded?.score) ? a.graded.score : 0;
     const grade = a.graded?.grade ?? null;
     try {
-      set.skills = eloUpdate(set.skills, { itemId: drill.id, principles: drill.principles ?? [], role, score01: score / 100, prior: Number.isFinite(drill.difficulty) ? drill.difficulty : 0 });
+      set.skills = eloUpdate(set.skills, { itemId: passRecordId(drill), principles: drill.principles ?? [], role, score01: score / 100, prior: Number.isFinite(drill.difficulty) ? drill.difficulty : 0 });
       S.saveSkills(app.store, set.skills);
       if (typeof S.updateStreak === 'function' && set.streak) {
         set.streak = S.updateStreak(set.streak, { day: S.dayKey(new Date()), score });
@@ -899,7 +933,7 @@ export async function mount(root, app, params = []) {
       S.appendHistory(app.store, historyEntry({ t: Date.now(), drill, role, option: a.option, graded: a.graded, bestId: rep.rating?.best?.id ?? null, ms: a.ms, nodeId: node?.id ?? null }));
     } catch (err) { console.warn('[fotbol] pass: could not save the rep', err); }
     // The stars the reveal shows are the stars the rewards count (rewards.js repStars).
-    let gained = award(app, { type: 'rep', scenarioId: drill.id, role, grade, score, stars: a.stars }, { celebrate: false });
+    let gained = award(app, { type: 'rep', scenarioId: passRecordId(drill), role, grade, score, stars: a.stars }, { celebrate: false });
     for (const id of drill.principles ?? []) {
       const stars = mastery(set.skills, id);
       const tier = typeof Rewards.cardTier === 'function' ? Rewards.cardTier(loadRewards(app), id) : 0;

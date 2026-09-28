@@ -32,7 +32,7 @@ import { update as eloUpdate, mastery } from '../../engine/elo.js';
 import { createFormation } from '../../engine/formation.js';
 import { ROLE_INFO, mirrorRole } from '../../engine/roles.js';
 import { dist } from '../../engine/geometry.js';
-import { cardTier, starsFor } from '../../rewards.js';
+import { cardTier, starsForScore } from '../../rewards.js';
 import { award, loadRewards, refreshRewards, mergeGains, cleanGains, emptyGains } from '../rewards-store.js';
 import { sessionCard } from '../celebrate.js';
 import * as S from '../session.js';
@@ -113,7 +113,7 @@ const COPY = {
     principles: 'Principles you worked on',
     newStar: 'New star!',
     streakReps: (n) => `${n} good ${n === 1 ? 'rep' : 'reps'} in a row`,
-    streakDays: (n) => `${n} ${n === 1 ? 'day' : 'days'} in a row`,
+    streakDays: (n) => `${n} ${n === 1 ? 'day' : 'days'} played this week`,
     bestRun: (n) => `Best run this session: ${n}`,
     keepGoing: 'Keep going',
     practise: (name) => `Practise ${name}`,
@@ -170,7 +170,7 @@ const COPY = {
     principles: 'Ideas you practised',
     newStar: 'New star!',
     streakReps: (n) => `${n} good ${n === 1 ? 'one' : 'ones'} in a row`,
-    streakDays: (n) => `${n} ${n === 1 ? 'day' : 'days'} in a row`,
+    streakDays: (n) => `${n} ${n === 1 ? 'day' : 'days'} this week`,
     bestRun: (n) => `Best run: ${n}`,
     keepGoing: 'Play more',
     practise: (name) => `Practise ${name}`,
@@ -688,13 +688,14 @@ export async function mount(root, app, params = []) {
 
   /** The session bonus: its sounds, burst and level-up now (the summary card shows the XP). */
   function rewardSession(grade) {
-    const gained = award(app, { type: 'session', grades: session.reps.map((r) => r.grade) }, { grade, card: false });
+    // The session's stars come from the scores (rewards.js starsForScore), like each rep's.
+    const gained = award(app, { type: 'session', scores: session.reps.map((r) => r.score), grades: session.reps.map((r) => r.grade) }, { grade, card: false });
     session.gained = mergeGains(session.gained, gained);
   }
 
   /** The summary's rewards card: XP this session, the stars won, the level bar, the badges and stickers. */
   function sessionRewards() {
-    const stars = session.reps.reduce((a, r) => a + starsFor(r.grade), 0);
+    const stars = session.reps.reduce((a, r) => a + starsForScore(r.score), 0); // as each rep's award counted them
     return sessionCard({ gained: session.gained, stars, maxStars: session.reps.length * 3, state: loadRewards(app) }, { wording: wording(), principles });
   }
 
@@ -855,7 +856,7 @@ export async function mount(root, app, params = []) {
     const c = C();
     const sum = S.summarizeSession({ reps: session.reps, before: session.before, after: session.skills });
     const today = S.dayKey(new Date());
-    const days = S.currentDayStreak(session.streak, today);
+    const days = S.weekDays(session.streak, today); // days played this week (R35: it only fills up)
     const weakest = sum.weakest;
     const weakName = weakest ? principleName(weakest) : null;
     rewardSession(sum.grade);

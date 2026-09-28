@@ -6,7 +6,7 @@ import { timing } from '../js/engine/timeline.js';
 import {
   PASS_DEFAULTS, STRINGS, LABELS, labelStyle, outcomeKey, passOutcome, starsOf, wordFor, receiverOf, optionsByReceiver,
   orderTargets, rankOptions, shirtOf, carrierOf, roleOfDrill, aimOf, revealMarkers, previewMarkers, flashMarkers, passFlight,
-  flightFrame, repFocus, BOARD_TONES, pickLine, whyFor, repTitle, questionOf, briefOf, historyEntry, hashString, nodeSeed, roleFor,
+  flightFrame, repFocus, BOARD_TONES, pickLine, whyFor, repTitle, questionOf, briefOf, historyEntry, passRecordId, hashString, nodeSeed, roleFor,
   generateReps, assembleSet,
 } from '../js/ui/player/pass.js';
 
@@ -328,6 +328,10 @@ test('pass: the reveal line is at most 14 words and never the consequence word; 
   const own = whyFor({ explain: miss, principles: {}, drill: { principles: ['PA5'], titleKid: 'Pass Past Them', takeaway: { kid: 'Pass past their players.' } }, option: missOption, line });
   assert.deepEqual([own.title, own.summary], ['Pass Past Them', 'Pass past their players.'], "not in the catalogue yet: the drill's own lesson");
   assert.equal(whyFor({ explain: miss, principles: { byId: principles }, option: missOption, line }).title, 'Pass Past Them', 'the app form { byId } works too');
+  // The rep's lesson wins when the explanation is about it (a Find the Free Player rep missed through a blocked lane).
+  const lesson = whyFor({ explain: miss, principles, drill: { principles: ['PA4', 'PA3'] }, isBest: false, option: missOption, line });
+  assert.deepEqual([lesson.title, lesson.summary], ['Clear Path Only', "If a defender is in the way, don't pass there."]);
+  assert.equal(whyFor({ explain: miss, principles, drill: { principles: ['PA9'] }, isBest: false, option: missOption, line }).title, 'Pass Past Them', 'a lesson the explanation is not about: the best pass\'s idea');
   const all = [w.title, w.summary, ...w.reasons, ...w.praise].join(' ');
   assert.ok(words(all) <= 60, 'the Why sheet stays under 60 words');
   assert.equal(repTitle({ titleKid: 'Find the free player' }), 'Find the free player');
@@ -371,9 +375,16 @@ test('pass: the history entry records the choice and the outcome (mode pass)', (
   });
   assert.deepEqual(h, {
     t: 5, mode: 'pass', id: 'pass-LCB-7', title: 'Pass', principles: ['PA5'], role: 'LCB', score: 42, grade: 'F',
-    choice: 'us-ST', outcome: 'cut-out', best: 'us-LCM', ms: 1200, node: 'free-player',
+    choice: 'us-ST', outcome: 'cut-out', best: 'us-LCM', ms: 1200, nodeId: 'free-player',
   });
   assert.ok(!('baseId' in h), 'no baseId: Coach mode must not link a pass rep to #/drill');
+});
+
+test('pass: generated drills keep one record per lesson and position family (the rewards and Elo never grow per drill)', () => {
+  const gen = { id: 'pass-lb-1722392227-any', principles: ['PA5', 'PA2'], learner: { role: 'LB' }, source: { kind: 'generated' } };
+  assert.equal(passRecordId(gen), 'gen-PA5-FB');
+  assert.equal(passRecordId({ ...gen, id: 'pass-rb-9-any', learner: { role: 'RB' } }), 'gen-PA5-FB', 'both full-backs, the same lesson');
+  assert.equal(passRecordId({ id: 'pa-authored-01', kind: 'pass', principles: ['PA3'], learner: { role: 'LCM' }, source: { kind: 'authored' } }), 'pa-authored-01');
 });
 
 // ---- the set
@@ -432,12 +443,14 @@ test('pass: a Road node set uses road.buildSet (pass reps), tops up from the gen
     ];
   };
   const calls = [];
-  const ctx = { node, road: { chapters: [] }, profile: { role: 'LB' }, role: 'LB', seed: 42, formations: { us: 1 }, index: [], rewards: { xp: 0 }, skills: { theta: {} } };
+  const catalogue = { byId: { PA3: { id: 'PA3', kidName: 'Find the Free Player' } } };
+  const ctx = { node, road: { chapters: [] }, profile: { role: 'LB' }, role: 'LB', seed: 42, formations: { us: 1 }, index: [], rewards: { xp: 0 }, skills: { theta: {} }, catalogue };
   const { reps, redirect } = await assembleSet(ctx, { buildSet, generatePassDrill: fakeGenerator(calls) });
   assert.equal(redirect, undefined);
   assert.equal(seen.n, node);
-  assert.deepEqual(Object.keys(seen.ctx).sort(), ['formations', 'index', 'profile', 'rewards', 'road', 'seed', 'skills']);
+  assert.deepEqual(Object.keys(seen.ctx).sort(), ['catalogue', 'formations', 'index', 'profile', 'rewards', 'road', 'seed', 'skills']);
   assert.equal(seen.ctx.seed, 42);
+  assert.equal(seen.ctx.catalogue, catalogue, 'the generated drills are named from data/principles.json');
   assert.equal(reps.length, 5);
   assert.deepEqual(reps.slice(0, 2).map((r) => r.drill.id), ['pass-a', 'pass-b'], "the node's own drills first");
   assert.ok(reps.every((r) => r.kind === 'pass'));
@@ -475,6 +488,27 @@ test("pass: the quick set is the engine's balanced set (generatePassSet), topped
   let usedSet = false;
   await assembleSet({ node, role: 'LW', seed: 1 }, { buildSet: async () => [{ kind: 'pass', drill: { id: 'n1' } }], generatePassSet: () => { usedSet = true; return []; }, generatePassDrill: fakeGenerator([]) });
   assert.ok(!usedSet, 'a Road node takes its drills from road.buildSet');
+});
+
+test('pass: the quick set comes from road.buildQuickPassSet when the Road has it (no look-alike reps)', async () => {
+  let asked = null, usedSet = false;
+  const catalogue = { byId: {} };
+  const buildQuickPassSet = async (opts) => { asked = opts; return [1, 2, 3, 4, 5].map((i) => ({ kind: 'pass', drill: { id: `q-${i}` }, nodeId: 'quick' })); };
+  const { reps } = await assembleSet({ role: 'LW', profile: { role: 'LW' }, seed: 12, formations: { us: 1 }, catalogue }, { buildQuickPassSet, generatePassSet: () => { usedSet = true; return []; }, generatePassDrill: fakeGenerator([]) });
+  assert.deepEqual(reps.map((r) => r.drill.id), ['q-1', 'q-2', 'q-3', 'q-4', 'q-5']);
+  assert.ok(!usedSet);
+  assert.deepEqual({ seed: asked.seed, count: asked.count, role: asked.profile.role, catalogue: asked.catalogue }, { seed: 12, count: 5, role: 'LW', catalogue });
+  // With the real Road and engine: five drills for a full-back, none two that look the same, 3 of 5 with a forward best.
+  const road = await import('../js/ui/player/road.js');
+  const { createFormation } = await import('../js/engine/formation.js');
+  const F = createFormation(await loadJSON('data/formations/helios-433.json'));
+  const principles = await loadJSON('data/principles.json');
+  const quick = await road.buildQuickPassSet({ profile: road.pickGroup(null, 'DEF'), seed: 1722392227, formations: { us: F, them: F }, catalogue: principles });
+  assert.equal(quick.length, 5);
+  const pics = quick.map(road.repPicture);
+  for (let i = 0; i < 5; i++) for (let j = i + 1; j < 5; j++) assert.ok(!road.nearDuplicate(pics[i], pics[j]), `reps ${i} and ${j} look the same`);
+  const forward = quick.filter((r) => r.drill.rating.best.direction === 'forward' || r.drill.rating.best.tags.some((t) => t.tag === 'switch')).length;
+  assert.ok(forward >= 3, `${forward} forward bests`);
 });
 
 // ---- the contract with the engine (js/engine/passing.js), on a real frame

@@ -41,7 +41,8 @@ export const MATCHDAY_DEFAULTS = Object.freeze({
   countMs: 800, // [D] each count
   sampleHz: TIMELINE_DEFAULTS.sampleHz, // [S] 10 Hz, as Live (RESEARCH 5.7)
   grace: TIMELINE_DEFAULTS.eventGrace, // [S] 0.7 s to react after each pass or turnover (not scored)
-  maxFrameDt: 0.1, // [D] s of play per animation frame at most (a hidden tab must not skip the run)
+  maxFrameDt: 1, // [D] s of play per animation frame at most: slow or throttled frames keep real time (a hidden tab
+  //               pauses the run, and play restarts the clock)
   hotAt: 70, // [D] a sample at or above this is Hot (reveal.js HOT_COLD_BANDS: hot starts at 70)...
   warmAt: 50, // [D] ...at or above this Warm, else Cold
   minScoredS: 5, // [D] a run needs this many seconds of scored play to count

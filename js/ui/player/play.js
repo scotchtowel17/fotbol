@@ -54,7 +54,8 @@ export const PLAY_DEFAULTS = Object.freeze({
   exampleDelayMs: 700, // [D] the worked example's hand starts this long after the freeze
   glowReps: 2, // [D] the first time through a node, its first reps have the glow aid (faded after: R15)
   keyPlayers: 4, // [S] §4.3 step 2: up to 4 key players lit
-  maxFrameDt: 0.1, // [D] s of play per animation frame at most (a hidden tab must not jump to the freeze)
+  maxFrameDt: 1, // [D] s of play per animation frame at most: slow or throttled frames keep real time (a tab coming back
+  //               from hidden restarts the clock instead, so it never jumps to the freeze)
   minContinuation: 0.5, // [D] s: a shorter continuation replays the lead-up instead
   replayLead: 3, // [D] s of lead-up replayed then
   replayHoldMs: 700, // [D] the last replay frame holds this long before the answer comes back
@@ -77,8 +78,7 @@ export const STRINGS = Object.freeze({
   keysHint: 'Arrow keys move YOU. Enter locks it.',
   watchThis: 'Watch this.',
   yourTurnHint: 'Your turn: drag YOU, or tap a spot.',
-  yourTurnButton: 'Your turn',
-  ringIsBest: 'The ring is the best spot.',
+  ringIsBest: 'The ring is the best spot. Move YOU there.',
   glowHint: 'Your ring gets hot near the best spot.',
   missNote: SHARED.missNote,
   lineBest: 'That is the best spot.',
@@ -312,7 +312,8 @@ export async function mount(root, app, params = []) {
   async function buildReps() {
     const seed = first ? seedFor(`first-${myRole}`) : seedFor(node?.id ?? 'play', nodePlays);
     const ctx = {
-      road: roadData, profile, index: app.data?.scenarios?.index ?? [], scenarios: app.data?.scenarios, principles: app.data?.principles,
+      road: roadData, profile, index: app.data?.scenarios?.index ?? [], scenarios: app.data?.scenarios,
+      catalogue: app.data?.principles, // data/principles.json: the generated drills' names and takeaways
       rewards: loadRewards(app), skills: S.loadSkills(store), seed, formations, app, first,
     };
     let list = [];
@@ -388,6 +389,7 @@ export async function mount(root, app, params = []) {
   };
   let rep = null; // the rep on the pitch
   let raf = 0;
+  const clock = { restart: null }; // playRange's clock (visibilitychange restarts it)
   const timers = new Set();
   const later = (fn, ms) => { const t = setTimeout(() => { timers.delete(t); if (alive) fn(); }, ms); timers.add(t); return t; };
   const stopPlayback = () => { cancelAnimationFrame(raf); raf = 0; };
@@ -415,6 +417,7 @@ export async function mount(root, app, params = []) {
   function playRange({ from, to, spot, onEnd }) {
     stopPlayback();
     let t = from, last = null;
+    clock.restart = () => { last = null; }; // back from a hidden tab: carry on from where the play stopped
     const step = (now) => {
       if (!alive || !rep) return;
       if (last !== null) t = Math.min(to, t + Math.min(P.maxFrameDt, (now - last) / 1000));
@@ -532,7 +535,11 @@ export async function mount(root, app, params = []) {
     showPlace();
   }
 
-  /** The worked example (first set, rep 1): the hand drags YOU to the best spot and YOU snaps back; still, under reduced motion. */
+  /**
+   * The worked example (first set, rep 1): the hand drags YOU to the best spot and YOU snaps back, then "Your turn".
+   * Under reduced motion it is still: the ring, an arrow and "Best spot" show where to go while YOU can already be moved
+   * (no extra tap: the first drag still comes 2 taps after the first open), and they clear at the first move.
+   */
   function showExample() {
     setPhase('example');
     setTip(STRINGS.watchThis);
@@ -543,10 +550,7 @@ export async function mount(root, app, params = []) {
         { type: 'arrow', from: rep.start, to: rep.ghost.spot, tone: 'fix' },
         { type: 'label', at: rep.ghost.spot, text: STRINGS.bestSpot, tone: 'good', lift: 'token' },
       ]);
-      setTip(STRINGS.ringIsBest);
-      const turn = button(STRINGS.yourTurnButton, { variant: 'primary', icon: 'arrow', className: 'pl-main', onClick: () => { board.setGhost(null); board.setMarkers([]); showPlace({ turn: true }); } });
-      setActions(turn);
-      turn.focus({ preventScroll: true });
+      showPlace({ example: true });
       return;
     }
     later(async () => {
@@ -556,17 +560,37 @@ export async function mount(root, app, params = []) {
     }, P.exampleDelayMs);
   }
 
-  function showPlace({ turn = false } = {}) {
+  /** Decide: move YOU and lock it. `example`: the still worked example's ring and arrow stay until the first move. */
+  function showPlace({ turn = false, example = false } = {}) {
     setPhase('place');
     if (rep.plan.aid === 'glow') board.setAid({ kind: 'glow', target: rep.ghost.spot });
-    setTip(placeTip({ turn }));
+    setTip(example ? STRINGS.ringIsBest : placeTip({ turn }));
+    if (example) set.tapHintShown = true;
+    let shown = example; // the example's ring and arrow on the pitch
+    const moved = () => {
+      if (!shown) return;
+      shown = false;
+      board.setGhost(null);
+      board.setMarkers([]);
+    };
     const lock = button(STRINGS.lockIt, { variant: 'primary', icon: 'check', className: 'pl-main pl-lock', onClick: lockIn });
-    setActions(button(STRINGS.watchAgain, { icon: 'play', className: 'pl-again', onClick: () => showWatch({ keepSpot: true }) }), lock);
+    setActions(button(STRINGS.watchAgain, { icon: 'play', className: 'pl-again', onClick: () => { moved(); showWatch({ keepSpot: true }); } }), lock);
     board.enableDrag({
       ids: [rep.learnerId], tapToMove: rep.learnerId,
-      onMove: (_id, p) => { if (rep?.phase !== 'place') return; rep.spot = { x: p.x, y: p.y }; draw(frameWithSpot(rep.freezeFrame, rep.spot)); },
-      onEnd: (_id, p) => { if (rep?.phase !== 'place') return; rep.spot = { x: p.x, y: p.y }; draw(frameWithSpot(rep.freezeFrame, rep.spot)); keepInView(rep.spot); },
-      onArm: (id) => { if (rep?.phase === 'place' && id) setTip(STRINGS.armedHint); },
+      onMove: (_id, p) => { if (rep?.phase !== 'place') return; moved(); rep.spot = { x: p.x, y: p.y }; draw(frameWithSpot(rep.freezeFrame, rep.spot)); },
+      onEnd: (_id, p) => {
+        if (rep?.phase !== 'place') return;
+        moved();
+        rep.spot = { x: p.x, y: p.y };
+        draw(frameWithSpot(rep.freezeFrame, rep.spot));
+        keepInView(rep.spot);
+        if (els.tip.textContent === STRINGS.armedHint || els.tip.textContent === STRINGS.ringIsBest) setTip(''); // done with once you moved
+      },
+      onArm: (id) => {
+        if (rep?.phase !== 'place') return;
+        if (id) setTip(STRINGS.armedHint);
+        else if (els.tip.textContent === STRINGS.armedHint) setTip('');
+      },
     });
     const token = board.el.querySelector(`.token[data-id="${rep.learnerId}"]`);
     if (lastKey && token) token.focus({ preventScroll: true }); else lock.focus({ preventScroll: true });
@@ -772,6 +796,9 @@ export async function mount(root, app, params = []) {
   };
   const onPointer = () => { lastKey = false; };
   document.addEventListener('keydown', onKey);
+  const onVisible = () => { if (!document.hidden) clock.restart?.(); };
+  document.addEventListener('visibilitychange', onVisible);
+  cleanups.push(() => document.removeEventListener('visibilitychange', onVisible));
   document.addEventListener('pointerdown', onPointer, true);
   cleanups.push(() => { document.removeEventListener('keydown', onKey); document.removeEventListener('pointerdown', onPointer, true); });
 

@@ -1,8 +1,10 @@
 # Player mode: the kid-first redesign (spec and build contract)
 
-**Audience:** players about 10–14 (designed for 11). **Status:** spec for the build that follows; binding for file ownership and contracts. The evidence is in [research/kid-learning.md](research/kid-learning.md) (rules R1–R42), [research/kid-apps-teardown.md](research/kid-apps-teardown.md) (patterns and proposed structure), [research/kid-audit.md](research/kid-audit.md) (what was wrong, measured) and [research/passing.md](research/passing.md) (the passing engine).
+**Audience:** players about 10–14 (designed for 11). **Status: built** (September 2026): every section below is in the app, with the deviations noted in each section's **Built** line. The code's contracts are in [ARCHITECTURE.md](ARCHITECTURE.md) §5.8, §5.9, §5.12-§5.16, what is still open in [ROADMAP.md](ROADMAP.md). The file ownership of §8 applied to the parallel build; the integration that followed edited across areas. The evidence is in [research/kid-learning.md](research/kid-learning.md) (rules R1–R42), [research/kid-apps-teardown.md](research/kid-apps-teardown.md) (patterns and proposed structure), [research/kid-audit.md](research/kid-audit.md) (what was wrong, measured) and [research/passing.md](research/passing.md) (the passing engine).
 
 ## 0. The rules every Player-mode screen follows
+
+> **Built.** Rules 3 and 4 are checked in CI (`tests/copy.test.js`); rules 6, 8 and 10 by a DOM scan in the browser (no letter grades, "/100", role or principle codes or metres on any Player screen; every target at least 44 px). Rule 1, as built: during Decide the question may have one short tip under it the first time something is new ("Your turn: drag YOU, or tap a spot.", R14).
 
 1. **One screen, one job.** During Watch and Decide only the pitch, YOU and at most one line of text are visible (R7).
 2. **Play first, words later.** First drag within 15 s of first open, no tour, no sign-up (R13).
@@ -18,6 +20,8 @@
 
 ## 1. Two modes
 
+> **Built** as specified: `settings.mode` and `settings.detail` ("More detail") in `js/main.js`; Coach home is `#/coach` (and `#/` while in Coach mode). The Player settings sheet has Sound, Theme and the way into Coach mode; reduced motion follows the device (Coach mode's menu has the switch).
+
 - `settings.mode`: `'player'` (default for everyone) or `'coach'`.
 - **Player mode** is the new experience below (routes in §2, code in `js/ui/player/`). Player mode always uses simple wording.
 - **Coach mode** is today's full app, unchanged in substance: detailed wording, scores out of 100, S–F grades, principle codes, Explore, Learn library, Progress, Author, Live analytics, export/import. Its home moves to `#/coach`; all its existing routes keep working.
@@ -25,6 +29,8 @@
 - Switching: Player mode's settings sheet has "Coach or parent? Open Coach mode"; Coach mode's header has "Back to Player mode".
 
 ## 2. Player-mode routes
+
+> **Built**, plus `#/kickoff/pick` ("What do you play?" has its own address, so Back returns to the kick-off) and `#/card/stickers|badges|kit` for the card's tabs.
 
 | Route | Screen | Owner |
 |---|---|---|
@@ -39,6 +45,8 @@
 Coach mode keeps `#/coach` (old home), `#/drill`, `#/explore`, `#/learn`, `#/live`, `#/progress`, `#/author`, `#/trophies`, `#/credits`, `#/dev`.
 
 ## 3. The Road (`data/road.json`, helpers in `js/ui/player/road.js`)
+
+> **Built.** Deviations: the mix nodes are named Big Match, Cup Match, Derby Day and The Final; a node you have played stays open; the profile has a `version`. Set building goes beyond the sketch below (ARCHITECTURE §5.16): a spot set that runs thin for your position takes the chapter's other ideas before any mirrored twin or repeat; a pass set asks for 3 forward bests of 5 from consecutive seeds and, where your position rarely gets a lesson, lends the rep to a teammate in your group or the next ("Now you're the left centre-back"); no set holds two reps that look the same; the generators get `data/principles.json` for their names. `#/pass` (the quick set) is built the same way (`buildQuickPassSet`). Every node builds a full set for every position group (`tests/road-sets-*.test.js`).
 
 Chapters of nodes; each node is a **set** of 5 reps about one to three related principles (thin content per principle means nodes group ideas).
 
@@ -69,12 +77,16 @@ Chapters of nodes; each node is a **set** of 5 reps about one to three related p
 ## 4. Screens
 
 ### 4.1 Kick-off (first open) — owner: shell (+ play for the reps)
+
+> **Built.** Under reduced motion the worked example is still (the ring, an arrow and "The ring is the best spot. Move YOU there.") and YOU can be moved at once, so the first drag still comes 2 taps after the first open.
 1. **Kick-off:** full-bleed pitch with a real drill replaying behind the wordmark (dimmed, no sound), one big **Play** button, a small "Coach or parent?" link. ≤ 6 words.
 2. **"What do you play?"** four big shirt buttons: Defender · Midfielder · Winger · Striker. Choice → profile → `#/play/first`.
 3. **`#/play/first`** (owner: play): 3 easy reps from the player's group. Rep 1 is a **worked example**: after the freeze a ghost hand drags YOU to the best spot, YOU snaps back, then "Your turn". Rep 2: glow aid (the ring glows warmer as you get close). Rep 3: no aid. Then Full time (§4.5), then `#/kickoff/kit`.
 4. **Make it yours** (skippable): kit colour (unlocked swatches), shirt number (big number grid), nickname from a pick-list. → Home.
 
 ### 4.2 Home (≤ 25 words) — owner: shell
+
+> **Built** (about 20 words). Only the current chapter's title is written on the Road; the others show an icon (a lock while closed), with the title for screen readers and as a tooltip, so the home stays within 25 words however far you get.
 - **Top bar:** your token (kit colours, shirt number) and nickname, a level ring with the rank word, card icon (→ `#/card`), settings cog.
 - **Hero:** big **Play** button with "Next: Back Up Your Buddy · 5 plays".
 - **The Road:** vertical path of node circles with icon and 0–3 stars; current node pulses; locked nodes grey; chapter titles as section labels.
@@ -83,6 +95,8 @@ Chapters of nodes; each node is a **set** of 5 reps about one to three related p
 - Nothing else. No tabs.
 
 ### 4.3 "Find your spot" rep (about 20 s) — owner: play
+
+> **Built.** "Watch again" sits next to Lock it; a tap on YOU then a tap on a spot, a drag, or the arrow keys and Enter all work; "See what happens" plays on from your spot with the ring kept.
 1. **Set (1 s):** role card "You're the left back" over the pitch; YOU pulses. If the position differs from the profile: "Now you're the striker" card with the token glowing.
 2. **Watch (3–6 s):** play runs; only YOU, the ball and ≤ 4 key players at full strength, others dimmed 40 % (spotlight).
 3. **Freeze:** whistle sound; the question (≤ 12 words, e.g. "Their winger has the ball. Where do you go?").
@@ -93,6 +107,8 @@ Chapters of nodes; each node is a **set** of 5 reps about one to three related p
 8. After a miss, once per set: "Hard one. Pros miss it too." (R20).
 
 ### 4.4 "Who's open?" rep (about 15 s) — owner: pass
+
+> **Built.** Try again replays the same freeze and is practice only (the first try counts). Why? is titled with the rep's lesson when the explanation is about it (a "Find the Free Player" pass missed through a blocked lane says "Pick a Clear Path"). Graded and explained on the drill's own rating with the lesson as the focus (`explainPass(..., { focus })`).
 1. **Set:** "You've got the ball" card; YOU is the carrier.
 2. **Watch (2–3 s):** teammates move; freeze with the whistle.
 3. **Choose:** teammates become big numbered targets (≥ 44 px); tap one to select (a dotted pass line previews it), tap again or press **Pass** to play it.
@@ -100,15 +116,23 @@ Chapters of nodes; each node is a **set** of 5 reps about one to three related p
 5. **Reveal:** every option labelled with a shape AND colour: ★ Best, ✓ Good, ! Risky, ✗ Cut out; passing lanes drawn, blocking defenders ringed; stars + one word + one line ≤ 14 words (from `explainPass`). Next / Why? / Try again.
 
 ### 4.5 Full time (end of a set) — owner: play (shared by pass)
+
+> **Built**, shared by play, pass and Match day; the one big celebration a set is a budget shared with the reveal, and play time today (store key `player:today`) drives the break nudge across sets.
 Stars tally (5 small star rows), the XP bar sweeping, node stars updated on a mini Road node, any card or badge earned (one at a time, big), one line "Best move: Back up your buddy". Buttons: **Home** (primary) and **Play again** (neutral, never automatic). After about 15 minutes of play in a day: "Good session. Take a break?" (R22).
 
 ### 4.6 Match day (simplified Live) — owner: play
+
+> **Built**, with Pause (Space; a hidden tab pauses the run). Locked until chapter 1's Big Match has a star (`?dev` opens it).
 45 s of play; you keep moving; the ring around YOU shows hot/cold colour + a big word (Hot / Warm / Cold) with a shape; no numbers during play. Result: stars, your best hot streak in seconds, "Replay your hardest moment". The chart, table and seed stay in Coach mode Live.
 
 ### 4.7 Your card — owner: shell
+
+> **Built.** The kit locker keeps every colour visible with the level that opens it; "Make it yours" shows only the unlocked ones.
 Tabs: **Card** (FC-style card: nickname, number, kit, rank, level ring, 4 skill ratings 0–99 = Defend / Help / Pass / Shape derived from road stars and Elo, stars total, days this week), **Stickers** (album by chapter, bronze/silver/gold, mystery silhouettes link to the node), **Badges** (icon grid, short names, progress bars), **Kit** (swatches with lock level, number grid, nickname pick-list). Privacy line: "Your stats stay on this device."
 
 ## 5. Visual and copy system
+
+> **Built.** Sounds added for "Who's open?": `groan` (cut out) and `lift` (a line broken). Where the build reworded a string (to pass the reading-age and word-budget checks), the data files (`data/road.json`, `data/principles.json`, the scenarios' `*Kid` fields, the rules' `text.kid`) and each Player module's `STRINGS` are the source of truth, not the examples in this spec.
 - **Tokens:** Player mode shows unique shirt numbers (ours: GK 1, RB 2, LB 3, LCB 4, RCB 5, DM 6, RW 7, LCM 8, ST 9, RCM 10, LW 11; theirs the same numbers in their kit). YOU keeps its tag (nickname if set).
 - **Type:** body ≥ 16 px, the reveal line ≥ 18 px, line height 1.5, no letter-spaced all-caps labels, bold for emphasis.
 - **Colour:** results and options always pair colour with a shape/label; avoid red/green pairs as the only difference.
@@ -118,6 +142,8 @@ Tabs: **Card** (FC-style card: nickname, number, kit, rank, level ring, 4 skill 
 ## 6. Engine additions
 
 ### 6.1 Passing (`js/engine/passing.js`, `js/engine/passdrill.js`) — owner: engine
+
+> **Built**, with a fuller API than sketched here (ARCHITECTURE §5.14: `generatePassSet`, `passForwardable`, `passDrillFrame`/`passDrillPlayback`/`passDrillRating`, `mirrorPassDrill`, `passMoments`). Known gaps: full-backs get no "free side" drill, the #6 few "free side" and "Keep It Safe" ones (ROADMAP Next 4).
 Implements [research/passing.md](research/passing.md) §4 (prototype: its `passing.mjs`):
 ```js
 rateOptions(frame, carrierId = frame.carrierId, params) → { lines, best, fwdOn, options: [{ id, kind: 'feet'|'space', point, aim,
@@ -130,15 +156,21 @@ checkPassDrill(drill) → gates (as in the research)
 Pass principles PA1–PA15 are added to `data/principles.json` (category `passing`, with `kidName`, `summary.kid`).
 
 ### 6.2 Generated spot drills (`js/engine/spotdrill.js`) — owner: engine
+
+> **Built.** Principles without a rule (T2, T3, U3, U6, U7, U8, R1, R2, B6, P1) cannot be generated; those Road nodes lean on authored drills (ARCHITECTURE §5.15).
 `generateSpotDrill({ seed, role, principles, formations }) → scenario` in the authored scenario format with `source.kind: 'generated'`: a short ball-scripted sequence (a pass or carry that changes the right spot), freeze 0.4–1.0 s after the ball arrives, `learner.start` = the learner's auto spot before the event. **Quality gates** (reject and retry with the next seed): ghost score ≥ 90; ghost ≥ 5 m from start; standing still scores ≤ 70; one of the requested principles' rules is weighted ≥ 2 with s ≥ 0.9 at the ghost; realistic speeds. Simple-wording `briefKid`/`questionKid` from templates ("Their winger gets the ball. Where do you go?"). Deterministic per seed; yield measured in tests.
 
 ### 6.3 Stars and rewards policy (`js/rewards.js`) — owner: copy+rewards
+
+> **Built**, and Coach mode follows it too: its Drill summary counts stars from the scores and says "N days played this week", Progress shows "Days this week" and "Best week", and the trophy room's nickname is the same pick-list.
 - `starsForScore(score)`: 3 if ≥ 90, 2 if ≥ 75, 1 if ≥ 55, else 0 [D]; `wordForStars` → Spot on / Great / Close / Not yet.
 - XP from stars and improvement only: 0/10/20/30 XP per 0/1/2/3 stars, improvement bonus, card upgrades, badges. No XP for attempts, finishing a set or the tutorial (R28). Level thresholds re-tuned so level 2 comes in the first session.
 - Nickname: pick-list only (`NICKNAMES`, ~30 football nicknames: "Rocket", "The Wall", "Maestro", …); `setKit` accepts only list values.
 - Days played this week (`weekDays`) replaces the resetting day streak in `js/ui/session.js` (Coach mode shows the same).
 
 ## 7. Checks (CI and browser)
+
+> **Built.** `tests/copy.test.js` runs in `npm test`. The browser acceptance was run end to end on a phone (375×812) and a laptop (1280×800), in light and dark, with reduced motion and with animation frames throttled to 1 a second: zero console errors from the app (the only ones seen were `python3 -m http.server` dropping a request under load).
 - `tests/copy.test.js`: every Player-mode string (rules' kid texts, scenario kid fields, principles' kidName/summary.kid, road titles, pass texts, player UI string tables) meets word budgets, FK grade ≤ 4 (with a small football-word allow-list), and contains none of: "kid", principle codes (`/\b[A-Z]{1,2}\d{1,2}\b/`), letter grades, "/100", jargon from research/kid-audit.md §5, "!!!".
 - Browser acceptance (phone 375×812 and desktop, light/dark, reduced motion): first drag ≤ 2 taps from first open; Player screens never show "/100", " F ", role codes or principle codes (DOM scan); all targets ≥ 44 px; zero console errors; Coach mode still fully works.
 

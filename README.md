@@ -1,40 +1,57 @@
 # fotbol
 
-**Learn where to stand.** fotbol is a free browser game that teaches football (soccer) positioning. You take one position in a 4-3-3, watch a passage of play unfold, and when it freezes you drag yourself to where you should be. fotbol scores your spot out of 100, shows you the best spot, and tells you *why* in one plain sentence tied to a named principle, such as "cover at an angle" or "tuck in when the ball is on the far side".
+**Learn where to stand.** fotbol is a free football (soccer) game about positioning, made for players of about 10 to 14. You play one position, watch a bit of a match, and when the whistle stops play you move yourself to where you should be. The pitch then shows you the best spot, you get up to three stars, and one plain sentence tells you why.
 
-**▶ Play it now: <https://scotchtowel17.github.io/fotbol/>** (works on phones, tablets and computers)
+**▶ Play it now: <https://scotchtowel17.github.io/fotbol/>** (phones, tablets and computers)
 
-No account, no ads, no tracking. Your progress stays in your browser.
+No account, no ads, no tracking. Your progress stays on your device.
 
-![A drill after the reveal: the left back has not tucked in far enough. The panel shows the grade (B, 76/100), the two reasons with their principles (U2 slide, don't cross; D4 weak side tucks in) and the fix, "Come 7 m inside". On the pitch, an arrow runs from the player to the best spot.](docs/screenshots/drill-reveal.png)
+<p>
+  <img src="docs/screenshots/player-reveal.png" width="260" alt="A play has just been judged: YOU, a left back, stands a little way from a ring marked Best spot, with an arrow to it. Below: two of three stars, the word Great, and the line: Slide toward your teammate, there is a big gap between you. Buttons: Why?, See what happens, Next.">
+  <img src="docs/screenshots/player-home.png" width="260" alt="The home screen: a big Play button (Next: Back Up Your Buddy, 5 plays), two tiles (Who's open? and a locked Match day: Finish Big Match), three of seven dots for the days played this week, and the start of the Road with its first stops and their stars.">
+  <img src="docs/screenshots/player-pass.png" width="260" alt="Who's open?: you have the ball near the sideline, every teammate is circled as a big target, and a dotted line previews the pass you picked. The question: Who's open? Tap the best pass. Buttons: Watch again, Pass.">
+</p>
 
-## How to play
+## Your first minute
 
-Pick your position on the home page (you can change it any time), then choose a way to play:
+1. Tap **Play**, then tap what you play: **Defender**, **Midfielder**, **Winger** or **Striker**. That's it: no sign-up, no tour.
+2. A short bit of play runs. The whistle blows and play freezes: "The ball is on the other side now. Where do you go?"
+3. The first time, a hand shows you the best spot, then it's your turn. Drag yourself there (or tap yourself, then tap a spot) and press **Lock it**.
+4. The pitch shows the best spot as a ring with an arrow from where you stood. You get 0 to 3 stars and one word (Spot on, Great, Close or Not yet), never a grade or a score out of 100. **Why?** tells you a little more, **Try again** gives you the same idea on the other side, and **See what happens** plays on.
+5. After three plays it's Full time. Then you pick your shirt colour, number and a nickname, and you're on the home screen.
 
-- **Learn** is a seven-step guided tour of the pitch: thirds, lanes and half-spaces, your job around the ball, goal-side and the offside line. Start here if you are new.
-- **Explore** lets you drag the ball anywhere and find your best spot. The score, the "why" and your job update as you move.
-- **Drill** is the heart of fotbol. Each of the 36 authored situations follows the same six steps: watch the play, freeze, place yourself, answer a cue question, see the best spot and the reasons, then replay what happens next. A session is six reps, with a summary at the end.
-- **Live** is 45 or 60 seconds of continuous play. You keep adjusting while you are scored ten times a second, then you replay your three toughest moments.
-- **Progress** shows your level, stars for each principle, streaks, your position ratings and recent reps. You can export your progress to a file and import it on another device.
+## Player mode and Coach mode
 
-Drills come in three modules:
+**Player mode** is what everyone sees first, and it is built for young players (the design and the research behind it are in [docs/KID_REDESIGN.md](docs/KID_REDESIGN.md)):
 
-- **M1 Pressure, cover and balance** covers defending as a unit of three.
-- **M2 Support, width and depth** covers helping the player on the ball.
-- **M3 Team shape** covers moving as one block.
+- **The Road**: four chapters (Defend together, Help the ball, Pass it right, Move as one) of short sets of five plays, each about one or two ideas like "Back Up Your Buddy" or "Stay in Line". Stars on a stop open the next one, and each chapter ends with a match.
+- **Who's open?**: now you have the ball. Tap the teammate you'd pass to, watch the ball go, and see every option marked on the pitch: ★ Best, ✓ Good, ! Risky or ✗ Cut out.
+- **Match day**: 45 seconds of play where you keep moving to the best spot, with your ring telling you Hot, Warm or Cold.
+- **Your card**: a player card with your ratings, a sticker album, badges and your kit.
+- Words kids can read (checked for reading age), no codes or jargon on screen, and rewards that are fair: stars come from good positions, the days-played-this-week dots only fill up, nothing is left to chance, and nothing compares you with anyone else.
 
-Every text has a **Kid** wording (open the settings menu), and there are light and dark themes. fotbol works with a keyboard: Tab to your player, move with the arrow keys (hold Shift for bigger steps), and press Enter to lock in. It also respects your device's reduced-motion setting and works on a phone: players are drawn big enough to read their shirts, a drill zooms in on the part of the pitch where its play happens, and on a touch screen you can drag yourself or tap yourself and then tap a spot. Leave a drill session half-way (to check your stars, say) and it offers to carry on where you left off.
+**Coach mode** is for coaches and parents: open the settings and choose "Coach or parent? Open Coach mode" (and "Back to Player mode" to return). It is the full tool:
+
+- **Drill**: the 36 authored situations, scored out of 100 with a grade, the principle behind each reason, a cue question before the answer, and a summary per session.
+- **Learn**: a seven-step guided tour of the pitch, plus a library of every principle with sources and a reading list.
+- **Explore**: drag the ball anywhere and see where you should be, with the reasons live.
+- **Live**: 45 or 60 seconds of continuous play, scored ten times a second, then your three toughest moments.
+- **Progress**: your level, stars for each principle, days played this week, your positions and history, with export and import of your progress. Plus the trophy room and the scenario editor (**Author**).
+
+![Coach mode: a drill after the reveal. The left back has not tucked in far enough. The panel shows the grade (B, 76/100), the two reasons with their principles (U2 slide, don't cross; D4 weak side tucks in) and the fix, "Come 7 m inside". On the pitch, an arrow runs from the player to the best spot.](docs/screenshots/drill-reveal.png)
+
+fotbol works with a keyboard (Tab to yourself, arrow keys to move, Enter to lock it), respects your device's reduced-motion setting, and has light and dark themes.
 
 ## The research behind it
 
-fotbol is built on a research report: [docs/RESEARCH.md](docs/RESEARCH.md). In short:
+fotbol is built on a research report, [docs/RESEARCH.md](docs/RESEARCH.md), and Player mode on a second one about how 10 to 14 year olds learn and play ([docs/research/kid-learning.md](docs/research/kid-learning.md), with an audit of the first version through an 11-year-old's eyes in [docs/research/kid-audit.md](docs/research/kid-audit.md) and the passing research in [docs/research/passing.md](docs/research/passing.md)). In short:
 
 - **Nothing like it existed.** Existing tools are either multiple-choice "soccer IQ" quizzes or tactics boards with no right answer. None combines one assigned role, a moving scene, a free drag-to-place answer, a visible ideal zone and a principle-based "why".
 - **Place, don't pick.** Training transferred better when learners answered with a movement-like response rather than by choosing an option. Freezing play just before the decisive moment and then replaying it is one of the best-supported video-training methods.
-- **Explain, don't just correct.** High-information feedback that says why beats a bare right or wrong. fotbol first asks a cue question ("If your left-back gets beaten, who is there to stop the carrier?") and only then states the principle and the fix.
+- **Explain, don't just correct.** High-information feedback that says why beats a bare right or wrong. The pitch shows the answer first (the ring and an arrow), then one short sentence says why; Coach mode first asks a cue question ("If your left-back gets beaten, who is there to stop the carrier?") and only then states the principle and the fix.
+- **Short words, one job per screen.** Young readers read slowly, so Player mode keeps a question to 12 words, the answer line to 14 and everything before "Why?" to 30, at a reading age of 9, and shows only the pitch and one line while you watch and decide. A worked example comes first, then a helper ring that glows warmer near the best spot, then you're on your own.
 - **Aim for about 3 in 4.** Difficulty adapts per principle and per position with an Elo rating that targets roughly 75% success. Look-alike situations, such as cover versus balance or pressing versus dropping, are mixed together once the basics are in place.
-- **Mastery, not points.** fotbol shows a star meter for each principle and asks you to rate your confidence, because a confident mistake is the one you learn most from. There are no leaderboards, no volume badges and no data collection. Almost every distance in the engine is a labelled default waiting for coach review, and the report says so.
+- **Mastery, not points.** Stars come from how good your positions are, never from time spent or just finishing; Coach mode also asks you to rate your confidence, because a confident mistake is the one you learn most from. There are no leaderboards, no streaks that can break, no prizes left to chance and no data collection. Almost every distance in the engine is a labelled default waiting for coach review, and the report says so.
 
 ### Best resources to learn positioning
 
@@ -54,7 +71,9 @@ The engine lives in `js/engine/`. It is plain JavaScript that runs the same in t
 2. **What the situation asks of you (layer B).** First, fotbol works out your job from the ball: first, second or third defender, or supporting attacker. Then 17 small geometric rules check the principles that apply, for example "goal-side of your man", "cover behind and inside the presser", "level with your back line", "out of the passing shadow" or "stay onside". Each rule gives a 0-1 score and a sentence.
 3. **The best spot (layer C).** A grid search around your zone finds the highest-scoring spot. That spot is the ghost ring you see after the reveal, drawn over a heatmap.
 
-Your score is 55% "how close to your zone" and 45% "which principles you met". Breaking a hard rule, such as being offside or playing their striker onside, caps it at 59. The other 21 players move automatically as an authored ball path plays out, so each drill is a moving scene with no physics engine behind it.
+Your score is 55% "how close to your zone" and 45% "which principles you met". Breaking a hard rule, such as being offside or playing their striker onside, caps it at 59. Player mode turns the score into stars (3 at 90, 2 at 75, 1 at 55) and never shows the number. The other 21 players move automatically as an authored ball path plays out, so each drill is a moving scene with no physics engine behind it.
+
+When you have the ball ("Who's open?"), `js/engine/passing.js` rates every pass you could play: how likely it is to arrive (the lane, who can get there first, the pressure on your teammate) and what it gains (lines broken, space, the danger if it is lost). `js/engine/passdrill.js` builds those drills from match-like scenes and keeps only the ones with a clear best pass and a tempting wrong one. `js/engine/spotdrill.js` builds new "Find your spot" drills the same way, so the Road never runs out of plays, and keeps only the ones that pass the same quality checks as the 36 hand-made drills.
 
 ## Run it locally
 
@@ -68,7 +87,7 @@ npm run index          # rebuild data/scenarios/index.json after adding or chang
 npm run sanity         # rewrite docs/sanity-output.txt: the engine's answers on the canonical situations, for coach review
 ```
 
-`#/dev` is the engine playground. It shows the ghost, the heatmap and the live score while you drag yourself or the ball. The settings menu links to it and to `tests.html` only when the address has `?dev` (for example `http://localhost:8080/?dev#/home`), so learners never land in developer tools by accident.
+`#/dev` is the engine playground. It shows the ghost, the heatmap and the live score while you drag yourself or the ball. Coach mode's settings menu links to it and to `tests.html` only when the address has `?dev` (for example `http://localhost:8080/?dev#/coach`), so learners never land in developer tools by accident. `?dev` also opens Match day before it is unlocked.
 
 ## For contributors and coding agents
 
@@ -78,10 +97,10 @@ To add a scenario:
 
 1. Open `#/author` in the app. Script the ball, override the players who create the situation, and set when play freezes.
 2. Read the engine's answer in the Answer tab. It warns you when the drill is trivial, when the principle is not actually tested, or when the best spot does not score an S.
-3. Write the brief, question, takeaway and misconceptions in both Standard and Kid wording. The text must never name a side, because every scenario is also played mirrored.
+3. Write the brief, question, takeaway and misconceptions in both detailed and simple wording (the `*Kid` fields: Player mode shows only these, and `tests/copy.test.js` holds them to a reading age of 9 and the word budgets). The text must never name a side, because every scenario is also played mirrored.
 4. Check it with **Play as learner**.
 5. Download the JSON to `data/scenarios/<id>.json` and add the id to its module in `data/curriculum.json`.
-6. Run `npm run index`, `npm run check` and `npm test`. Every scenario must give an S-grade best spot at least 5 m from where you start, and must pass the copy rules in `tests/scenarios-content.test.js`.
+6. Run `npm run index`, `npm run check` and `npm test`. Every scenario must give an S-grade best spot at least 5 m from where you start, and must pass the copy rules in `tests/scenarios-content.test.js`. Player mode's Road picks new drills up by their principles (`data/road.json`), and `tests/road-sets-*.test.js` checks that every stop still builds a full set for every position.
 
 ## Credits and licence
 

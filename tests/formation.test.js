@@ -1,4 +1,4 @@
-import { test, assert, approx, loadJSON, isNode } from './harness.js';
+import { test, assert, approx, loadJSON, isNode, timed, PERF_SLACK } from './harness.js';
 import { createFormation, teamTargets, linearTarget, phaseShape, widthDuty, POSSESSION_OFFSET, FORMATION_DEFAULTS, SHAPE_DEFAULTS } from '../js/engine/formation.js';
 import { TUCK_DEFAULTS } from '../js/engine/rules/tuck.js';
 import { ROLES, ROLE_INFO, BACK_LINE, MIDFIELD, mirrorRole } from '../js/engine/roles.js';
@@ -182,12 +182,11 @@ test('the cached triangle never changes the answer', () => {
 });
 
 test('performance: positions() averages under 20 microseconds', () => {
-  const balls = Array.from({ length: 10000 }, (_, i) => ({ x: (i * 7.31) % LENGTH, y: (i * 3.77) % WIDTH }));
-  for (let i = 0; i < 2000; i++) f.positions(balls[i]); // warm up the JIT
-  const t0 = performance.now();
-  for (const b of balls) f.positions(b);
-  const us = ((performance.now() - t0) * 1000) / balls.length;
-  assert.ok(us < 20, `${us.toFixed(2)} us per call`);
+  // About 0.5 us a call on a laptop: the median of 7 runs of 2000 balls (after 2000 warm-up calls) stays far under
+  // the bound even with every core busy (harness.js timed).
+  const balls = Array.from({ length: 2000 }, (_, i) => ({ x: (i * 7.31) % LENGTH, y: (i * 3.77) % WIDTH }));
+  const us = timed(() => { for (const b of balls) f.positions(b); }, { warmup: 1, runs: 7 }).median * 1000 / balls.length;
+  assert.ok(us < 20 * PERF_SLACK, `${us.toFixed(2)} us per call`);
 });
 
 // ---------------------------------------------------------------- teamTargets

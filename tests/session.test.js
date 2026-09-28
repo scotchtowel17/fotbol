@@ -458,6 +458,24 @@ test('import: rewards travel with the progress, sanitised on the way in; a reset
   assert.equal(b.get('rewards'), null);
 });
 
+test('import and reset: Player mode\'s profile (position and Road stars) travels with the progress; play time today stays', () => {
+  assert.ok(RESET_KEYS.includes('player') && IMPORT_KEYS.includes('player'), 'the Road is progress');
+  assert.ok(!RESET_KEYS.includes('player:today'), 'today\'s play time (the break nudge) is not progress');
+  const a = memStore();
+  a.set('player', { version: 1, group: 'DEF', role: 'LB', onboarded: true, road: { 'close-down': { stars: 2, plays: 1 } } });
+  a.set('history', [{ mode: 'pass', score: 80 }]);
+  const parsed = parseProgressFile(JSON.stringify(a.exportAll()));
+  assert.equal(parsed.ok, true);
+  assert.deepEqual(parsed.data['fotbol:player'].road['close-down'], { stars: 2, plays: 1 });
+  const b = memStore();
+  b.set('player:today', { day: '2026-09-27', ms: 60000 });
+  b.importAll(parsed.data);
+  assert.equal(b.get('player').group, 'DEF');
+  for (const k of RESET_KEYS) b.remove(k);
+  assert.equal(b.get('player'), null, 'a reset starts again at the kick-off');
+  assert.deepEqual(b.get('player:today'), { day: '2026-09-27', ms: 60000 });
+});
+
 test('drill resume: a rep keeps its kid title through a saved session and the summary', () => {
   const key = drillSessionKey({ kind: 'module', module: 'M1' }, 'LCB');
   const reps = [{ id: 's1', baseId: 's1', title: 'Cover your partner', titleKid: 'Help your friend', score: 80, grade: 'A', principles: ['D3'] }];

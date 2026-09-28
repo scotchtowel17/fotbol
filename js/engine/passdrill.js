@@ -302,7 +302,16 @@ export function generatePassDrill({ seed = 1, role, principles = [], formations,
 /** Whether a forward best can teach any of the principles asked, for this role (none asked: yes). */
 function forwardable(asked, role) {
   if (!asked.length) return true;
-  return asked.some((p) => !NOT_FORWARD.has(p) && (p !== 'PA10' || ROLE_INFO[role].family === 'CB'));
+  return asked.some((p) => !NOT_FORWARD.has(p) && (p !== 'PA10' || ROLE_INFO[role]?.family === 'CB'));
+}
+
+/**
+ * Whether a set of pass drills on these principles for this role should hold forward bests (3 of every 5): false only
+ * when no principle asked can be taught by a forward pass for the role (PA13; PA10 except for a centre-back), as
+ * generatePassSet decides. Only the principles a drill can teach count (PASS_LESSONS); none of them asked: true.
+ */
+export function passForwardable(principles = [], role) {
+  return forwardable((principles ?? []).filter((p) => PASS_LESSONS[p]), role);
 }
 
 /**

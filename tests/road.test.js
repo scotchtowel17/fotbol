@@ -304,13 +304,16 @@ test('road: a mix set draws from its chapter\'s nodes in turn', async () => {
   assert.ok(from.size >= 3 && [...from].every((id) => ['close-down', 'back-up', 'goal-side'].includes(id)), [...from].join());
 });
 
-test('road: without a generator, a set is authored only (other positions, then mirrored twins, then repeats)', async () => {
+test('road: without a generator, a set is authored only (other positions, then the chapter\'s other ideas)', async () => {
   const reps = await R.buildSet('close-down', { road, profile: R.pickGroup(null, 'WING'), index, load, seed: 2, generators: null });
   assert.equal(reps.length, 5);
   assert.ok(reps.every((r) => r.scenario.timeline && !r.generated));
   const thin = await R.buildSet('crosses', { road, profile: R.pickGroup(null, 'DEF'), index, load, seed: 2, generators: null });
   assert.equal(thin.length, 5, 'one authored drill still makes a set');
-  assert.ok(thin.some((r) => r.twin) && thin.some((r) => r.repeat));
+  assert.ok(thin.some((r) => r.scenario.principles.includes('P10')), 'the node\'s own idea first');
+  assert.ok(thin.some((r) => r.extra), 'then the chapter\'s other ideas');
+  assert.ok(thin.every((r) => !r.twin && !r.repeat), 'before any drill comes back mirrored or twice');
+  assert.equal(new Set(thin.map((r) => r.scenario.id.replace(/-m$/, ''))).size, 5);
   // A generator that fails or gives nothing is the same as none.
   const warn = console.warn;
   console.warn = () => {};
@@ -349,6 +352,80 @@ test('road: a pass set is generated on the node\'s principles (authored pass dri
   const authored = await R.buildSet('free-player', { road, profile, index: withAuthored, load: async (id) => (id === 'pa-demo' ? { id, kind: 'pass' } : load(id)), seed: 4, generators: { pass: passStub() } });
   assert.equal(authored[0].drill.id, 'pa-demo');
   assert.equal(authored.length, 5);
+});
+
+test('road: the generators get the catalogue; a pass set asks 3 of 5 for a forward best, from consecutive seeds', async () => {
+  const spotCalls = [], passCalls = [];
+  const catalogue = { list: principlesFile.principles, byId: Object.fromEntries(principlesFile.principles.map((p) => [p.id, p])) };
+  const profile = R.pickGroup(null, 'WING');
+  await R.buildSet('close-down', { road, profile, index, load, seed: 6, catalogue, generators: { spot: spotStub(spotCalls) } });
+  assert.ok(spotCalls.length && spotCalls.every((c) => c.catalogue === catalogue));
+  await R.buildSet('free-player', { road, profile, index, load, seed: 6, catalogue, generators: { pass: passStub(passCalls), forwardable: () => true } });
+  assert.equal(passCalls.length, 5);
+  assert.ok(passCalls.every((c) => c.catalogue === catalogue && c.role === 'LW'));
+  assert.deepEqual(passCalls.map((c) => c.direction), ['forward', 'any', 'forward', 'any', 'forward']);
+  assert.deepEqual(passCalls.map((c) => c.seed - passCalls[0].seed), [0, 1, 2, 3, 4], 'consecutive integer seeds');
+  // Ideas no forward pass can teach for the position (Keep It Safe for a winger): no forward slots.
+  const safe = [];
+  await R.buildSet('safe-back', { road, profile, index, load, seed: 6, generators: { pass: passStub(safe), forwardable: () => false } });
+  assert.ok(safe.every((c) => c.direction === 'any'));
+  // The app's catalogue by default (main.js binds the app).
+  R.bindRoad({ data: { road, principles: catalogue } });
+  try {
+    const bound = [];
+    await R.buildSet('free-player', { road, profile, index, load, seed: 6, generators: { pass: passStub(bound) } });
+    assert.ok(bound.every((c) => c.catalogue === catalogue));
+  } finally { R.bindRoad(null); }
+});
+
+test('road: forwardPlan spreads the forward slots through the set', () => {
+  assert.deepEqual([...R.forwardPlan([true, true, true, true, true])].sort(), [0, 2, 4]);
+  assert.deepEqual([...R.forwardPlan([true, true, false, true, true])].sort(), [0, 3, 4]);
+  assert.deepEqual([...R.forwardPlan([true, false, true, false, false])].sort(), [0, 2], 'as many as the ideas allow');
+  assert.deepEqual([...R.forwardPlan([false, false, false, false, false])], []);
+});
+
+test('road: a generator that comes back empty is not asked again in that set; a teammate in your group plays the rep', async () => {
+  const calls = [];
+  // Full-backs never get this idea; the centre-backs do (passdrill.js: "free side" for full-backs 0 of 10).
+  const gen = (o) => { calls.push(o); return o.role === 'LB' ? null : { id: `pass-${o.role}-${o.seed}`, kind: 'pass', learner: { role: o.role }, principles: [...o.principles] }; };
+  const reps = await R.buildSet('free-side', { road, profile: R.pickGroup(null, 'DEF'), index, load, seed: 8, generators: { pass: gen, forwardable: () => true } });
+  assert.equal(reps.length, 5);
+  assert.ok(reps.every((r) => r.borrowed && r.drill.learner.role === 'LCB'), 'the centre-back on your side first');
+  const lbAsks = calls.filter((c) => c.role === 'LB');
+  assert.equal(lbAsks.filter((c) => c.direction === 'forward').length, R.ROAD_DEFAULTS.generatorNulls, 'asked twice for a forward pass, then never again');
+  assert.equal(lbAsks.filter((c) => c.direction === 'any').length, R.ROAD_DEFAULTS.generatorNulls);
+  // A spot generator that never gives a drill is asked twice per set of ideas, not 15 times.
+  const spotCalls = [];
+  await R.buildSet('close-down', { road, profile: R.pickGroup(null, 'WING'), index, load, seed: 8, generators: { spot: (o) => { spotCalls.push(o); return null; } } });
+  assert.ok(spotCalls.length <= 2 * R.ROAD_DEFAULTS.generatorNulls, `${spotCalls.length} calls`);
+});
+
+test('road: near-duplicates: the same position, ball and start (or best pass) look like the same rep', () => {
+  const spot = (bx, by, sx, sy, role = 'LB') => ({ kind: 'spot', scenario: { learner: { role, start: { x: sx, y: sy } }, timeline: { freezeAt: 2, ball: [{ t: 0, x: 0, y: 0 }, { t: 2, x: bx, y: by }, { t: 4, x: 99, y: 60 }] } } });
+  assert.deepEqual(R.ballAtFreeze(spot(40, 20, 0, 0).scenario), { x: 40, y: 20 });
+  assert.deepEqual(R.ballAtFreeze({ timeline: { freezeAt: 1, ball: [{ t: 0, x: 0, y: 0 }, { t: 2, x: 10, y: 20 }] } }), { x: 5, y: 10 });
+  const a = R.repPicture(spot(40, 20, 30, 10));
+  assert.ok(R.nearDuplicate(a, R.repPicture(spot(43, 22, 31, 12))), 'ball and start within a few metres');
+  assert.ok(!R.nearDuplicate(a, R.repPicture(spot(43, 22, 38, 18))), 'you start somewhere else');
+  assert.ok(!R.nearDuplicate(a, R.repPicture(spot(52, 20, 30, 10))), 'the ball is somewhere else');
+  assert.ok(!R.nearDuplicate(a, R.repPicture(spot(40, 20, 30, 10, 'LCB'))), 'another position');
+  const pass = (x, y, best) => ({ kind: 'pass', drill: { learner: { role: 'LCM' }, rating: { ball: { x, y }, best: { targetId: best } } } });
+  const p = R.repPicture(pass(50, 30, 'us-ST'));
+  assert.ok(R.nearDuplicate(p, R.repPicture(pass(53, 32, 'us-ST'))), 'the same best pass from nearly the same place');
+  assert.ok(!R.nearDuplicate(p, R.repPicture(pass(53, 32, 'us-LW'))), 'another best pass');
+  assert.ok(R.nearDuplicate(p, R.repPicture(pass(51, 31, 'us-LW'))), 'received in almost the same place');
+  assert.equal(R.repPicture({ kind: 'spot', scenario: { timeline: {} } }), null);
+});
+
+test('road: mirrored twins and repeats only when nothing else is left (a tiny index)', async () => {
+  const one = index.filter((e) => e.id === 'm1-05-d2-rb');
+  const tiny = await R.buildSet('close-down', { road, profile: R.pickGroup(null, 'DEF'), index: one, load, seed: 1, generators: null });
+  assert.equal(tiny.length, 5);
+  assert.equal(tiny[0].scenario.id, 'm1-05-d2-rb-m', 'played as a left back');
+  assert.equal(tiny[1].twin, true);
+  assert.equal(tiny[1].scenario.id, 'm1-05-d2-rb', 'its twin: the same drill on the other side');
+  assert.ok(tiny.slice(2).every((r) => r.repeat));
 });
 
 test('road: the onboarding set is 3 easy reps for your group', async () => {

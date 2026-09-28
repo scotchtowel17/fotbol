@@ -1,6 +1,6 @@
 // js/engine/spotdrill.js: generated "Find your spot" drills in the authored scenario format (KID_REDESIGN §6.2).
 // Every drill must pass npm run check's gates (scripts/check-scenarios.mjs checkScenario) exactly as an authored one.
-import { test, assert, approx, loadJSON } from './harness.js';
+import { test, assert, approx, loadJSON, timed, PERF_SLACK } from './harness.js';
 import { SPOT_DEFAULTS, SPOT_PRINCIPLES, SPOT_WORDS, generateSpotDrill, checkSpotDrill } from '../js/engine/spotdrill.js';
 import { checkScenario, CHECK_DEFAULTS } from '../scripts/check-scenarios.mjs';
 import { createFormation } from '../js/engine/formation.js';
@@ -124,9 +124,10 @@ test('the words: simple and short, no side and no he or she, the title and takea
 });
 
 test('a principle without a rule cannot be keyed by the engine: null (fast)', () => {
-  const t0 = performance.now();
-  for (const p of [['T3'], ['U8'], ['B6', 'P1'], ['U3', 'R1'], ['PA5']]) assert.equal(generateSpotDrill({ seed: 1, role: 'LCB', principles: p, formations }), null, String(p));
-  assert.ok(performance.now() - t0 < 50);
+  const none = [['T3'], ['U8'], ['B6', 'P1'], ['U3', 'R1'], ['PA5']];
+  for (const p of none) assert.equal(generateSpotDrill({ seed: 1, role: 'LCB', principles: p, formations }), null, String(p));
+  const ms = timed(() => { for (const p of none) generateSpotDrill({ seed: 1, role: 'LCB', principles: p, formations }); }, { runs: 5 }).median;
+  assert.ok(ms < 50 * PERF_SLACK, `${ms.toFixed(1)} ms`);
 });
 
 test('the mirror of a generated drill is a good drill too (the engine is left/right symmetric)', () => {
@@ -165,8 +166,8 @@ test('yield: the principles with a rule generate for the positions that rule jud
     }
     assert.ok(ok >= 2, `${role} ${principles}: ${ok} of 3 seeds gave a drill`);
   }
-  const per = (performance.now() - t0) / tries;
-  assert.ok(per < 250, `${per.toFixed(0)} ms per drill`);
+  const per = (performance.now() - t0) / tries; // an average over 72 calls (about 10 ms each on a laptop)
+  assert.ok(per < 250 * PERF_SLACK, `${per.toFixed(0)} ms per drill`);
   assert.ok(made / tries >= 0.9, `${made} of ${tries}`);
   // And what cannot be generated: a rule that never judges that position gives nothing (the screen is the #6's).
   assert.equal(generateSpotDrill({ seed: 1, role: 'LW', principles: ['R3'], formations, params: { maxAttempts: 8 } }), null);

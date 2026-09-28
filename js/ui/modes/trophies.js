@@ -4,14 +4,15 @@
 //   #/trophies/badges        every badge: bright with the day you earned it, or greyed with a progress bar
 //   #/trophies/album         the sticker album: a card per principle of the drill modules (M1-M3), framed
 //                            bronze, silver or gold by mastery; a mystery card links to its drills
-//   #/trophies/kit[/<id>]    the kit locker: shirt colours (unlocked by level), your number and a nickname;
-//                            Save applies it app-wide (the boards, the header). <id> pre-selects a colour to try.
+//   #/trophies/kit[/<id>]    the kit locker: shirt colours (unlocked by level), your number and a nickname from the
+//                            pick-list (rewards.js NICKNAMES: never a typed name, R27); Save applies it app-wide
+//                            (the boards, the header). <id> pre-selects a colour to try.
 //
 // Everything is read from the rewards state (js/ui/rewards-store.js); nothing here scores or awards.
 // Pure helpers (albumModel, shortDay) are exported for tests/celebrate.test.js.
 
 import { el, button, icon, announce, uid } from '../components.js';
-import { badgeProgress, cardTier, kitOptions, setKit, cleanNickname, REWARDS_DEFAULTS, paletteById } from '../../rewards.js';
+import { badgeProgress, cardTier, kitOptions, setKit, pickNickname, NICKNAMES, paletteById } from '../../rewards.js';
 import { loadRewards, saveRewards, onRewards } from '../rewards-store.js';
 import { playerCard, kitToken, TIER_ICONS } from '../celebrate.js';
 import { pickText, principleLabel } from '../reveal.js';
@@ -38,7 +39,8 @@ const COPY = {
     shirt: 'Shirt',
     number: 'Number',
     nickname: 'Nickname',
-    nickHint: 'A nickname, not your real name. It stays on this device.',
+    noNickname: 'None',
+    nickHint: 'Pick a nickname from the list. It stays on this device.',
     save: 'Save',
     saved: 'Saved',
     savedSr: 'Kit saved.',
@@ -62,7 +64,8 @@ const COPY = {
     shirt: 'Shirt',
     number: 'Number',
     nickname: 'Nickname',
-    nickHint: 'Use a nickname, not your real name. It stays on this device.',
+    noNickname: 'None',
+    nickHint: 'Pick a nickname from the list. It stays on this device.',
     save: 'Save',
     saved: 'Saved!',
     savedSr: 'Your kit is saved.',
@@ -222,7 +225,7 @@ export async function mount(root, app, params = []) {
     const palette = paletteById(draft.palette);
     const preview = el('div', { class: 'tr-kit-preview' });
     const drawPreview = () => {
-      const nick = cleanNickname(draft.nickname);
+      const nick = pickNickname(draft.nickname);
       preview.replaceChildren(kitToken(paletteById(draft.palette), { number: draft.number ?? roleNum(), label: nick || 'YOU', size: 104 }));
       status.hidden = !justSaved;
     };
@@ -252,13 +255,14 @@ export async function mount(root, app, params = []) {
         drawPreview();
       },
     });
-    const nick = el('input', {
-      id: nickId, class: 'tr-input', type: 'text', maxlength: String(REWARDS_DEFAULTS.nicknameMax), autocomplete: 'off', spellcheck: 'false',
-      autocapitalize: 'words', value: draft.nickname ?? '', 'aria-describedby': hintId,
-      oninput: (e) => { draft.nickname = e.target.value; justSaved = false; drawPreview(); },
-    });
+    // A pick-list, not a text box: no real name is ever typed or stored (R27; rewards.js setKit keeps list values only).
+    const chosen = pickNickname(draft.nickname);
+    const nick = el('select', {
+      id: nickId, class: 'tr-input tr-select', 'aria-describedby': hintId,
+      onchange: (e) => { draft.nickname = e.target.value; justSaved = false; drawPreview(); },
+    }, ['', ...NICKNAMES].map((n) => el('option', { value: n, selected: n === chosen, text: n || c.noNickname })));
     const save = button(c.save, { variant: 'primary', icon: 'check', className: 'tr-save', id: 'tr-save', onClick: () => {
-      const next = setKit(loadRewards(app), { palette: draft.palette, number: draft.number, nickname: cleanNickname(draft.nickname) });
+      const next = setKit(loadRewards(app), { palette: draft.palette, number: draft.number, nickname: pickNickname(draft.nickname) });
       saveRewards(app, next); // applies the kit app-wide and updates the header
       Object.assign(draft, next.kit);
       justSaved = true;

@@ -1,5 +1,5 @@
 // js/engine/passing.js: rating every pass option, grading the learner's choice and saying why (docs/research/passing.md §4).
-import { test, assert, approx, loadJSON } from './harness.js';
+import { test, assert, approx, loadJSON, timed, PERF_SLACK } from './harness.js';
 import {
   PASS_DEFAULTS, STAR_BANDS, starsForScore, value, lossCost, execProb, laneRisk, pressureAt, roomAt, raceAt, oppLines, swapTeams,
   kidName, rateOptions, gradePass, explainPass, optionOf, allPassTexts, PASS_TAGS, PASS_HEADLINES,
@@ -125,11 +125,9 @@ test('rateOptions: every teammate to feet plus up to 3 spaces, sorted, with the 
     }
   }
   const frames = SCENES.map(([, f]) => f);
-  const t0 = performance.now();
-  let n = 0;
-  for (let k = 0; k < 40; k++) for (const f of frames) { rateOptions(f); n++; }
-  const per = (performance.now() - t0) / n;
-  assert.ok(per < 2, `${per.toFixed(3)} ms per frame`);
+  // The median of 9 runs over every scene, after a warm-up (harness.js timed: steady on a busy machine).
+  const per = timed(() => { for (const f of frames) rateOptions(f); }, { warmup: 3, runs: 9 }).median / frames.length;
+  assert.ok(per < 2 * PERF_SLACK, `${per.toFixed(3)} ms per frame`);
 });
 
 test('rateOptions: the fixture build-up stars the pass through their front line (the research frame)', () => {

@@ -40,10 +40,11 @@ export const SESSION_DEFAULTS = Object.freeze({
 export const STORE_KEYS = Object.freeze({ skills: 'skills', history: 'history', streak: 'streak', live: 'live' });
 /** Keys a progress reset clears (settings stay). */
 export const PROGRESS_KEYS = Object.freeze(Object.values(STORE_KEYS));
-/** Keys "Reset progress" clears: the progress keys plus the tutorial and Explore records (learn.js, explore.js)
- *  and the rewards (XP, badges, stickers, kit: ui/rewards-store.js). Settings and the author's scenario draft
- *  ('author:draft') are kept. */
-export const RESET_KEYS = Object.freeze([...PROGRESS_KEYS, 'tutorial', 'explore', 'rewards']);
+/** Keys "Reset progress" clears: the progress keys plus the tutorial and Explore records (learn.js, explore.js),
+ *  the rewards (XP, badges, stickers, kit: ui/rewards-store.js) and Player mode's profile (its position and its Road
+ *  stars: ui/player/road.js, key 'player'; after a reset the next open starts at the kick-off). Settings, the
+ *  author's scenario draft ('author:draft') and today's play time ('player:today') are kept. */
+export const RESET_KEYS = Object.freeze([...PROGRESS_KEYS, 'tutorial', 'explore', 'rewards', 'player']);
 /** Keys a progress import replaces (the same set): a file never overwrites settings or a scenario draft
  *  (parseProgressFile hands the file's settings back separately, for the learner to opt in). */
 export const IMPORT_KEYS = RESET_KEYS;
