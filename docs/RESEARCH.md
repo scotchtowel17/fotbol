@@ -456,6 +456,7 @@ Band checks use `band(v, lo, hi, soft) = 1` inside [lo, hi], falling linearly to
 | `occupancy` | In possession | At most 2 teammates in your vertical lane `[S]`; at most 3 in your horizontal band of ±2.5 m (source number, band width `[D]`). | No | B5 |
 | `between-lines` | #8, #10, inverted winger, in progression | Your x lies between the opponent midfield line x and the opponent defensive line x; at least 3 m from the nearest opponent `[D]`. | No | P2 |
 | `spacing` | All | Nearest teammate 6-18 m `[M]` | No | F8 |
+| `box-fill` (added in integration) | #9, far winger, far #8, in possession, ball wide near their byline | Within about 3 m `[D]` of one of your P10 zones, held onside: #9 near post or penalty spot, far winger back post or spot, far #8 edge of the box or spot. The #9 and far winger stop coming short once the ball is wide in the final third (R5). | No | P10 |
 | `gk-angle-depth` (v1.1) | GK | On the bisector of the post-ball-post angle within 1 m; depth interpolated by ball distance | No | G1 |
 
 ### 5.6 Combining, grading, explaining

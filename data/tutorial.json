@@ -1,0 +1,271 @@
+{
+  "version": 1,
+  "$comment": "Module 0 (pitch literacy), docs/RESEARCH.md 7.3 and 9.2 item 9. Canonical frame: x = 0 our goal line, we attack +x, y = 0 our left touchline (js/engine/pitch.js). setup.ball, carrierId and overrides ({ playerId: {x,y} }) feed autoFrame(); players without an override take their formation spot. learnerStart is where the learner's token begins (default: its formation spot). Targets are circles { x, y, r } in metres. overlays.offsideLine = true asks the board to draw the line at the opponents' second-last player. `topic` names what the step teaches; tests check each topic's geometry.",
+  "module": "M0",
+  "title": "Know the pitch",
+  "intro": {
+    "standard": "Seven quick steps to read the pitch the way players and coaches do. Everything later in fotbol builds on these.",
+    "kid": "Seven quick steps to learn the pitch."
+  },
+  "outro": {
+    "standard": "You can read the pitch now. Next up: defending as a unit of three, where you press, cover or balance.",
+    "kid": "Great work! Next you'll learn the three defending jobs."
+  },
+  "steps": [
+    {
+      "id": "direction",
+      "topic": "orientation",
+      "title": "Which way are we playing?",
+      "text": {
+        "standard": "This is a full-size pitch, 105 m long and 68 m wide. Your team defends the goal behind your own keeper and attacks the goal behind theirs; you are the highlighted player. In fotbol, 'push up' always means toward their goal and 'drop' means toward ours.",
+        "kid": "We defend our goal and attack theirs. You are the highlighted player."
+      },
+      "principles": [],
+      "setup": {
+        "ball": { "x": 40, "y": 34 },
+        "possession": "us",
+        "carrierId": "us-DM",
+        "learnerRole": "LCM",
+        "overlays": { "thirds": false, "lanes": false, "zone14": false, "offsideLine": false },
+        "highlight": ["us-GK", "them-GK"]
+      },
+      "task": {
+        "type": "observe",
+        "prompt": {
+          "standard": "Find both goalkeepers: we attack the goal their keeper guards.",
+          "kid": "Find both keepers. We try to score past theirs."
+        },
+        "success": {
+          "standard": "Got it. Up the pitch means toward their goal; deeper means toward ours.",
+          "kid": "Great! Up means toward their goal. Back means toward ours."
+        }
+      }
+    },
+    {
+      "id": "thirds",
+      "topic": "thirds",
+      "title": "The three thirds",
+      "text": {
+        "standard": "Lengthways, the pitch splits into three thirds. The defensive third is in front of our goal, the middle third is where most build-up happens, and the final third is in front of theirs, where chances are made.",
+        "kid": "The pitch has three parts: near our goal, the middle, and near their goal."
+      },
+      "principles": [],
+      "setup": {
+        "ball": { "x": 40, "y": 34 },
+        "possession": "us",
+        "carrierId": "us-DM",
+        "learnerRole": "LCM",
+        "overlays": { "thirds": true, "lanes": false, "zone14": false, "offsideLine": false },
+        "highlight": []
+      },
+      "task": {
+        "type": "drag-ball",
+        "to": { "x": 87.5, "y": 34, "r": 17 },
+        "prompt": {
+          "standard": "Drag the ball into the final third, the part of the pitch in front of their goal.",
+          "kid": "Move the ball into the part near their goal."
+        },
+        "success": {
+          "standard": "That's the final third. Most chances come from here, so attackers want the ball in it and defenders want to keep it out.",
+          "kid": "Yes! That's their third, where we try to score."
+        },
+        "hint": {
+          "standard": "Go past the second line across the pitch, toward their keeper.",
+          "kid": "Go toward their keeper, past the second line."
+        }
+      }
+    },
+    {
+      "id": "lanes",
+      "topic": "lanes",
+      "title": "Five lanes and the half-spaces",
+      "text": {
+        "standard": "The pitch also splits into five long lanes: two wings, two half-spaces and the centre. A player in a half-space, between the centre and a wing, can see the goal and both sides of the pitch. Zone 14 is the central area just outside their box, where many assists start.",
+        "kid": "There are five long strips: two wings, two in-between strips and the middle."
+      },
+      "principles": [],
+      "setup": {
+        "ball": { "x": 45, "y": 34 },
+        "possession": "us",
+        "carrierId": "us-DM",
+        "learnerRole": "RCM",
+        "overlays": { "thirds": false, "lanes": true, "zone14": true, "offsideLine": false },
+        "highlight": []
+      },
+      "task": {
+        "type": "drag-ball",
+        "to": { "x": 62, "y": 48.66, "r": 5 },
+        "prompt": {
+          "standard": "Drag the ball into our right half-space, just inside their half.",
+          "kid": "Move the ball into the strip next to our right wing."
+        },
+        "success": {
+          "standard": "That's the right half-space. A player who receives here can turn toward goal, and their full-back and centre-back have to decide who steps out.",
+          "kid": "Yes! That in-between strip is a great place to get the ball."
+        },
+        "hint": {
+          "standard": "Start from our right touchline: the first lane is the wing, the next one in is the half-space. Aim just past halfway.",
+          "kid": "Start at our right sideline. Skip the wing strip. Stop in the next one."
+        }
+      }
+    },
+    {
+      "id": "your-job",
+      "topic": "duties",
+      "title": "The ball decides your job",
+      "text": {
+        "standard": "When they have the ball, our nearest player presses it (the first defender), the next one covers behind at an angle (the second defender) and everyone else keeps the team compact and balanced (third defenders). When we have it, the carrier attacks, nearby players support and the rest give width and depth.",
+        "kid": "Nearest player presses. The next one backs them up. Everyone else holds the shape."
+      },
+      "principles": ["F1"],
+      "setup": {
+        "ball": { "x": 30, "y": 60 },
+        "possession": "them",
+        "carrierId": "them-LW",
+        "learnerRole": "LCB",
+        "overlays": { "thirds": false, "lanes": false, "zone14": false, "offsideLine": false },
+        "highlight": ["them-LW"],
+        "overrides": {
+          "them-LW": { "x": 30.8, "y": 60.3 },
+          "us-RB": { "x": 28.1, "y": 58.4 },
+          "us-RCB": { "x": 22.5, "y": 53.5 },
+          "us-DM": { "x": 28, "y": 42 },
+          "us-RCM": { "x": 37, "y": 48 },
+          "us-RW": { "x": 41, "y": 57 }
+        }
+      },
+      "task": {
+        "type": "tap-player",
+        "answer": "us-RB",
+        "prompt": {
+          "standard": "Their winger has the ball near our box. Tap the player who should press it: the first defender.",
+          "kid": "Tap the player who should go to the ball."
+        },
+        "success": {
+          "standard": "Right: the right back is nearest, so they press. The right centre-back covers behind at an angle, and you, on the far side, are a third defender who tucks in.",
+          "kid": "Yes! Nearest player presses. The next one backs them up."
+        },
+        "hint": {
+          "standard": "Look for our player closest to the ball, standing between it and our goal.",
+          "kid": "Who is closest to the ball?"
+        }
+      }
+    },
+    {
+      "id": "goal-side",
+      "topic": "goal-side",
+      "title": "Goal-side",
+      "text": {
+        "standard": "Goal-side means between your opponent and your own goal. From there you can see the ball and your player, step in front to intercept, and a simple pass in behind can't beat you.",
+        "kid": "Goal-side means standing between your player and our goal."
+      },
+      "principles": ["D5"],
+      "setup": {
+        "ball": { "x": 50, "y": 24 },
+        "possession": "them",
+        "carrierId": "them-RCM",
+        "learnerRole": "LCB",
+        "learnerStart": { "x": 42, "y": 25 },
+        "overlays": { "thirds": false, "lanes": false, "zone14": false, "offsideLine": false },
+        "highlight": ["them-ST"],
+        "overrides": {
+          "them-RCM": { "x": 50.8, "y": 24.2 },
+          "them-ST": { "x": 39, "y": 26 }
+        }
+      },
+      "task": {
+        "type": "place",
+        "target": { "x": 36.8, "y": 25.4, "r": 2 },
+        "prompt": {
+          "standard": "You're the left centre-back and you've been caught in front of the striker you're marking. Drag yourself goal-side of them, a couple of metres away.",
+          "kid": "Stand between their striker and our goal, close to them."
+        },
+        "success": {
+          "standard": "Good: you're between the striker and our goal and slightly toward the ball, so you can see both and reach a pass first.",
+          "kid": "Great! Now the striker can't run past you to our goal."
+        },
+        "hint": {
+          "standard": "Picture a line from the striker to the middle of our goal and stand on it, 1-3 m from them.",
+          "kid": "Imagine a line from the striker to our goal. Stand on it."
+        }
+      }
+    },
+    {
+      "id": "offside-line",
+      "topic": "offside",
+      "title": "The offside line",
+      "text": {
+        "standard": "When a teammate passes, you're offside if you're in their half and closer to their goal line than both the ball and their second-last player, which is usually the last defender because the keeper is behind them. Level counts as onside, and there's no offside from a goal kick, throw-in or corner.",
+        "kid": "When the pass is played, don't be past their last defender. Level is fine."
+      },
+      "principles": ["F4"],
+      "setup": {
+        "ball": { "x": 48, "y": 22 },
+        "possession": "us",
+        "carrierId": "us-LCM",
+        "learnerRole": "ST",
+        "learnerStart": { "x": 78, "y": 34 },
+        "overlays": { "thirds": false, "lanes": false, "zone14": false, "offsideLine": true },
+        "highlight": ["them-RCB", "them-LCB"],
+        "overrides": {
+          "us-LCM": { "x": 47.3, "y": 22.2 },
+          "them-GK": { "x": 100, "y": 34 },
+          "them-RB": { "x": 72, "y": 14 },
+          "them-RCB": { "x": 72, "y": 28 },
+          "them-LCB": { "x": 72, "y": 40 },
+          "them-LB": { "x": 72, "y": 54 }
+        }
+      },
+      "task": {
+        "type": "place",
+        "target": { "x": 69.5, "y": 34, "r": 2.5 },
+        "prompt": {
+          "standard": "You're the striker and you're offside. Get back onside, but stay as high as you can, level with their back line.",
+          "kid": "You're offside! Step back until you're level with their defenders."
+        },
+        "success": {
+          "standard": "That's it: level with their line or just behind it, you're onside and their defenders still have to worry about a run in behind.",
+          "kid": "Nice! You're onside and ready to run behind them."
+        },
+        "hint": {
+          "standard": "Find their defenders nearest their goal (not the keeper) and stand level with them or a step closer to halfway.",
+          "kid": "Line up with their defenders, not past them."
+        }
+      }
+    },
+    {
+      "id": "team-shift",
+      "topic": "shift",
+      "title": "The team moves with the ball",
+      "text": {
+        "standard": "Nobody has a fixed spot. As the ball moves, the whole team slides toward the ball side, pushes up when we have it and drops back when we don't, while players far from the ball tuck in toward the middle.",
+        "kid": "When the ball moves, the whole team slides with it, like one big shape."
+      },
+      "principles": ["F2", "F3"],
+      "setup": {
+        "ball": { "x": 45, "y": 10 },
+        "possession": "them",
+        "carrierId": "them-RW",
+        "learnerRole": "RB",
+        "overlays": { "thirds": false, "lanes": true, "zone14": false, "offsideLine": false },
+        "highlight": ["us-LB", "us-LCB", "us-RCB"]
+      },
+      "task": {
+        "type": "drag-ball",
+        "to": { "x": 45, "y": 60, "r": 5 },
+        "prompt": {
+          "standard": "Drag the ball across to the wing on our right and watch the back four slide with it.",
+          "kid": "Move the ball to the other wing. Watch our defenders slide across."
+        },
+        "success": {
+          "standard": "See how the back four slid across together, and how you went from tucked in to facing the winger? Your spot always depends on where the ball is.",
+          "kid": "The whole team moved together! Your spot depends on the ball."
+        },
+        "hint": {
+          "standard": "Pull the ball all the way across the pitch to the wing on our right, near halfway.",
+          "kid": "Pull the ball right across to the other wing."
+        }
+      }
+    }
+  ]
+}

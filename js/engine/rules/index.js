@@ -15,10 +15,11 @@ import supportDistance from './support-distance.js';
 import occupancy from './occupancy.js';
 import betweenLines from './between-lines.js';
 import spacing from './spacing.js';
+import boxFill from './box-fill.js';
 
 export const RULES = Object.freeze([
   offside, keepsOnside, levelLine, goalSide, press, cover, tuck, compact, screen,
-  width, pin, laneOpen, supportDistance, occupancy, betweenLines, spacing,
+  width, pin, laneOpen, supportDistance, occupancy, betweenLines, spacing, boxFill,
 ]);
 
 export const RULES_BY_ID = Object.freeze(Object.fromEntries(RULES.map((r) => [r.id, r])));

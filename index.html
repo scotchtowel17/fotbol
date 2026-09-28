@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>fotbol · learn where to stand</title>
+  <meta name="description" content="Learn soccer positioning by doing: take a role, watch play unfold, drag yourself to the right spot, and find out why.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f3f6f1" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0b110e" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/app.css">
+  <script>
+    // Apply saved display settings before first paint so there is no theme flash.
+    // Storage can be blocked (private windows): any error just keeps the defaults.
+    try {
+      var s = JSON.parse(localStorage.getItem('fotbol:settings') || '{}') || {};
+      var d = document.documentElement.dataset;
+      if (s.theme === 'light' || s.theme === 'dark') d.theme = s.theme;
+      if (s.reducedMotion === true) d.reducedMotion = 'true';
+      if (s.wording === 'kid') d.wording = 'kid';
+    } catch (e) { /* defaults */ }
+  </script>
+  <script type="module" src="js/main.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#app" id="skip-link">Skip to content</a>
+
+  <header class="app-header">
+    <a class="wordmark" href="#/home" aria-label="fotbol home">
+      <svg class="wordmark-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+        <rect width="32" height="32" rx="8" fill="#0e7440"/>
+        <rect x="4" y="6.5" width="24" height="19" rx="1.5" fill="none" stroke="#fff" stroke-opacity=".85" stroke-width="1.5"/>
+        <path d="M16 6.5v19" stroke="#fff" stroke-opacity=".85" stroke-width="1.5"/>
+        <circle cx="16" cy="16" r="3.6" fill="none" stroke="#fff" stroke-opacity=".85" stroke-width="1.5"/>
+        <circle cx="10" cy="19.5" r="3" fill="#ffa91a" stroke="#fff" stroke-width="1.2"/>
+      </svg>
+      <span>fotbol</span>
+    </a>
+
+    <nav class="main-nav" aria-label="Main">
+      <ul>
+        <li><a href="#/learn" data-nav="learn">Learn</a></li>
+        <li><a href="#/explore" data-nav="explore">Explore</a></li>
+        <li><a href="#/drill" data-nav="drill">Drill</a></li>
+        <li><a href="#/live" data-nav="live">Live</a></li>
+        <li><a href="#/progress" data-nav="progress">Progress</a></li>
+      </ul>
+    </nav>
+
+    <div class="settings">
+      <button id="settings-toggle" class="btn btn--ghost btn--icon" type="button"
+              aria-expanded="false" aria-controls="settings-menu" title="Settings">Settings</button>
+      <div id="settings-menu" class="settings-menu" role="dialog" aria-label="Settings" hidden></div>
+    </div>
+  </header>
+
+  <main id="app" tabindex="-1">
+    <p class="boot">Loading fotbol…</p>
+    <noscript><p class="boot">fotbol needs JavaScript. Everything runs in your browser; nothing is sent anywhere.</p></noscript>
+  </main>
+
+  <div id="sr-live" class="visually-hidden" aria-live="polite" aria-atomic="true"></div>
+  <div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+</body>
+</html>

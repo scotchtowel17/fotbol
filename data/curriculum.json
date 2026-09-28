@@ -1,0 +1,210 @@
+{
+  "version": 1,
+  "$comment": "Modules follow docs/RESEARCH.md 9.2 item 9 and 7.3. `unlock` names the module that must be finished first (the tutorial completed, or every principle of that module at >= moduleUnlockStars mastery stars from elo.mastery). Level `unlockStars` is the minimum stars on every principle of a module before that level opens. All numbers here are tunable design defaults [D] drawn from RESEARCH 7.1 and 7.3: level 3 at 3 stars mirrors 'timer only after untimed accuracy of about 0.80' (7.1 row 10); session.blockSize is the 8-12 blocked items of 7.1 row 8; session.mix and probeEvery are 7.3. `scenarios` lists scenario IDs in play order and is filled in as scenarios are authored.",
+  "moduleUnlockStars": 1,
+  "levels": [
+    {
+      "level": 1,
+      "name": "Learn",
+      "kidName": "Learn it",
+      "mix": "blocked",
+      "scaffold": true,
+      "timer": false,
+      "unlockStars": 0,
+      "description": {
+        "standard": "One principle at a time: watch a worked example, finish a half-placed scene, then place yourself freely, with no clock.",
+        "kid": "One idea at a time, with help and no clock."
+      }
+    },
+    {
+      "level": 2,
+      "name": "Mix",
+      "kidName": "Mix it",
+      "mix": "interleaved",
+      "scaffold": false,
+      "timer": false,
+      "unlockStars": 1,
+      "description": {
+        "standard": "The module's principles are shuffled together, including look-alike situations, so you have to recognise which idea applies before you move.",
+        "kid": "Mixed-up scenes: work out which idea you need."
+      }
+    },
+    {
+      "level": 3,
+      "name": "Play",
+      "kidName": "Play it",
+      "mix": "live",
+      "scaffold": false,
+      "timer": true,
+      "unlockStars": 3,
+      "description": {
+        "standard": "Live sequences against the clock: keep adjusting as play unfolds, first slowed down, then at full speed and faster.",
+        "kid": "Live play against the clock: keep moving with the ball."
+      }
+    }
+  ],
+  "session": {
+    "minutes": [10, 15],
+    "items": [25, 35],
+    "blockSize": [8, 12],
+    "mix": { "current": 0.6, "interleaved": 0.25, "review": 0.15 },
+    "probeEvery": 10
+  },
+  "modules": [
+    {
+      "id": "M0",
+      "kind": "tutorial",
+      "title": "Know the pitch",
+      "subtitle": "Pitch literacy",
+      "description": {
+        "standard": "Learn how the pitch is divided and which way you are playing, then the ideas every position depends on: your job around the ball, goal-side and the offside line.",
+        "kid": "Learn the parts of the pitch, which way we go and a few key rules."
+      },
+      "principles": ["F1", "D5", "F4", "F2", "F3"],
+      "roles": ["CB", "FB", "DM", "CM", "W", "ST"],
+      "unlock": null,
+      "tutorial": "data/tutorial.json",
+      "scenarios": [],
+      "levels": [],
+      "interleave": [],
+      "pitchChallenge": {
+        "standard": "Watch five minutes of any match and, each time the ball is passed, name the third and the lane it lands in.",
+        "kid": "Watch a game and say which part of the pitch the ball is in."
+      }
+    },
+    {
+      "id": "M1",
+      "kind": "drills",
+      "title": "Pressure, cover and balance",
+      "subtitle": "Defending as a unit of three",
+      "description": {
+        "standard": "Out of possession every defender has one of three jobs: press the ball, cover the presser or balance the team. Learn to read which job is yours, how to recover when you are caught upfield and how to defend a cross.",
+        "kid": "Learn the three defending jobs: press the ball, back up, or hold the shape."
+      },
+      "principles": ["D1", "D2", "D3", "D4", "D5", "T3", "T2", "U8"],
+      "roles": ["CB", "FB", "DM", "CM"],
+      "unlock": "M0",
+      "scenarios": [],
+      "levels": [
+        {
+          "level": 1,
+          "focus": {
+            "standard": "One job at a time: press the carrier, then cover the presser at an angle, then tuck in on the far side.",
+            "kid": "Practise one defending job at a time."
+          }
+        },
+        {
+          "level": 2,
+          "focus": {
+            "standard": "Mixed scenes where you first decide whether you are the first, second or third defender, including recovery runs and crosses.",
+            "kid": "Mixed scenes: work out your job first."
+          }
+        },
+        {
+          "level": 3,
+          "focus": {
+            "standard": "Live play: keep adjusting as the ball moves and your job switches between pressing, covering and balancing.",
+            "kid": "Live play: keep moving as your job changes."
+          }
+        }
+      ],
+      "interleave": [
+        { "pair": ["D3", "D4"], "label": { "standard": "Cover or balance?", "kid": "Back up or tuck in?" } },
+        { "pair": ["D1", "T2"], "label": { "standard": "Press or drop?", "kid": "Go to the ball or back off?" } }
+      ],
+      "pitchChallenge": {
+        "standard": "In your next game, every time the other team wins the ball, decide in one second whether you are pressing, covering or balancing, then do that job.",
+        "kid": "Next game: when they get the ball, ask yourself: press, back up, or tuck in?"
+      }
+    },
+    {
+      "id": "M2",
+      "kind": "drills",
+      "title": "Support, width and depth",
+      "subtitle": "Helping the player on the ball",
+      "description": {
+        "standard": "In possession, where you stand decides whether the carrier has options. Learn to offer a clear passing lane at the right distance, stretch the pitch with width and depth, and find the half-spaces and the gaps between their lines.",
+        "kid": "Learn where to stand so your teammate on the ball can pass to you."
+      },
+      "principles": ["B3", "B4", "B1", "B2", "B6", "B5", "P1", "P2", "P10"],
+      "roles": ["FB", "DM", "CM", "W", "ST"],
+      "unlock": "M1",
+      "scenarios": [],
+      "levels": [
+        {
+          "level": 1,
+          "focus": {
+            "standard": "One idea at a time: open a passing lane, then hold the width, then pin their back line.",
+            "kid": "Practise one way of helping at a time."
+          }
+        },
+        {
+          "level": 2,
+          "focus": {
+            "standard": "Mixed scenes where you choose between coming short and staying away, and between holding the width and moving inside.",
+            "kid": "Mixed scenes: come close, or stay wide and far?"
+          }
+        },
+        {
+          "level": 3,
+          "focus": {
+            "standard": "Live build-up: keep offering the right option as the ball moves up the pitch and into their box.",
+            "kid": "Live play: keep getting free as the ball moves."
+          }
+        }
+      ],
+      "interleave": [
+        { "pair": ["B4", "B2"], "label": { "standard": "Show for the ball or stay on the last defender?", "kid": "Come close or stay high?" } },
+        { "pair": ["B1", "D4"], "label": { "standard": "Hold the width or tuck in?", "kid": "Stay wide or move in?" } }
+      ],
+      "pitchChallenge": {
+        "standard": "Next time your team has the ball, check before each pass: does the player on the ball have two open options, and are you one of them?",
+        "kid": "Next game: when a teammate has the ball, make sure they can pass to you."
+      }
+    },
+    {
+      "id": "M3",
+      "kind": "drills",
+      "title": "Team shape",
+      "subtitle": "Moving as one block",
+      "description": {
+        "standard": "Good teams defend as one compact block. Learn to keep the lines close, hold a level back line, step up or drop at the right moment, and play your part as a centre-back, full-back or #6.",
+        "kid": "Learn to move with your teammates as one tight group."
+      },
+      "principles": ["U1", "U2", "U4", "U3", "U5", "U7", "U6", "R1", "R2", "R3"],
+      "roles": ["CB", "FB", "DM", "CM", "W", "ST"],
+      "unlock": "M2",
+      "scenarios": [],
+      "levels": [
+        {
+          "level": 1,
+          "focus": {
+            "standard": "One idea at a time: stay compact, keep a level line, then step up or drop with the ball.",
+            "kid": "Practise one team-shape idea at a time."
+          }
+        },
+        {
+          "level": 2,
+          "focus": {
+            "standard": "Mixed scenes: step up or hold, crescent or L-shape, high block or low block.",
+            "kid": "Mixed scenes: step up, stay, or drop?"
+          }
+        },
+        {
+          "level": 3,
+          "focus": {
+            "standard": "Live defending: keep the whole block together through a full passage of play.",
+            "kid": "Live play: move as one group the whole time."
+          }
+        }
+      ],
+      "interleave": [
+        { "pair": ["U3", "U4"], "label": { "standard": "Step up or hold the line?", "kid": "Move up or stay in line?" } }
+      ],
+      "pitchChallenge": {
+        "standard": "Watch a match and pause when the ball goes wide: is the back four level, and are the gaps between the defenders about 12 m or less?",
+        "kid": "Watch a game: when the ball goes wide, do the defenders stay in a line?"
+      }
+    }
+  ]
+}

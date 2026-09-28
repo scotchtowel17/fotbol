@@ -25,9 +25,18 @@ if (isNode) {
     equal: (a, b, m) => { if (!Object.is(a, b)) fail(m || `expected ${show(b)}, got ${show(a)}`); },
     notEqual: (a, b, m) => { if (Object.is(a, b)) fail(m || `expected value other than ${show(b)}`); },
     deepEqual: (a, b, m) => { if (!deepEq(a, b)) fail(m || `expected ${show(b)}, got ${show(a)}`); },
+    notDeepEqual: (a, b, m) => { if (deepEq(a, b)) fail(m || `expected something other than ${show(b)}`); },
     throws: (fn, _e, m) => { try { fn(); } catch { return; } fail(m || 'expected function to throw'); },
+    doesNotThrow: (fn, m) => { try { fn(); } catch (e) { fail(m || `expected no throw, got ${e?.message ?? e}`); } },
+    rejects: async (p, _e, m) => { try { await (typeof p === 'function' ? p() : p); } catch { return; } fail(m || 'expected a rejection'); },
     match: (s, re, m) => { if (!re.test(s)) fail(m || `expected ${show(s)} to match ${re}`); },
+    doesNotMatch: (s, re, m) => { if (re.test(s)) fail(m || `expected ${show(s)} not to match ${re}`); },
   };
+  // node:assert/strict names for the same checks.
+  assert.strictEqual = assert.equal;
+  assert.notStrictEqual = assert.notEqual;
+  assert.deepStrictEqual = assert.deepEqual;
+  assert.notDeepStrictEqual = assert.notDeepEqual;
   test = async (name, fn) => {
     const started = performance.now();
     try {

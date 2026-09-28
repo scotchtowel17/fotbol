@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Tests · fotbol</title>
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/app.css">
+  <script>
+    try {
+      var s = JSON.parse(localStorage.getItem('fotbol:settings') || '{}') || {};
+      if (s.theme === 'light' || s.theme === 'dark') document.documentElement.dataset.theme = s.theme;
+    } catch (e) { /* defaults */ }
+  </script>
+  <style>
+    .tests-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+    .tests-head h1 { margin: 0; font-size: 1.6rem; }
+    .summary { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; font-weight: 700; margin: 0 0 16px; }
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px; background: var(--surface-2); }
+    .pill--pass { background: var(--accent-soft); color: var(--good); }
+    .pill--fail { background: var(--bad-soft); color: var(--bad); }
+    .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px; }
+    .file { margin: 0 0 10px; padding: 0; overflow: hidden; }
+    .file > summary { display: flex; align-items: center; gap: 10px; padding: 12px 16px; cursor: pointer; font-weight: 700; list-style: none; }
+    .file > summary::-webkit-details-marker { display: none; }
+    .file > summary .count { margin-left: auto; font-weight: 600; color: var(--text-muted); font-size: 0.9rem; }
+    .file ol { margin: 0; padding: 0 16px 12px; list-style: none; }
+    .file li { display: grid; grid-template-columns: 1.5em 1fr auto; gap: 6px; padding: 6px 0; border-top: 1px solid var(--border); }
+    .file li .ms { color: var(--text-muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+    .file li pre { grid-column: 2 / -1; margin: 4px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--bad-soft); color: var(--bad); white-space: pre-wrap; word-break: break-word; font-size: 0.85rem; }
+    .mark--pass { color: var(--good); } .mark--fail { color: var(--bad); }
+    .only-failed .file li.pass, .only-failed .file.all-pass { display: none; }
+    .missing { color: var(--text-muted); font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <a class="wordmark" href="./#/home" aria-label="fotbol home">
+      <svg class="wordmark-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+        <rect width="32" height="32" rx="8" fill="#0e7440"/>
+        <rect x="4" y="6.5" width="24" height="19" rx="1.5" fill="none" stroke="#fff" stroke-opacity=".85" stroke-width="1.5"/>
+        <path d="M16 6.5v19" stroke="#fff" stroke-opacity=".85" stroke-width="1.5"/>
+        <circle cx="16" cy="16" r="3.6" fill="none" stroke="#fff" stroke-opacity=".85" stroke-width="1.5"/>
+        <circle cx="10" cy="19.5" r="3" fill="#ffa91a" stroke="#fff" stroke-width="1.2"/>
+      </svg>
+      <span>fotbol</span>
+    </a>
+  </header>
+
+  <main class="page" id="main">
+    <div class="tests-head">
+      <h1>Tests</h1>
+      <button class="btn btn--secondary" type="button" id="rerun">Run again</button>
+    </div>
+    <p class="summary" id="summary" role="status" aria-live="polite">Running…</p>
+    <div class="controls">
+      <label class="switch">
+        <input type="checkbox" role="switch" id="only-failed">
+        <span class="switch-track" aria-hidden="true"></span>
+        <span class="switch-label">Show failures only</span>
+      </label>
+    </div>
+    <div id="results"></div>
+    <p class="missing" id="missing" hidden></p>
+  </main>
+
+  <script type="module">
+    // Runs every test file with the browser half of tests/harness.js, which reports each
+    // result as a 'fotbol-test' event. Files run one at a time; after each import we wait
+    // until results stop arriving so async tests are credited to the right file.
+    import { TEST_FILES } from './tests/manifest.js';
+
+    const SETTLE_MS = 150; // idle time that ends a file
+    const MAX_FILE_MS = 15000; // give up waiting on a file after this long
+    const $ = (id) => document.getElementById(id);
+    const h = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+
+    let currentFile = null;
+    let resultCount = 0;
+    const files = new Map(); // name → { section, list, pass, fail }
+    const totals = { pass: 0, fail: 0, t0: performance.now() };
+
+    addEventListener('fotbol-test', (e) => {
+      resultCount++;
+      record(currentFile ?? '(unknown file)', e.detail);
+    });
+
+    function section(name) {
+      if (files.has(name)) return files.get(name);
+      const details = h('details', 'card file');
+      const summary = h('summary');
+      const mark = h('span', 'mark', '…');
+      const title = h('span', '', name);
+      const count = h('span', 'count', '');
+      summary.append(mark, title, count);
+      const list = h('ol');
+      details.append(summary, list);
+      $('results').append(details);
+      const f = { details, mark, count, list, pass: 0, fail: 0 };
+      files.set(name, f);
+      return f;
+    }
+
+    function record(file, r) {
+      const f = section(file);
+      const li = h('li', r.ok ? 'pass' : 'fail');
+      li.append(h('span', r.ok ? 'mark--pass' : 'mark--fail', r.ok ? '✓' : '✗'), h('span', '', r.name), h('span', 'ms', `${(r.ms ?? 0).toFixed(1)} ms`));
+      if (!r.ok) li.append(h('pre', '', r.error));
+      f.list.append(li);
+      if (r.ok) { f.pass++; totals.pass++; } else { f.fail++; totals.fail++; f.details.open = true; }
+      paintFile(f);
+      paintSummary(false);
+    }
+
+    function paintFile(f) {
+      f.mark.textContent = f.fail ? '✗' : '✓';
+      f.mark.className = f.fail ? 'mark--fail' : 'mark--pass';
+      f.count.textContent = `${f.pass} passed${f.fail ? `, ${f.fail} failed` : ''}`;
+      f.details.classList.toggle('all-pass', !f.fail);
+    }
+
+    function paintSummary(done) {
+      const s = $('summary');
+      s.replaceChildren(
+        h('span', 'pill pill--pass', `✓ ${totals.pass} passed`),
+        h('span', totals.fail ? 'pill pill--fail' : 'pill', `✗ ${totals.fail} failed`),
+        h('span', 'muted', done ? `${files.size} files · ${Math.round(performance.now() - totals.t0)} ms` : 'Running…'),
+      );
+      if (done) document.title = `${totals.fail ? '✗' : '✓'} Tests · fotbol`;
+    }
+
+    /** Test files from the dev server's directory listing, if it has one. */
+    async function discover() {
+      try {
+        const res = await fetch('tests/', { cache: 'no-store' });
+        if (!res.ok || !(res.headers.get('content-type') || '').includes('html')) return [];
+        const html = await res.text();
+        return [...html.matchAll(/href="([^"?#/]+\.test\.js)"/g)].map((m) => decodeURIComponent(m[1]));
+      } catch { return []; }
+    }
+
+    async function exists(file) {
+      try { return (await fetch(`tests/${file}`, { method: 'HEAD', cache: 'no-store' })).ok; } catch { return false; }
+    }
+
+    function settle() {
+      return new Promise((resolve) => {
+        const start = performance.now();
+        let seen = resultCount, quietSince = start;
+        const tick = () => {
+          const now = performance.now();
+          if (resultCount !== seen) { seen = resultCount; quietSince = now; }
+          if (now - quietSince >= SETTLE_MS || now - start >= MAX_FILE_MS) resolve();
+          else setTimeout(tick, 25);
+        };
+        setTimeout(tick, 25);
+      });
+    }
+
+    async function run() {
+      const listed = [...TEST_FILES];
+      const found = await discover();
+      const all = [...new Set([...listed, ...found])];
+      const missing = [];
+      for (const file of all) {
+        currentFile = file;
+        try {
+          await import(`./tests/${file}`);
+        } catch (err) {
+          if (!(await exists(file))) { missing.push(file); continue; }
+          record(file, { name: 'load the test file', ok: false, error: `${err?.name ?? 'Error'}: ${err?.message ?? err}`, ms: 0 });
+          console.error(file, err);
+        }
+        await settle();
+      }
+      currentFile = null;
+      const unlisted = found.filter((f) => !listed.includes(f));
+      const notes = [];
+      if (missing.length) notes.push(`Listed in tests/manifest.js but not found: ${missing.join(', ')}.`);
+      if (unlisted.length) notes.push(`Found but not listed in tests/manifest.js (static hosts will skip them): ${unlisted.join(', ')}.`);
+      $('missing').hidden = !notes.length;
+      $('missing').textContent = notes.join(' ');
+      paintSummary(true);
+    }
+
+    $('only-failed').addEventListener('change', (e) => document.body.classList.toggle('only-failed', e.target.checked));
+    $('rerun').addEventListener('click', () => location.reload());
+    run();
+  </script>
+</body>
+</html>

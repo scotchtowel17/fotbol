@@ -1,0 +1,344 @@
+// Scene placement: all 22 players for one ball position and possession state.
+// Contract: docs/ARCHITECTURE.md §5.2. Rationale: docs/RESEARCH.md §5.2 (layer A), §8 F3, F4, D1.
+//
+// Order: formation targets (with possession offset and phase shape) → overrides → carrier →
+// goal-side settle → presser → onside clamp → separation. Overrides and the carrier are never moved
+// once placed. The learner
+// gets its formation spot (kept onside) unless overridden, is never made carrier or presser, and
+// is never moved by separation. The presser resists separation in proportion to how hard it presses.
+//
+// For a static scene (Explore mode) the automatic press is a continuous function of the ball:
+// it ramps in over `pressHandover` and fades over `pressFade`, so dragging the ball never makes a
+// presser jump. The timeline instead commits to autoRoles() decisions at key times (see timeline.js).
+
+import { dist, dot, sub, norm, clamp, lerp, nearest } from './geometry.js';
+import { OWN_GOAL, OPP_GOAL, HALF_X, LENGTH, clampToPitch } from './pitch.js';
+import { ROLES, ROLE_INFO, playerId } from './roles.js';
+import { teamTargets } from './formation.js';
+import { engageBias } from './context.js';
+
+export const SCENE_DEFAULTS = Object.freeze({
+  carrierOffset: 0.8, // [D] carrier stands this far behind the ball, towards its own goal
+  pressDistance: 2.5, // [D] presser's distance from the ball on the ball → own-goal-centre line (D1: 1.5-3 m)
+  pressRadius: 14, // [D] the nearest defender presses fully when its formation spot is this close to the ball
+  pressFade: 6, // [D] ...and not at all beyond pressRadius + pressFade (linear in between)
+  pressHandover: 3, // [D] press ramps in as the nearest defender's lead over the next grows 0 → this; 0 = hard switch
+  pressPastWeight: 2, // [D] each metre a defender's spot is past the ball (the ball has gone by them) counts as this many extra metres
+  pressFbEngage: 10, // [D] R2/U5: the ball-side full-back ranks this much nearer with the ball wide in the defending team's half (CONTEXT_DEFAULTS.fbEngage)
+  pressFbEngageFrom: 45, // [D] ...fully with the ball at or behind this x (own frame)... (CONTEXT_DEFAULTS.fbEngageFrom)
+  pressFbEngageTo: 55, // [D] ...fading out by this x (CONTEXT_DEFAULTS.fbEngageTo)
+  onsideMargin: 0.5, // [D] attackers stay this far onside of the offside line
+  settleReach: 6, // [D] D5/R4: out of possession an #8 stays goal-side of any opponent within this of his spot (a winger of the full-back on his flank)...
+  settleFade: 4, // [D] ...fading out over this many metres beyond it (so an opponent coming near never makes him jump)
+  settleMargin: 1, // [D] ...by this many metres
+  minSeparation: 2, // [D] auto-placed players are pushed apart to at least this distance
+  separationPasses: 8, // [D] relaxation passes for the separation step
+  separationBias: 0.5, // [D] m: overlapping players are split along the pitch (opponents: each towards their own goal)
+  separationSoft: 0.5, // [D] m: a pair whose biased offset is shorter than this is only partly separated, so placement stays continuous as players cross
+  autoCarrier: true, // defaults for the autoFrame() flags of the same name (a scenario's params may set them)
+  autoPress: true,
+  onsideClamp: true,
+  settle: true, // the goal-side settle step (params only; false leaves #8s and wingers at their table spots)
+});
+
+const EPS = 1e-9;
+// Depth of each role family: overlapping teammates are split with the more advanced role ahead.
+const DEPTH = Object.freeze({ GK: 0, CB: 1, FB: 2, DM: 3, CM: 4, W: 5, ST: 6 });
+const depth = (p) => DEPTH[ROLE_INFO[p.role]?.family] ?? 3;
+
+/**
+ * Place all 22 players for a ball position.
+ *
+ * @param {Object} opts
+ * @param {{us: object, them?: object}} opts.formations  from createFormation(); `them` defaults to `us`
+ * @param {{x:number,y:number}} opts.ball
+ * @param {'us'|'them'|'none'} [opts.possession='none']  'none' = loose ball: no possession offset, carrier or press;
+ *   both teams take their out-of-possession shape and both are kept onside
+ * @param {string|null} [opts.carrierId]   explicit carrier, placed at the ball (unless it is the learner or overridden);
+ *   ignored with possession 'none' (a loose ball has no carrier)
+ * @param {string} [opts.learnerId]        never made carrier or presser, never moved by separation
+ * @param {Object<string,{x:number,y:number}>} [opts.overrides]  fixed positions; win over everything
+ * @param {boolean} [opts.autoCarrier=true] with no carrierId, the possession team's nearest non-learner outfielder takes the ball
+ * @param {boolean} [opts.autoPress=true]  the defending outfielder nearest the ball presses, unless that is the learner or an
+ *   override; a defender the ball has already gone past counts as further away (pressPastWeight)
+ * @param {string|null} [opts.presserId]   undefined = automatic press; an id = that defender presses fully; null = nobody presses
+ * @param {boolean} [opts.onsideClamp=true] attackers of the team in possession (both teams for a loose ball) are pulled back onside
+ * @param {boolean} [opts.inFlight=false]  ball in flight: no auto carrier and no press (timeline sets this when the carrier is null)
+ * @param {{x:number,y:number}} [opts.shapeBall]  ball the shape reacts to (default `ball`; the timeline passes a lagged, averaged ball).
+ *   It drives the formation targets and who presses; the carrier, press spot and onside line use `ball`.
+ * @param {object} [opts.params]           overrides for SCENE_DEFAULTS; params.shape (an object) overrides SHAPE_DEFAULTS
+ *   of the phase shape (formation.js) for both teams
+ * @returns {import('./types.js').Frame}   t = 0, tags = {}
+ */
+export function autoFrame(opts) {
+  const S = setup(opts);
+  const { P, ball, players, byId, pinned, overridden, mobility, carrier, attacking, defending } = S;
+
+  // 3. Press: on the ball → own-goal-centre line, pressDistance from the ball.
+  if (defending && S.autoPress && !S.inFlight && opts.presserId !== null) {
+    let presser = null, w = 0;
+    if (opts.presserId === undefined) {
+      const d = decidePress(S);
+      if (d) ({ p: presser, w } = d);
+    } else {
+      const p = byId.get(opts.presserId);
+      if (p && p.team === defending && p.role !== 'GK' && p !== carrier && !pinned.has(p.id)) { presser = p; w = 1; }
+    }
+    if (presser) {
+      const g = norm(sub(defending === 'us' ? OWN_GOAL : OPP_GOAL, ball));
+      const target = { x: ball.x + g.x * P.pressDistance, y: ball.y + g.y * P.pressDistance };
+      Object.assign(presser, clampToPitch({ x: lerp(presser.x, target.x, w), y: lerp(presser.y, target.y, w) }));
+      mobility.set(presser.id, 1 - w);
+    }
+  }
+
+  // 4. Onside clamp (IFAB: level is onside; no offside in your own half) for the team in possession,
+  // or for both teams with a loose ball (whoever wins it must not have runners offside).
+  let keepOnside = () => {};
+  if (S.onsideClamp && (attacking || S.possession === 'none')) {
+    const limits = {};
+    for (const team of attacking ? [attacking] : ['us', 'them']) {
+      const defXs = players.filter((p) => p.team !== team).map((p) => p.x);
+      if (team === 'us') limits.us = Math.max(Math.max(ball.x, defXs.sort((a, b) => b - a)[1]) - P.onsideMargin, HALF_X);
+      else limits.them = Math.min(Math.min(ball.x, defXs.sort((a, b) => a - b)[1]) + P.onsideMargin, HALF_X);
+    }
+    keepOnside = (p) => {
+      if (p.team === 'us' ? p.x > limits.us : p.x < limits.them) p.x = limits[p.team];
+    };
+    for (const p of players) if (!overridden.has(p.id) && p !== carrier) keepOnside(p);
+  }
+
+  // 5. Separation (Jacobi-style, so the result does not depend on player order and mirrors exactly).
+  separate(players, players.map((p) => mobility.get(p.id)), P, (p) => { Object.assign(p, clampToPitch(p)); keepOnside(p); });
+
+  return { t: 0, ball: { x: ball.x, y: ball.y }, possession: S.possession, carrierId: carrier?.id ?? null, players, tags: {} };
+}
+
+/**
+ * The learner's base: where the auto-placer would put the learner's role if it were an ordinary
+ * player. It is the zone centre for scoring and the spot that duties are computed at
+ * (docs/ARCHITECTURE.md §5.2, §5.4):
+ *  - its formation spot (phase-shaped, kept onside), eased by separation like everyone else's;
+ *  - out of possession, its press spot when its role is the automatic presser (pressing is the job);
+ *    with a loose ball, when it is our automatic first defender (autoFrame presses nobody then, but
+ *    the rules judge a loose ball as defended: the nearest player goes to win it);
+ *  - in possession the learner never carries: if its role would be the automatic carrier, the
+ *    teammate who takes the ball instead leaves his formation spot and the learner fills it
+ *    (P6: when a teammate comes to the ball out of a zone, the nearest teammate fills that space).
+ * An override for the learner (e.g. the learner's dragged spot) is ignored.
+ * @param {Object} opts  as for autoFrame(), with learnerId
+ * @returns {{x:number, y:number}}
+ */
+export function learnerBase(opts) {
+  const id = opts.learnerId;
+  if (!id) throw new TypeError('learnerBase: opts.learnerId is required');
+  const { [id]: _mine, ...overrides } = opts.overrides ?? {};
+  const free = autoFrame({ ...opts, learnerId: undefined, overrides });
+  const me = free.players.find((p) => p.id === id);
+  if (!me) throw new TypeError(`learnerBase: no player ${id}`);
+  if ((opts.possession ?? 'none') === 'none') {
+    const S = setup({ ...opts, learnerId: undefined, overrides });
+    const d = (opts.autoPress ?? S.P.autoPress) && !S.inFlight ? decidePress({ ...S, defending: 'us' }) : null;
+    if (d?.p.id === id) {
+      const g = norm(sub(OWN_GOAL, S.ball));
+      const target = clampToPitch({ x: S.ball.x + g.x * S.P.pressDistance, y: S.ball.y + g.y * S.P.pressDistance });
+      return { x: lerp(me.x, target.x, d.w), y: lerp(me.y, target.y, d.w) };
+    }
+  }
+  if (free.carrierId !== id) return { x: me.x, y: me.y };
+  const withLearner = autoFrame({ ...opts, overrides });
+  const carrierId = withLearner.carrierId;
+  if (!carrierId || carrierId === id) { // the scene names the learner as the carrier: its own spot
+    const own = withLearner.players.find((p) => p.id === id);
+    return { x: own.x, y: own.y };
+  }
+  const shape = autoFrame({ ...opts, overrides, carrierId: null, autoCarrier: false });
+  const spot = shape.players.find((p) => p.id === carrierId);
+  return { x: spot.x, y: spot.y };
+}
+
+/**
+ * The automatic choices autoFrame() would make for these options, without placing anyone:
+ * the carrier (explicit or automatic) and the presser with its press weight w in (0, 1].
+ * The timeline commits to these at key times so that playback never hands the press over mid-carry.
+ * @param {Object} opts  as for autoFrame()
+ * @returns {{ carrierId: string|null, presser: {id: string, w: number}|null }}
+ */
+export function autoRoles(opts) {
+  const S = setup(opts);
+  const d = S.defending && S.autoPress && !S.inFlight ? decidePress(S) : null;
+  return { carrierId: S.carrier?.id ?? null, presser: d ? { id: d.p.id, w: d.w } : null };
+}
+
+/** Steps 1-2 shared by autoFrame() and autoRoles(): formation targets, overrides, carrier. */
+function setup(opts) {
+  const { formations, ball, possession = 'none', carrierId = null, learnerId = null, overrides = {}, inFlight = false } = opts;
+  if (!formations?.us) throw new TypeError('autoFrame: opts.formations.us is required');
+  const P = { ...SCENE_DEFAULTS, ...opts.params };
+  const attacking = possession === 'us' || possession === 'them' ? possession : null;
+  const defending = attacking === 'us' ? 'them' : attacking === 'them' ? 'us' : null;
+  const shapeBall = opts.shapeBall ?? ball;
+
+  // 1. Formation targets and overrides.
+  const players = [];
+  const byId = new Map();
+  for (const team of ['us', 'them']) {
+    const formation = team === 'us' ? formations.us : formations.them ?? formations.us;
+    // A loose ball: no possession offset, but both teams take their out-of-possession shape (the
+    // rules judge a loose ball as defending).
+    const targets = teamTargets(formation, team, shapeBall, { inPossession: possession === team, offset: !!attacking, shape: P.shape ?? true });
+    for (const role of ROLES) {
+      const id = playerId(team, role);
+      const p = overrides[id] ?? targets[role];
+      const player = { id, team, role, x: p.x, y: p.y };
+      players.push(player);
+      byId.set(id, player);
+    }
+  }
+  const overridden = new Set(Object.keys(overrides).filter((id) => byId.has(id)));
+  const pinned = new Set(overridden); // never picked as carrier or presser
+  if (learnerId) pinned.add(learnerId);
+  const mobility = new Map(players.map((p) => [p.id, pinned.has(p.id) ? 0 : 1])); // 0 = separation never moves it
+
+  // 2. Carrier: explicit, or the nearest eligible outfielder of the team in possession. A loose ball
+  // (possession 'none') has no carrier, even if one is named (§5.2).
+  let carrier = carrierId && attacking ? byId.get(carrierId) ?? null : null;
+  if (!carrier && attacking && (opts.autoCarrier ?? P.autoCarrier) && !inFlight) {
+    carrier = nearest(ball, players.filter((p) => p.team === attacking && p.role !== 'GK' && !pinned.has(p.id)));
+  }
+  if (carrier) {
+    if (!pinned.has(carrier.id)) {
+      const back = carrier.team === 'us' ? -P.carrierOffset : P.carrierOffset;
+      Object.assign(carrier, clampToPitch({ x: ball.x + back, y: ball.y }));
+    }
+    mobility.set(carrier.id, 0);
+  }
+
+  // 2b. Goal-side settle (D5, R4): the formation table knows nothing of the opponents, so out of
+  // possession an #8 standing on the wrong side of an opponent near him, or a winger of the
+  // full-back on his flank, drops goal-side of him. Part of every auto player's spot (the learner's too).
+  if (P.settle) settle(players, attacking ? [defending] : ['us', 'them'], overridden, carrier, P);
+
+  return {
+    P, ball, shapeBall, possession, attacking, defending, inFlight, players, byId, pinned, overridden, mobility, carrier,
+    autoPress: opts.autoPress ?? P.autoPress,
+    onsideClamp: opts.onsideClamp ?? P.onsideClamp,
+  };
+}
+
+/**
+ * Goal-side settle for the defending team(s) (own goal: x = 0 for 'us', x = 105 for 'them'): each
+ * auto-placed #8 moves back to settleMargin goal-side of the opponents within settleReach of him
+ * (their full-back on his flank, for a winger), with full effect up to settleReach and none beyond
+ * settleReach + settleFade, so the placement stays continuous. Every move is computed from the
+ * positions before the settle (with a loose ball both teams settle, independent of order). Only
+ * depth changes. Mutates players.
+ */
+function settle(players, teams, overridden, carrier, P) {
+  const moves = [];
+  for (const p of players) {
+    if (!teams.includes(p.team) || overridden.has(p.id) || p === carrier) continue;
+    const fam = ROLE_INFO[p.role]?.family;
+    if (fam !== 'CM' && fam !== 'W') continue;
+    const sign = p.team === 'us' ? 1 : -1; // + = away from his own goal
+    const flankFB = fam === 'W' ? (ROLE_INFO[p.role].side === 'L' ? 'RB' : 'LB') : null;
+    let back = 0;
+    for (const o of players) {
+      if (o.team === p.team || o.role === 'GK' || o === carrier || (flankFB && o.role !== flankFB)) continue;
+      const excess = sign * (p.x - o.x) + P.settleMargin; // > 0: not goal-side enough
+      if (excess <= 0) continue;
+      const w = clamp((P.settleReach + P.settleFade - dist(p, o)) / P.settleFade, 0, 1);
+      back = Math.max(back, w * excess);
+    }
+    if (back > 0) moves.push([p, sign * back]);
+  }
+  for (const [p, dx] of moves) p.x = clamp(p.x - dx, 0, LENGTH);
+}
+
+/**
+ * The automatic press: the defending outfielder whose formation spot is nearest the (shape) ball,
+ * unless that is the learner (who must decide) or an override (the author decided). "Nearest"
+ * counts each metre a spot is past the ball as pressPastWeight metres, so a goal-side defender
+ * takes over from one the ball has gone by, and, with the ball wide in the defending team's half,
+ * the ball-side full-back as pressFbEngage metres nearer (R2, U5: he engages the winger; context.js
+ * engageBias(), the same ranking buildContext() uses for the first defender). The weight ramps with the lead over the next defender
+ * (pressHandover) and fades beyond pressRadius (pressFade).
+ * @returns {{p: object, w: number}|null}
+ */
+function decidePress({ P, shapeBall, players, pinned, carrier, defending }) {
+  const g = norm(sub(defending === 'us' ? OWN_GOAL : OPP_GOAL, shapeBall));
+  const fb = engageBias(defending, shapeBall, { fbEngage: P.pressFbEngage, fbEngageFrom: P.pressFbEngageFrom, fbEngageTo: P.pressFbEngageTo });
+  const ranked = players
+    .filter((p) => p.team === defending && p.role !== 'GK' && p !== carrier)
+    .map((p) => ({ p, d: dist(p, shapeBall) + P.pressPastWeight * Math.max(0, -dot(sub(p, shapeBall), g)) - (p.role === fb.role ? fb.bias : 0) }))
+    .sort((a, b) => a.d - b.d); // stable: ties keep role order
+  const [first, second] = ranked;
+  if (!first || pinned.has(first.p.id)) return null;
+  const lead = second ? second.d - first.d : Infinity;
+  let w = P.pressHandover > 0 ? clamp(lead / P.pressHandover, 0, 1) : 1;
+  if (first.d > P.pressRadius) w *= P.pressFade > 0 ? clamp(1 - (first.d - P.pressRadius) / P.pressFade, 0, 1) : 0;
+  return w > 0 ? { p: first.p, w } : null;
+}
+
+/**
+ * Push players apart until no pair is closer than P.minSeparation (or passes run out).
+ * mobility[i] in [0, 1]: a pair's push is shared as m_i / max(m_i + m_j, 1), which splits it
+ * evenly between two free players, gives all of it to a free player next to a fixed one, and
+ * varies continuously in between (a presser easing into its press is not suddenly immovable).
+ *
+ * Continuity: each pair's push direction and target are fixed once, from the positions BEFORE
+ * separation. Re-reading the direction from positions an earlier pass has moved would amplify a
+ * near-zero direction pass after pass into a flip, so a 1 cm ball move could swap two crossing
+ * players by metres. The target is a signed gap along that direction; a pair whose biased offset u
+ * is shorter than separationSoft only closes the share |u| / separationSoft of the way from its
+ * starting gap to minSeparation, so the push fades out (instead of flipping) as the two cross.
+ */
+function separate(players, mobility, P, constrain) {
+  const n = players.length;
+  const min = P.minSeparation;
+  const ox = players.map((p) => p.x), oy = players.map((p) => p.y);
+  const pairs = new Map(); // i * n + j → { ux, uy, gap }, fixed when the pair first overlaps
+  const pairOf = (i, j) => {
+    const a = players[i], b = players[j];
+    // Direction a → b, biased along the pitch: opponents each towards their own goal (an
+    // overlapping marker ends up goal-side of their man), teammates with the more advanced role
+    // ahead. The bias is left/right symmetric, so mirrored scenes separate identically.
+    const toward = a.team === 'us' ? P.separationBias : -P.separationBias;
+    const rx = ox[j] - ox[i], ry = oy[j] - oy[i];
+    const ux = rx + (a.team !== b.team ? toward : Math.sign(depth(b) - depth(a)) * toward), uy = ry;
+    const l = Math.hypot(ux, uy);
+    if (l <= EPS) return { ux: 0, uy: 0, gap: -Infinity };
+    const share = P.separationSoft > 0 ? Math.min(1, l / P.separationSoft) : 1;
+    const s0 = (rx * ux + ry * uy) / l; // starting gap along the push direction (< 0: on the other side)
+    return { ux: ux / l, uy: uy / l, gap: s0 + share * (min - s0) };
+  };
+  for (let pass = 0; pass < P.separationPasses; pass++) {
+    const dx = new Float64Array(n), dy = new Float64Array(n);
+    let any = false;
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const mi = mobility[i], mj = mobility[j];
+        if (mi <= 0 && mj <= 0) continue;
+        const a = players[i], b = players[j];
+        const d = dist(a, b);
+        if (d >= min) continue;
+        let q = pairs.get(i * n + j);
+        if (!q) pairs.set(i * n + j, (q = pairOf(i, j)));
+        const s = (b.x - a.x) * q.ux + (b.y - a.y) * q.uy;
+        if (s >= q.gap) continue;
+        // Both terms vanish at their limit (d = min, s = gap), so the push never switches on or off abruptly.
+        const k = Math.min(q.gap - s, min - d) / Math.max(mi + mj, 1);
+        dx[i] -= q.ux * k * mi; dy[i] -= q.uy * k * mi;
+        dx[j] += q.ux * k * mj; dy[j] += q.uy * k * mj;
+        any = true;
+      }
+    }
+    if (!any) return;
+    for (let i = 0; i < n; i++) {
+      if (dx[i] === 0 && dy[i] === 0) continue;
+      players[i].x += dx[i];
+      players[i].y += dy[i];
+      constrain(players[i]);
+    }
+  }
+}

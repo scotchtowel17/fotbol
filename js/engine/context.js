@@ -5,15 +5,26 @@
 // their layer-A BASE position, not at the spot being judged. The learner's spot is
 // then scored against that duty, which avoids circular scoring.
 
-import { dist, median } from './geometry.js';
-import { laneOf, thirdOf, isWingLane, OWN_GOAL, LENGTH } from './pitch.js';
+import { dist, median, clamp } from './geometry.js';
+import { laneOf, thirdOf, isWingLane, OWN_GOAL, LENGTH, MID_Y, LANE_EDGES, mirrorPoint } from './pitch.js';
 import { ROLE_INFO, BACK_LINE, MIDFIELD, parsePlayerId } from './roles.js';
 
 export const CONTEXT_DEFAULTS = Object.freeze({
   pressureRadius: 3, // [D] an opponent this close to the carrier = pressure on the ball
   secondDefenderRadius: 15, // [D] max distance from the first defender to count as the covering 2nd defender
+  coverUnitPenalty: 5, // [D] U5/R1: covering a back-liner who engages, a candidate from outside the back line ranks this many metres further away
+  coverMidAhead: 5, // [D] U2/U4: a first defender from midfield or up front this far ahead of our back line is covered from midfield, never by a back-liner (who holds the line)
   centreOfPlayRadius: 12, // [D] 2nd attackers are within this of the ball (published 9.15 m is from 3v3 play)
   markRadius: 18, // [D] an opponent further than this from your base is not "yours" to mark
+  handoverDepth: 5, // [D] D7: midfielders and forwards hand opponents within this of our back line's height (or deeper) to the back line
+  backReach: 8, // [D] D7: ...and the back line leaves opponents more than this ahead of its height to the midfield
+  midReach: 8, // [D] D7/U1: the #8s leave opponents more than this ahead of our midfield line to the forwards (a compact block does not chase them)
+  markBehindBall: 2, // [D] U6: in a mid or low block, midfielders and forwards leave opponents more than this behind the ball (they can't receive a forward pass; the block blocks the central passes instead)
+  coverReach: 4, // [D] D3/U5: an opponent this close to a covering back-liner is his to deal with, so nobody else is sent to mark him
+  pastWeight: 2, // [D] F1/T3: ranking the first defender, each metre a player is past the ball (beyond it, seen from our goal) counts as this many extra metres; the same rule as autoFrame's press (SCENE_DEFAULTS.pressPastWeight)
+  fbEngage: 10, // [D] R2/U5: with the ball wide in our half the ball-side full-back engages the winger: he ranks this many metres nearer the ball (SCENE_DEFAULTS.pressFbEngage)
+  fbEngageFrom: 45, // [D] ...fully with the ball at or behind this x (own frame)...
+  fbEngageTo: 55, // [D] ...fading out by this x (in their half the winger or #8 presses)
   blockHigh: 45, // [D] back-line x (in the defending team's own frame) at or above this = high block
   blockLow: 25, // [D] below this = low block
 });
@@ -21,9 +32,18 @@ export const CONTEXT_DEFAULTS = Object.freeze({
 const OPP_BACK = BACK_LINE;
 const OPP_MID = MIDFIELD;
 
+// Marking units out of possession: each unit shares out the opponents near it (D7 zonal
+// hand-over), so two centre-backs never both "own" the same striker.
+const MARK_UNIT = { CB: 'back', FB: 'back', DM: 'mid', CM: 'mid', W: 'front', ST: 'front' };
+
 /**
+ * Build the per-frame context the rules read.
  * @param {import('./types.js').Frame} frame
  * @param {{ learnerId: string, base?: {x:number,y:number}, params?: object }} opts
+ *   base: the learner's layer-A target; defaults to the learner's position in the frame.
+ *   params: overrides for CONTEXT_DEFAULTS; `params.rules[ruleId]` overrides a rule's defaults.
+ * @returns {object} Ctx (docs/ARCHITECTURE.md §5.4, plus usAtBase, secondDefender,
+ *   lines.ourMidLineX and lines.oppLastX)
  */
 export function buildContext(frame, { learnerId, base, params = {} }) {
   const P = { ...CONTEXT_DEFAULTS, ...params };
@@ -40,12 +60,14 @@ export function buildContext(frame, { learnerId, base, params = {} }) {
   const carrier = frame.carrierId ? frame.players.find((p) => p.id === frame.carrierId) ?? null : null;
   const moment = frame.possession === 'us' ? 'in_possession' : frame.possession === 'them' ? 'out_of_possession' : 'loose';
 
-  // Pressure on the ball: explicit tag wins; otherwise any opponent of the carrier within pressureRadius.
+  // Pressure on the ball: explicit tag wins; otherwise any outfield opponent of the carrier within
+  // pressureRadius of the carrier or the ball (autoFrame's presser stands pressDistance from the
+  // ball, which with the carrier's offset behind it can be just over pressureRadius from the carrier).
   let pressureOnBall = frame.tags?.pressureOnBall;
   if (pressureOnBall === undefined) {
     if (carrier) {
       const pressers = carrier.team === 'us' ? opponents : usAtBase;
-      pressureOnBall = pressers.some((p) => p.role !== 'GK' && dist(p, carrier) <= P.pressureRadius);
+      pressureOnBall = pressers.some((p) => p.role !== 'GK' && Math.min(dist(p, carrier), dist(p, ball)) <= P.pressureRadius);
     } else pressureOnBall = false;
   }
 
@@ -59,7 +81,7 @@ export function buildContext(frame, { learnerId, base, params = {} }) {
   const oppMidLineX = median(opponents.filter((p) => OPP_MID.includes(p.role)).map((p) => p.x));
   const ourMidLineX = median(usAtBase.filter((p) => MIDFIELD.includes(p.role)).map((p) => p.x));
 
-  // Block height of the team out of possession, measured in its own frame.
+  // Block height of the team out of possession, measured in its own frame. A loose ball counts as us defending.
   const defendingUs = moment !== 'in_possession';
   const backX = defendingUs ? ourBackLineX : LENGTH - oppBackLineX;
   const blockHeight = backX >= P.blockHigh ? 'high' : backX < P.blockLow ? 'low' : 'mid';
@@ -68,13 +90,31 @@ export function buildContext(frame, { learnerId, base, params = {} }) {
   const outfieldUs = usAtBase.filter((p) => p.role !== 'GK');
   let duty, firstDefender = null, secondDefender = null;
   if (defendingUs) {
-    const byBall = [...outfieldUs].sort((a, b) => dist(a, ball) - dist(b, ball));
+    // Nearest to the ball, counting metres past the ball extra: a goal-side teammate takes the ball
+    // on rather than a player the ball has already gone by (who recovers instead, T3).
+    // The ball-side full-back ranks nearer with the ball wide in our half (R2, U5: he engages the
+    // winger and a centre-back covers); scene.js ranks its automatic presser the same way.
+    const gl = dist(OWN_GOAL, ball) || 1, gx = (OWN_GOAL.x - ball.x) / gl, gy = (OWN_GOAL.y - ball.y) / gl;
+    const fb = engageBias('us', ball, P);
+    const reach = (p) => dist(p, ball) + P.pastWeight * Math.max(0, -((p.x - ball.x) * gx + (p.y - ball.y) * gy)) - (p.role === fb.role ? fb.bias : 0);
+    const byBall = [...outfieldUs].sort((a, b) => reach(a) - reach(b));
     firstDefender = byBall[0] ?? null;
-    // The cover player sits behind the presser (goal-side of them, not merely of the ball).
-    const coverCandidates = outfieldUs
-      .filter((p) => p !== firstDefender && p.x < Math.min(ball.x, firstDefender.x) - 1 && dist(p, firstDefender) <= P.secondDefenderRadius)
-      .sort((a, b) => dist(a, firstDefender) - dist(b, firstDefender));
-    secondDefender = coverCandidates[0] ?? null;
+    if (firstDefender) {
+      // The cover player sits behind the presser (goal-side of them, not merely of the ball), and
+      // comes from the right unit: a back-liner who engages is covered from the back line (U5: the
+      // near centre-back covers the full-back; R1: the partner covers); a midfielder or forward who
+      // steps out well ahead of our back line is covered from midfield or not at all, because a
+      // back-liner who left the line to cover him would open a gap in it (U2, U4).
+      const unitOf = (p) => MARK_UNIT[ROLE_INFO[p.role]?.family];
+      const fdBack = unitOf(firstDefender) === 'back';
+      const holdLine = !fdBack && firstDefender.x >= ourBackLineX + P.coverMidAhead;
+      const cost = (p) => dist(p, firstDefender) + (fdBack && unitOf(p) !== 'back' ? P.coverUnitPenalty : 0);
+      const coverCandidates = outfieldUs
+        .filter((p) => p !== firstDefender && p.x < Math.min(ball.x, firstDefender.x) - 1 && dist(p, firstDefender) <= P.secondDefenderRadius)
+        .filter((p) => !(holdLine && unitOf(p) === 'back'))
+        .sort((a, b) => cost(a) - cost(b));
+      secondDefender = coverCandidates[0] ?? null;
+    }
     duty = firstDefender === learnerAtBase ? 'first-defender'
       : secondDefender === learnerAtBase ? 'second-defender' : 'third-defender';
   } else {
@@ -82,18 +122,31 @@ export function buildContext(frame, { learnerId, base, params = {} }) {
       : dist(learnerAtBase, ball) <= P.centreOfPlayRadius ? 'second-attacker' : 'third-attacker';
   }
 
-  // Who is "yours": the first defender owns the carrier; everyone else the nearest opponent to their base.
+  // Who is "yours": the first defender owns the carrier; the second defender covers and marks
+  // nobody, but an opponent right beside a covering back-liner (coverReach) is his, so nobody else
+  // is sent to him. Everyone else is paired with at most one opponent and vice versa: wingers take
+  // only the full-back on their flank (R4) and full-backs start with the winger on theirs (R2);
+  // then the back line and midfield share out the remaining opponents nearest them, and then the
+  // striker (greedy, within markRadius). Zonal hand-over (D7): the back line leaves opponents more
+  // than backReach ahead of it to the midfield, midfielders and the striker leave opponents already
+  // at the back line's height to the back line, the #6 (who screens, R3) only takes opponents
+  // between our lines (and within the back line's reach only if no back-liner can), and the #8s
+  // none more than midReach ahead of our midfield line (U1: the block stays compact). In a mid or
+  // low block, midfielders and the striker leave opponents behind the ball alone (U6: block the
+  // central passes, let them play at the back).
   let markTarget = null;
-  if (defendingUs) {
-    if (duty === 'first-defender') markTarget = carrier;
-    else {
-      let best = Infinity;
-      for (const o of opponents) {
-        if (o.role === 'GK' || o === carrier) continue;
-        const d = dist(o, learnerAtBase);
-        if (d < best && d <= P.markRadius) { best = d; markTarget = o; }
-      }
-    }
+  if (duty === 'first-defender') markTarget = carrier;
+  else if (duty === 'third-defender') {
+    const markers = outfieldUs.filter((p) => p !== firstDefender && p !== secondDefender);
+    // A back-liner who covers stays in or near the line, so an opponent beside him is his to deal with.
+    const coverer = secondDefender && MARK_UNIT[ROLE_INFO[secondDefender.role]?.family] === 'back' ? secondDefender : null;
+    const targets = opponents.filter((o) => o.role !== 'GK' && o !== carrier && !(coverer && dist(o, coverer) <= P.coverReach));
+    const bands = {
+      backMax: ourBackLineX + P.backReach, fwdMin: ourBackLineX + P.handoverDepth, dmMax: ourMidLineX, cmMax: ourMidLineX + P.midReach,
+      fwdMax: blockHeight === 'high' ? Infinity : ball.x + P.markBehindBall,
+    };
+    const marks = assignMarks(markers, targets, bands, P.markRadius);
+    markTarget = marks.get(learnerAtBase) ?? null;
   }
 
   // The opponent most threatening to our goal (excluding the carrier and their keeper).
@@ -134,4 +187,72 @@ export function buildContext(frame, { learnerId, base, params = {} }) {
     dangerousAttacker,
     widthHolder,
   };
+}
+
+/**
+ * R2/U5: with the ball wide in the defending team's own half, its ball-side full-back engages the
+ * winger instead of the nearer #8, so he ranks `bias` metres nearer the ball when the first
+ * defender (context) or the automatic presser (scene.js) is chosen. The bias fades in across the
+ * half-space into the wing lane and out between fbEngageFrom and fbEngageTo (own frame), so the
+ * choice stays continuous in the ball. Shared by buildContext() and autoFrame().
+ * @param {'us'|'them'} team  the defending team
+ * @param {{x:number,y:number}} ball  canonical frame
+ * @param {{fbEngage:number, fbEngageFrom:number, fbEngageTo:number}} P
+ * @returns {{ role: 'LB'|'RB', bias: number }}
+ */
+export function engageBias(team, ball, P) {
+  const own = team === 'us' ? ball : mirrorPoint(ball);
+  const wide = clamp((Math.abs(own.y - MID_Y) - (LANE_EDGES[3] - MID_Y)) / (LANE_EDGES[4] - LANE_EDGES[3]), 0, 1);
+  const deep = clamp((P.fbEngageTo - own.x) / (P.fbEngageTo - P.fbEngageFrom), 0, 1);
+  return { role: own.y < MID_Y ? 'LB' : 'RB', bias: P.fbEngage * wide * deep };
+}
+
+/**
+ * Pair our third defenders with opponents one-to-one (see buildContext). `bands` holds the x
+ * limits of each unit's zone: backMax (back line), fwdMin and fwdMax (midfield and striker: fwdMax
+ * is just behind the ball in a mid or low block, where only a high press marks players behind the
+ * ball, U6), dmMax (#6) and cmMax (#8s). Returns Map<ourPlayer, opponent>.
+ */
+function assignMarks(markers, targets, { backMax, fwdMin, fwdMax, dmMax, cmMax }, radius) {
+  const marks = new Map();
+  const taken = new Set();
+  const familyOf = (p) => ROLE_INFO[p.role]?.family;
+  const inZone = (m, o) => {
+    const f = familyOf(m);
+    if (f === 'CB' || f === 'FB') return o.x <= backMax;
+    if (o.x > fwdMax) return false;
+    return o.x >= fwdMin && o.x <= (f === 'DM' ? dmMax : f === 'CM' ? cmMax : Infinity);
+  };
+  // The #6 screens (R3): an opponent still within the back line's reach is the back line's first,
+  // so the #6's pairs there rank after every other pair (he takes him only if nobody else can).
+  const rank = (m, o, d) => d + (familyOf(m) === 'DM' && o.x <= backMax ? radius : 0);
+  // Flank duels first: our winger takes their full-back on his flank (R4) and our full-back their
+  // winger (R2), whatever their height. Their right-sided roles play on our left.
+  for (const p of markers) {
+    const f = familyOf(p);
+    if (f !== 'W' && f !== 'FB') continue;
+    const side = ROLE_INFO[p.role].side === 'L' ? 'R' : 'L';
+    const o = targets.find((q) => q.role === side + (f === 'W' ? 'B' : 'W'));
+    if (o && !taken.has(o) && dist(o, p) <= radius) { marks.set(p, o); taken.add(o); }
+  }
+  // Then the back line, the #6 and the #8s together, nearest pairs first (an opponent where two
+  // zones overlap goes to whoever is nearer: hand-over, D7), then the striker.
+  for (const families of [['CB', 'FB', 'DM', 'CM'], ['ST']]) {
+    const pairs = [];
+    for (const m of markers) {
+      if (!families.includes(familyOf(m)) || marks.has(m)) continue;
+      for (const o of targets) {
+        if (taken.has(o) || !inZone(m, o)) continue;
+        const d = dist(m, o);
+        if (d <= radius) pairs.push({ d: rank(m, o, d), m, o });
+      }
+    }
+    pairs.sort((a, b) => a.d - b.d);
+    for (const { m, o } of pairs) {
+      if (marks.has(m) || taken.has(o)) continue;
+      marks.set(m, o);
+      taken.add(o);
+    }
+  }
+  return marks;
 }

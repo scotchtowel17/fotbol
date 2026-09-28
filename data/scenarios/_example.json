@@ -1,0 +1,94 @@
+{
+  "id": "example-d3-cover-lcb",
+  "title": "Cover your centre-back partner",
+  "brief": "Their number 9 drops in to get the ball. Watch your partner, then find your spot.",
+  "module": "M1",
+  "moment": "out_of_possession",
+  "phase": "mid_block",
+  "principles": ["D3", "R1"],
+  "learner": { "role": "LCB" },
+  "timeline": {
+    "duration": 6.0,
+    "freezeAt": 4.2,
+    "ball": [
+      { "t": 0, "x": 57, "y": 46.5, "event": "carry" },
+      { "t": 1.0, "x": 55.5, "y": 45, "event": "pass" },
+      { "t": 2.0, "x": 42, "y": 38.5 },
+      { "t": 2.8, "x": 40.5, "y": 39, "event": "carry" },
+      { "t": 4.2, "x": 33.5, "y": 39.5 },
+      { "t": 6.0, "x": 29, "y": 36.5 }
+    ],
+    "possession": [{ "t": 0, "team": "them" }],
+    "carrier": [
+      { "t": 0, "id": "them-LCM" },
+      { "t": 1.0, "id": null },
+      { "t": 2.0, "id": "them-ST" }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "them-ST",
+          "keys": [
+            { "t": 0, "x": 39, "y": 37.5 },
+            { "t": 1.0, "x": 41, "y": 38 },
+            { "t": 2.0, "x": 42.8, "y": 38.5 },
+            { "t": 2.8, "x": 41.3, "y": 39 },
+            { "t": 4.2, "x": 34.3, "y": 39.5 },
+            { "t": 6.0, "x": 29.8, "y": 36.5 }
+          ]
+        },
+        {
+          "id": "us-RCB",
+          "keys": [
+            { "t": 0, "x": 34, "y": 41 },
+            { "t": 1.0, "x": 36, "y": 40 },
+            { "t": 2.0, "x": 40.2, "y": 38.4 },
+            { "t": 2.8, "x": 38.2, "y": 38.7 },
+            { "t": 4.2, "x": 31, "y": 39.1 },
+            { "t": 6.0, "x": 27.5, "y": 38.5 }
+          ]
+        },
+        {
+          "id": "us-DM",
+          "keys": [
+            { "t": 0, "x": 47, "y": 36.5 },
+            { "t": 1.0, "x": 46.5, "y": 36.5 },
+            { "t": 2.0, "x": 45, "y": 36.5 },
+            { "t": 4.2, "x": 39.5, "y": 36 },
+            { "t": 6.0, "x": 35, "y": 35.5 }
+          ]
+        }
+      ]
+    },
+    "tags": [
+      { "t": 0, "carrierFacing": "forward" },
+      { "t": 2.0, "carrierFacing": "backward" },
+      { "t": 2.8, "carrierFacing": "forward", "pressureOnBall": true }
+    ]
+  },
+  "answer": {
+    "mode": "engine",
+    "ideal": { "x": 27, "y": 36 },
+    "tol": { "tx": 2.5, "ty": 3 }
+  },
+  "misconceptions": [
+    {
+      "id": "ball-watching",
+      "region": { "type": "circle", "x": 32, "y": 38.5, "r": 2 },
+      "text": "You went to the ball as well, but your partner already has it covered; drop in behind them instead."
+    },
+    {
+      "id": "level-with-partner",
+      "region": { "type": "rect", "x0": 29.5, "y0": 31, "x1": 33, "y1": 35.5 },
+      "text": "You stood level with your partner, so one touch past them beats you both; drop a few metres behind."
+    },
+    {
+      "id": "holding-the-line",
+      "region": { "type": "circle", "x": 21.5, "y": 30, "r": 3 },
+      "text": "You held your place in the line, which leaves a big gap if the striker gets past your partner."
+    }
+  ],
+  "difficulty": 0,
+  "source": { "kind": "handmade", "license": "MIT", "author": "fotbol", "keyedBy": [] }
+}

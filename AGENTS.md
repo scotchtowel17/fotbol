@@ -10,12 +10,13 @@ Read these first:
 ## Commands
 
 ```bash
-npm test            # node --test on tests/**/*.test.js (Node >= 20, no dependencies)
+npm test            # node --test on tests/**/*.test.js (Node >= 22: the quoted glob needs it; CI runs 22; no dependencies)
 npm run check       # validate every scenario and print the engine's answer at the freeze frame
 npm run serve       # python3 -m http.server 8080  → http://localhost:8080
+node scripts/sanity.mjs > docs/sanity-output.txt   # the engine's answers on the canonical situations, for coach review
 ```
 
-`tests.html` runs the same test files in a browser.
+`tests.html` runs the same test files in a browser. `#/dev` is the engine playground: a real scene, the ghost and heatmap, and a live score while you drag yourself or the ball. After any change to layer A or a rule, `tests/integration.test.js` must stay green (every canonical situation and role still gets an S-grade ghost) and the sanity report should be regenerated.
 
 ## Hard rules
 
@@ -32,7 +33,8 @@ npm run serve       # python3 -m http.server 8080  → http://localhost:8080
 
 | Want to... | Look at |
 |---|---|
-| Change where players stand by default | `data/formations/helios-433.json`, `js/engine/formation.js`, `js/engine/scene.js` |
+| Change where players stand by default | `data/formations/helios-433.json`, `js/engine/formation.js` (`phaseShape`), `js/engine/scene.js` |
+| Run the whole loop for one scene | `js/engine/analyse.js` (`analyseScene`, `judgeSpot`); canonical situations in `tests/situations.js` |
 | Change how a position is judged | `js/engine/rules/*.js`, `js/engine/score.js` |
 | Change feedback wording | the `text` block of each rule, `js/engine/explain.js` |
 | Add or fix a scenario | `data/scenarios/*.json` (then `npm run check`) |

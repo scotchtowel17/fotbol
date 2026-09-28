@@ -12,6 +12,7 @@
  * @property {'pass'|'carry'|'cross'|'shot'|'clearance'|'throw-in'|'goal-kick'|'corner'|'free-kick'} [event]
  * @property {boolean} [ballMovingBack]
  * @property {string} [phase]
+ * @property {string[]} [widthHolders]  roles holding the width in possession (default: the wingers)
  */
 
 /**
@@ -46,6 +47,9 @@
  * @property {number} distance
  * @property {Vec} center
  * @property {{tx:number, ty:number}} tol
+ * @property {number} gate      rulesGate(sZone): the share of rule credit that counted
+ * @property {number} raw       unrounded score (critical cap applied), used to rank ghost candidates
+ * @property {Vec} spot         the judged spot
  */
 
 export {};
