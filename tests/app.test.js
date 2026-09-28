@@ -1,7 +1,7 @@
 import { test, assert, isNode } from './harness.js';
 import {
   parseHash, toHash, normalizeSettings, SETTINGS_DEFAULTS, MODE_INFO, NAV_MODES, settingsLinks, isDevMode,
-  resolveRoute, mergeSettings, effectiveWording, routeUrl, PLAYER_ROUTES, SETTINGS_COPY,
+  resolveRoute, mergeSettings, effectiveWording, routeUrl, PLAYER_ROUTES, SETTINGS_COPY, navigateTo,
 } from '../js/main.js';
 import {
   normalizePrinciples, normalizeScenarioIndex, createScenarioStore, buildFormations, loadAppData, DATA_PATHS,
@@ -33,6 +33,37 @@ test('app: toHash normalises navigation targets', () => {
   assert.equal(toHash('#/drill/x'), '#/drill/x');
   assert.equal(toHash('/live'), '#/live');
   assert.equal(toHash('#home'), '#/home');
+});
+
+test('app: navigate pushes a history entry; { replace: true } swaps the current one and routes at once (Back skips a redirect)', () => {
+  /** A browser's address bar and history, enough for navigateTo: hash changes push, replaceState swaps. */
+  function fakeBrowser(start) {
+    const entries = [start];
+    let at = 0, routed = 0, hashchanges = 0;
+    const location = {
+      get hash() { return entries[at]; },
+      set hash(h) { entries.splice(at + 1, Infinity, h); at += 1; hashchanges += 1; }, // the router routes on 'hashchange'
+    };
+    const history = { state: null, replaceState: (_s, _t, url) => { entries[at] = url; } };
+    return { location, history, route: () => { routed += 1; }, entries, get at() { return at; }, get routed() { return routed; }, get hashchanges() { return hashchanges; } };
+  }
+  // '#/' → '#/play/free-player' (a pass node) → redirected to '#/pass/free-player'.
+  const b = fakeBrowser('#/');
+  navigateTo('#/play/free-player', {}, b);
+  assert.deepEqual([b.entries, b.at, b.hashchanges, b.routed], [['#/', '#/play/free-player'], 1, 1, 0], 'a push: the hash changes and the router routes on hashchange');
+  assert.equal(navigateTo('pass/free-player', { replace: true }, b), '#/pass/free-player');
+  assert.deepEqual(b.entries, ['#/', '#/pass/free-player'], 'the redirect replaced its own entry');
+  assert.equal(b.routed, 1, 'and routed at once (replaceState fires no hashchange)');
+  assert.equal(b.hashchanges, 1);
+  assert.equal(b.entries[b.at - 1], '#/', 'so Back goes home, not to the redirect');
+  // The same address again: route again (a push cannot re-trigger hashchange).
+  const c = fakeBrowser('#/pass');
+  navigateTo('#/pass', {}, c);
+  assert.deepEqual([c.entries, c.routed, c.hashchanges], [['#/pass'], 1, 0]);
+  // No history API: a replace falls back to a plain hash change.
+  const d = fakeBrowser('#/play/x');
+  navigateTo('#/pass/x', { replace: true }, { ...d, location: d.location, history: { state: null, replaceState() { throw new Error('blocked'); } }, route: d.route });
+  assert.deepEqual([d.entries, d.hashchanges], [['#/play/x', '#/pass/x'], 1]);
 });
 
 test('app: every nav mode has title and blurb copy', () => {

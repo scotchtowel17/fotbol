@@ -3,12 +3,16 @@
 // Mirrors THIRD_PARTY.md: fotbol (MIT), the HELIOS Base formation data (MIT, with the attribution
 // and the note on our edits), Delaunator (ISC) and robust-predicates (Unlicense), then the research
 // the principles come from and a plain privacy note. Licence files are same-origin links; the
-// sources are external links that open in a new tab. Nothing here is fetched.
+// sources are external links that open in a new tab. Nothing here is fetched. The privacy note also says where the
+// site is hosted: GitHub Pages keeps visitors' IP addresses in its logs for security (research/kid-learning.md R38),
+// while fotbol itself sends nothing.
 
 import { el, icon, linkButton } from '../components.js';
 
 export const REPO_URL = 'https://github.com/scotchtowel17/fotbol';
 export const RESEARCH_URL = `${REPO_URL}/blob/main/docs/RESEARCH.md`;
+/** GitHub's page on what GitHub Pages is, including that it logs visitors' IP addresses. */
+export const HOSTING_URL = 'https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages';
 
 /** Repo-relative file → URL next to index.html (this file is js/ui/modes/credits.js). */
 const local = (path) => new URL(`../../../${path}`, import.meta.url).href;
@@ -127,6 +131,7 @@ const COPY = {
       ['No tracking', 'No analytics, no ads, no cookies. Nothing is counted or reported.'],
       ['Nothing leaves your device', 'Every file comes from this site, and fotbol makes no requests to anyone else.'],
       ['Your progress stays here', 'Stars, history and settings are saved in this browser only. You can export them to a file, or import them on another device, from the Progress page. Clearing this site\'s data in your browser deletes them.'],
+      ['Where it is hosted', 'fotbol is served by GitHub Pages, which logs visitors\' IP addresses for security. The app itself sends none of your data anywhere.', { label: 'GitHub Pages', href: HOSTING_URL }],
     ],
     savingOn: 'This browser is saving your progress.',
     savingOff: 'This browser window cannot save (private browsing or blocked storage), so your progress lasts until you close it.',
@@ -146,6 +151,7 @@ const COPY = {
       ['No sign-up', 'You never make an account. We don\'t know who you are.'],
       ['No tracking', 'No ads and nothing that watches what you do.'],
       ['Your stars stay here', 'Your progress is saved on this device only. A grown-up can move it to another device from the Progress page.'],
+      ['Where fotbol lives', 'GitHub runs the website. It keeps a note of each visitor\'s internet address to stay safe. fotbol itself sends none of your data.', { label: 'GitHub Pages', href: HOSTING_URL }],
     ],
     savingOn: 'This device is saving your stars.',
     savingOff: 'This window can\'t save your stars, so they go away when you close it.',
@@ -194,9 +200,9 @@ export async function mount(root, app) {
 
       el('section', { class: 'cr-privacy', 'aria-labelledby': 'cr-privacy-title' }, [
         el('h2', { id: 'cr-privacy-title', text: C.privacyTitle }),
-        el('ul', { class: 'cr-promises' }, C.privacy.map(([title, text]) => el('li', {}, [
+        el('ul', { class: 'cr-promises' }, C.privacy.map(([title, text, link]) => el('li', {}, [
           el('span', { class: 'cr-tick', 'aria-hidden': 'true' }, [icon('check', { size: 18 })]),
-          el('div', {}, [el('strong', { text: title }), el('p', { text })]),
+          el('div', {}, [el('strong', { text: title }), el('p', {}, [text, link ? ' ' : null, link ? ext(link.label, link.href) : null])]),
         ]))),
         el('p', { class: ['cr-saving', !persistent && 'is-off'], role: 'status', text: persistent ? C.savingOn : C.savingOff }),
       ]),

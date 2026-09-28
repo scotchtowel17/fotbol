@@ -1,7 +1,7 @@
 // js/engine/passing.js: rating every pass option, grading the learner's choice and saying why (docs/research/passing.md §4).
-import { test, assert, approx, loadJSON, timed, PERF_SLACK } from './harness.js';
+import { test, assert, approx, loadJSON, timed, isNode, PERF_SLACK } from './harness.js';
 import {
-  PASS_DEFAULTS, STAR_BANDS, starsForScore, value, lossCost, execProb, laneRisk, pressureAt, roomAt, raceAt, oppLines, swapTeams,
+  PASS_DEFAULTS, STAR_BANDS, starsForScore, value, lossCost, execProb, laneRisk, pressureAt, roomAt, raceAt, markedBy, oppLines, swapTeams,
   kidName, rateOptions, gradePass, explainPass, optionOf, allPassTexts, PASS_TAGS, PASS_HEADLINES,
 } from '../js/engine/passing.js';
 import { createFormation } from '../js/engine/formation.js';
@@ -41,6 +41,24 @@ function mirrorFrame(f) {
   };
 }
 const mirrorOptionId = (id) => id.replace(/^[^@]+/, (p) => mirrorPlayerId(p));
+
+/**
+ * Milliseconds of CPU per call: in Node this process's CPU time (process.cpuUsage), which other test files running side
+ * by side (npm test) do not inflate as they do the wall clock; in the browser the wall clock (harness.js timed). The
+ * median of `runs` runs after a warm-up, so a speed test catches an order-of-magnitude slowdown and does not flake.
+ */
+function cpuTimed(fn, { warmup = 2, runs = 7, reps = 1 } = {}) {
+  if (!isNode || typeof process.cpuUsage !== 'function') return timed(fn, { warmup, runs, reps });
+  for (let i = 0; i < warmup; i++) fn();
+  const ts = [];
+  for (let r = 0; r < runs; r++) {
+    const c0 = process.cpuUsage();
+    for (let i = 0; i < reps; i++) fn();
+    const c = process.cpuUsage(c0);
+    ts.push((c.user + c.system) / 1000 / reps);
+  }
+  return { median: [...ts].sort((a, b) => a - b)[Math.floor(ts.length / 2)], runs: ts };
+}
 
 const SCENES = [
   ['fixture build-up', makeFrame('ipBuildUp')],
@@ -99,6 +117,70 @@ test('building blocks: pressure is an oval toward goal, room is the free run, th
   assert.ok(raceAt(space, runner, [{ id: 'them-RB', role: 'RB', x: 71, y: 10 }], 1).pWin < 0.3, 'their defender is standing there');
 });
 
+test('race into space: a marker level with the runner or goal-side of him, within about 3 m, contests the ball; one he is past, or far off, does not', () => {
+  const runner = { x: 80, y: 20 }, space = { x: 92, y: 20 }, tBall = 18 / PASS_DEFAULTS.ballSpeed;
+  const race = (x, y) => raceAt(space, runner, [{ id: 'them-RCB', role: 'RCB', x, y }], tBall).pWin;
+  const level = race(80, 22), goalSide = race(81, 21), past = race(77, 21), far = race(80, 26);
+  // Before: a centre-back level with the runner and 2 m from him reacted 0.4 s later than the runner and lost the race 7 in 10.
+  assert.ok(level > 0.4 && level < PASS_DEFAULTS.beatenBelow, `level, 2 m away: pWin ${level.toFixed(2)} (contested)`);
+  assert.ok(goalSide < 0.45, `goal-side: pWin ${goalSide.toFixed(2)} (he gets there first)`);
+  assert.ok(past > 0.9 && far > 0.85, `the runner is past him: ${past.toFixed(2)}; 6 m away: ${far.toFixed(2)}`);
+  // markedBy: full within markReach, fading over markFade; level or goal-side, fading as the runner gets past him.
+  approx(markedBy({ x: 80, y: 22 }, runner, space), 1, 1e-12);
+  approx(markedBy({ x: 80, y: 24 }, runner, space), 0.5, 1e-9);
+  assert.equal(markedBy({ x: 80, y: 25.1 }, runner, space), 0);
+  approx(markedBy({ x: 78, y: 20 }, runner, space), 0.5, 1e-9);
+  approx(markedBy({ x: 77, y: 20 }, runner, space), 0, 1e-9);
+  // Left/right symmetric.
+  approx(raceAt({ x: 92, y: 48 }, { x: 80, y: 48 }, [{ id: 'them-LCB', role: 'LCB', x: 80, y: 46 }], tBall).pWin, level, 1e-12);
+});
+
+test('lane: a defender in the receiver\'s run to the ball blocks it (a 19 m pass, one 1 m in front of the receiver); one beside or behind him does not', () => {
+  const ball = { x: 40, y: 34 }, target = { x: 59, y: 34 };
+  const lane = (x, y) => laneRisk(ball, target, [{ id: 'them-DM', role: 'DM', x, y }], PASS_DEFAULTS, target);
+  const front = lane(58, 34.3);
+  assert.ok(front.meet < 17, `the receiver would meet it ${front.meet.toFixed(1)} m along, short of the defender`);
+  assert.ok(front.pLane < 0.15 && front.top.pBlock >= front.top.pRun, `pLane ${front.pLane.toFixed(2)}: a block`);
+  approx(front.top.at.x, 58, 1e-9); // cut out where he stands
+  for (const [x, y, what] of [[60, 34, 'behind'], [59, 35.5, 'beside']]) {
+    assert.ok(lane(x, y).pLane > 0.8, `${what}: pLane ${lane(x, y).pLane.toFixed(2)}`);
+  }
+  // In a rated frame: the #6's pass to the #8 is cut out, no star (the Player-mode review: it was risky, scored 97, 2 stars).
+  const f = frameOf({
+    ball: { x: 40, y: 34 }, carrierId: 'us-DM',
+    us: { DM: [39.2, 34], LCM: [59, 34], LCB: [30, 26], RCB: [30, 42] }, them: { GK: [100, 34], DM: [58, 34.3], LCB: [70, 28], RCB: [70, 40] },
+  });
+  const r = rateOptions(f), o = optionOf(r, 'us-LCM');
+  assert.equal(o.label, 'cut-out');
+  assert.deepEqual([o.blocker.id, o.blocker.via], ['them-DM', 'block']);
+  assert.ok(o.tags.some((t) => t.tag === 'blocked' && t.whoId === 'them-DM'));
+  assert.equal(gradePass(r, 'us-LCM').stars, 0);
+});
+
+test('who\'s open: a ball into space behind a tightly marked #9 is not the best, and a safe pass to a free teammate earns two stars', () => {
+  // The Player-mode review's picture: our winger on the ball near their end, their centre-back level with our #9 and 2 m from
+  // him, our #6 and #8 free with clear lanes. Before, the ball into space behind the #9 was starred and the #6 got one star.
+  const tight = {
+    ball: { x: 80, y: 4 }, carrierId: 'us-LW',
+    us: { LW: [79.2, 4], ST: [88, 20], DM: [72, 22], LCM: [76, 11] }, them: { GK: [103, 34], RCB: [88.5, 22], LCB: [92, 32], RB: [83, 2] },
+  };
+  const r = rateOptions(frameOf(tight));
+  const behind = optionOf(r, 'us-ST@space');
+  assert.ok(behind.pWin < PASS_DEFAULTS.beatenBelow, `pWin ${behind.pWin.toFixed(2)}: their centre-back contests it`);
+  assert.ok(['cut-out', 'risky'].includes(behind.label) && behind.tags.some((t) => t.tag === 'beaten-to-it'), behind.label);
+  assert.notEqual(r.best.targetId, 'us-ST', `best ${r.best.id}`);
+  assert.equal(r.best.colour, 'green');
+  for (const id of ['us-DM', 'us-LCM']) {
+    const o = optionOf(r, id);
+    assert.ok(o.receiverPressure < PASS_DEFAULTS.pressureFree && o.colour === 'green', id);
+    assert.ok(gradePass(r, id).stars >= 2, `${id}: a safe pass to a free teammate, ${gradePass(r, id).stars} stars`);
+  }
+  // Their centre-back 9 m away: the #9 is free, and the ball into space ahead of him is on.
+  const r2 = rateOptions(frameOf({ ...tight, them: { ...tight.them, RCB: [86, 29] } }));
+  assert.ok(optionOf(r2, 'us-ST@space').pWin > 0.8);
+  assert.equal(r2.best.id, 'us-ST@space');
+});
+
 test('rateOptions: every teammate to feet plus up to 3 spaces, sorted, with the documented fields, under 2 ms a frame', () => {
   for (const [name, frame] of SCENES) {
     const r = rateOptions(frame);
@@ -111,7 +193,7 @@ test('rateOptions: every teammate to feet plus up to 3 spaces, sorted, with the 
     assert.equal(r.options.filter((o) => o.label === 'best').length, 1, `${name}: one star`);
     for (let i = 1; i < r.options.length; i++) assert.ok(r.options[i - 1].score >= r.options[i].score, `${name}: sorted`);
     for (const o of r.options) {
-      for (const k of ['id', 'targetId', 'kind', 'point', 'aim', 'receiverAt', 'len', 'direction', 'pSafe', 'pLane', 'pExec', 'pWin', 'receiverPressure', 'room', 'bypassed', 'value', 'valueGain', 'U', 'score', 'colour', 'label', 'critical', 'tags']) {
+      for (const k of ['id', 'targetId', 'kind', 'point', 'aim', 'receiverAt', 'len', 'direction', 'pSafe', 'pLane', 'pExec', 'pWin', 'receiverPressure', 'room', 'bypassed', 'value', 'valueGain', 'U', 'worth', 'score', 'colour', 'label', 'critical', 'tags']) {
         assert.ok(o[k] !== undefined, `${name} ${o.id}: ${k}`);
       }
       assert.ok(['best', 'good', 'risky', 'cut-out', 'offside', 'danger'].includes(o.label), `${name} ${o.id}: label ${o.label}`);
@@ -120,14 +202,19 @@ test('rateOptions: every teammate to feet plus up to 3 spaces, sorted, with the 
       if (o.label === 'cut-out') assert.ok(o.pSafe < PASS_DEFAULTS.red && o.score <= PASS_DEFAULTS.redCap);
       if (o.label === 'good') assert.ok(o.pSafe >= PASS_DEFAULTS.green && o.score >= PASS_DEFAULTS.safeFloor);
       if (o.critical) assert.ok(o.score <= PASS_DEFAULTS.criticalCap);
+      // worth: U less the risk premium (none for a safe pass, riskWorth to twice that for a risky one, twice for a cut-out).
+      const prem = (o.U - o.worth) / (PASS_DEFAULTS.riskWorth * PASS_DEFAULTS.pointValue);
+      if (o.colour === 'green') approx(prem, 0, 1e-9);
+      else if (o.colour === 'amber') assert.ok(prem >= 1 - 1e-9 && prem <= 2 + 1e-9, `${name} ${o.id}: premium x${prem}`);
+      else approx(prem, 2, 1e-9);
       if (o.blocker) assert.ok(o.blocker.id.startsWith('them-') && ['block', 'run'].includes(o.blocker.via));
       for (const t of o.tags) assert.ok(PASS_TAGS[t.tag] && PASS_TAGS[t.tag].principles.includes(t.principle), `${name} ${o.id}: tag ${t.tag}`);
     }
   }
   const frames = SCENES.map(([, f]) => f);
-  // The median of 9 runs over every scene, after a warm-up (harness.js timed: steady on a busy machine).
-  const per = timed(() => { for (const f of frames) rateOptions(f); }, { warmup: 3, runs: 9 }).median / frames.length;
-  assert.ok(per < 2 * PERF_SLACK, `${per.toFixed(3)} ms per frame`);
+  // CPU time, the median of 9 runs of every scene after a warm-up (cpuTimed: steady while other test files run).
+  const per = cpuTimed(() => { for (const f of frames) rateOptions(f); }, { warmup: 3, runs: 9, reps: 3 }).median / frames.length;
+  assert.ok(per < 2 * PERF_SLACK, `${per.toFixed(3)} ms of CPU per frame`);
 });
 
 test('rateOptions: the fixture build-up stars the pass through their front line (the research frame)', () => {
@@ -136,7 +223,12 @@ test('rateOptions: the fixture build-up stars the pass through their front line 
   assert.equal(r.best.lineBroken, 'front');
   assert.ok(r.fwdOn, 'a good forward pass is on');
   for (const id of ['us-ST', 'us-LW', 'us-RW']) assert.equal(optionOf(r, id).label, 'cut-out', id);
-  for (const id of ['us-RCB', 'us-GK']) assert.ok(optionOf(r, id).tags.some((t) => t.tag === 'too-safe'), `${id} is too safe`);
+  // The keeper back pass is too safe (the pass through their front line is clearly better: 21 points); the square pass
+  // to the free centre-back, 14 points below it, is a good pass: two stars (tooSafeGap 15).
+  assert.ok(optionOf(r, 'us-GK').tags.some((t) => t.tag === 'too-safe'), 'the keeper back pass is too safe');
+  assert.equal(gradePass(r, 'us-GK').stars, 1);
+  assert.ok(!optionOf(r, 'us-RCB').tags.some((t) => t.tag === 'too-safe'), 'a free centre-back 14 points below is not too safe');
+  assert.equal(gradePass(r, 'us-RCB').stars, 2);
 });
 
 test('a clearly-best forward pass wins; a pass through a defender is cut out', () => {
@@ -205,19 +297,27 @@ test('offside and danger: a receiver past their line now, and a square pass acro
   assert.equal(e.headline, PASS_HEADLINES.kid.danger);
 });
 
-test('gradePass: S for the best or a good pass within bestMargin or a keyed one; too-safe at most 79; stars by the Player-mode bands', () => {
+test('gradePass: S for the best or a good pass within bestMargin or a keyed one; a good pass 2 stars, too-safe or risky at most 1, cut out 0', () => {
   const r = rateOptions(makeFrame('ipBuildUp'));
   const best = gradePass(r, r.best.id);
   assert.deepEqual([best.score, best.grade, best.stars, best.isBest, best.outcome], [100, 'S', 3, true, 'completed']);
-  for (const o of r.options) {
-    const g = gradePass(r, o.id);
-    assert.equal(g.stars, starsForScore(g.score));
-    if (o.id === r.best.id) continue;
-    const near = o.colour === 'green' && r.best.score - o.score <= PASS_DEFAULTS.bestMargin;
-    assert.equal(g.isBest, near, o.id);
-    if (!near) assert.ok(g.score <= PASS_DEFAULTS.notBestCap, `${o.id} ${g.score}`);
-    if (o.tags.some((t) => t.tag === 'too-safe')) assert.ok(g.score <= PASS_DEFAULTS.tooSafeCap && g.score >= PASS_DEFAULTS.safeFloor, `${o.id} too safe ${g.score}`);
-    if (o.colour === 'red') assert.equal(g.stars, 0, `${o.id}: a cut-out pass earns no star`);
+  const P = PASS_DEFAULTS;
+  for (const [, frame] of SCENES) {
+    const q = rateOptions(frame);
+    for (const o of q.options) {
+      const g = gradePass(q, o.id);
+      assert.equal(g.stars, starsForScore(g.score));
+      if (o.id === q.best.id) { assert.equal(g.stars, 3); continue; }
+      const near = o.colour === 'green' && q.best.score - o.score <= P.bestMargin;
+      assert.equal(g.isBest, near, o.id);
+      if (!near) assert.ok(g.score <= P.notBestCap, `${o.id} ${g.score}`);
+      const tooSafe = o.tags.some((t) => t.tag === 'too-safe');
+      // Stars say what the label says: Good 2 (a safe-but-slow one 1: "Safe, but a forward pass was on."), Risky at most 1.
+      if (tooSafe) assert.equal(g.score, P.tooSafeCap, `${o.id} too safe ${g.score}`);
+      else if (o.colour === 'green' && !near) assert.equal(g.stars, 2, `${o.id}: a good pass earns two stars (${g.score})`);
+      if (o.colour === 'amber') assert.ok(g.stars <= 1, `${o.id}: a risky pass that is not the best earns one star at most`);
+      if (o.colour === 'red') assert.equal(g.stars, 0, `${o.id}: a cut-out pass earns no star`);
+    }
   }
   const keyed = gradePass(r, 'us-RCM', { accept: ['us-RCM'] });
   assert.ok(keyed.isBest && keyed.grade === 'S', 'a coach-keyed alternative counts as best');
@@ -275,7 +375,11 @@ test('allPassTexts: every simple sentence the pass reveal can show is short and 
 });
 
 test('mirror symmetry: the left/right mirror of a frame rates every option the same', () => {
-  for (const [name, frame] of SCENES) {
+  const tight = frameOf({
+    ball: { x: 80, y: 4 }, carrierId: 'us-LW',
+    us: { LW: [79.2, 4], ST: [88, 20], DM: [72, 22], LCM: [76, 11] }, them: { GK: [103, 34], RCB: [88.5, 22], LCB: [92, 32], RB: [83, 2] },
+  });
+  for (const [name, frame] of [...SCENES, ['tightly marked #9', tight]]) {
     const r = rateOptions(frame);
     const m = rateOptions(mirrorFrame(frame));
     for (const o of r.options) {

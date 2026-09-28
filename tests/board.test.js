@@ -3,6 +3,7 @@ import {
   createBoard, BOARD_DEFAULTS, BALL_ID, pickOrientation, viewBoxFor, project, unproject, worldTransform,
   keyDelta, describeSpot, tokenName, pitchMarkings, tokenScale, labelScale, pxPerMetre, focusViewBox, youTag,
   SHIRT_NUMBERS, tokenLabel, simpleTokenName, describeSpotSimple, hitRadius, aidLevel, aidStrength, hintPose, hintTotalMs,
+  shirtNumberOf, tapAction, tagScale, playerLabelParams,
 } from '../js/ui/board.js';
 import { LENGTH, WIDTH, MID_Y, PENALTY_AREA, PENALTY_SPOT_DIST, CIRCLE_RADIUS, POSTS, GOAL_DEPTH } from '../js/engine/pitch.js';
 
@@ -485,10 +486,71 @@ test('board (browser): tap-to-move: a tap on the pitch moves YOU there; a tap on
     assert.equal(arms.at(-1), null, 'and disarms it');
     board.render(frameWith(ends[2]), { learnerId: 'us-LCB' });
     // Horizontal board: straight up the screen is toward our left touchline (world -y).
-    tap({ x: ends[2].x, y: ends[2].y - (BOARD_DEFAULTS.tokenRadius + 2.2) * board.tokenScale });
-    assert.equal(ends.length, 3, 'a tap on the YOU tag does not move YOU...');
-    assert.ok(board.el.classList.contains('is-armed'), '...it picks YOU up: the tag is part of YOU');
+    const tagAt = { x: ends[2].x, y: ends[2].y - (BOARD_DEFAULTS.tokenRadius + 2.2) * board.tokenScale };
+    tap(tagAt);
+    assert.equal(ends.length, 4, 'a tap on the YOU tag is a step that way: YOU moves there...');
+    approx(ends[3].y, tagAt.y, 0.05);
+    assert.ok(!board.el.classList.contains('is-armed'), '...it never picks YOU up');
+    board.render(frameWith(ends[3]), { learnerId: 'us-LCB' });
+    // Just off the drawn token (inside the 44 px grab area, which still starts a drag): a tap moves YOU there too.
+    const off = (BOARD_DEFAULTS.tokenRadius + 0.5) * board.tokenScale + 0.4;
+    tap({ x: ends[3].x + off, y: ends[3].y });
+    assert.equal(ends.length, 5, 'a tap beside YOU moves YOU');
+    assert.ok(!board.el.classList.contains('is-armed'));
   });
+});
+
+test('board: a tap picks YOU up only on the token itself when tap-to-move is on; anywhere else it moves YOU there', () => {
+  const on = (ids) => (id) => ids.includes(id);
+  // Player mode (tap-to-move): the tag or the grab area round YOU pressed, but not the token: a move, not a pick-up.
+  assert.deepEqual(tapAction({ pressed: 'us-LB', tapToMove: 'us-LB', onBody: on([]) }), { kind: 'move', id: 'us-LB' });
+  assert.deepEqual(tapAction({ pressed: 'us-LB', tapToMove: 'us-LB', onBody: on(['us-LB']) }), { kind: 'arm', id: 'us-LB' });
+  assert.deepEqual(tapAction({ pressed: null, tapToMove: 'us-LB' }), { kind: 'move', id: 'us-LB' }, 'a tap on the pitch');
+  // Armed: a tap on YOU puts it down, anywhere else (the tag too) moves it there.
+  assert.deepEqual(tapAction({ armed: 'us-LB', pressed: 'us-LB', tapToMove: 'us-LB', onBody: on(['us-LB']) }), { kind: 'disarm', id: 'us-LB' });
+  assert.deepEqual(tapAction({ armed: 'us-LB', pressed: 'us-LB', tapToMove: 'us-LB', onBody: on([]) }), { kind: 'move', id: 'us-LB' });
+  // Coach mode (no tap-to-move): a tap near a token arms it, as before; another token's body arms that one.
+  assert.deepEqual(tapAction({ pressed: 'us-LB', onBody: on([]) }), { kind: 'arm', id: 'us-LB' });
+  assert.deepEqual(tapAction({ pressed: null }), { kind: 'none' });
+  assert.deepEqual(tapAction({ armed: 'us-LB', pressed: BALL_ID, onBody: on([BALL_ID]) }), { kind: 'arm', id: BALL_ID });
+  assert.deepEqual(tapAction({ armed: 'us-LB', pressed: null, onBody: on([]) }), { kind: 'move', id: 'us-LB' });
+});
+
+test('board: YOUR kit number is swapped with the teammate who wore it, so no two players share a number', () => {
+  // A left back who picks 7: YOU are 7, and our right winger (7) wears 3.
+  const you = { learnerId: 'us-LB', youNumber: 7 };
+  assert.equal(shirtNumberOf('us-LB', you), 7);
+  assert.equal(shirtNumberOf('us-RW', you), 3);
+  assert.equal(shirtNumberOf('them-RW', you), 7, 'their team keeps its numbers');
+  assert.equal(shirtNumberOf('us-ST', you), 9);
+  const ours = ['GK', 'LB', 'LCB', 'RCB', 'RB', 'DM', 'LCM', 'RCM', 'LW', 'RW', 'ST'].map((r) => tokenLabel(`us-${r}`, 'number', you));
+  assert.equal(new Set(ours).size, 11, `unique: ${ours.join(' ')}`);
+  assert.equal(simpleTokenName('us-RW', 'us-LB', 7), 'Teammate, number 3', 'a screen reader hears the number on the shirt');
+  // Your own number, a number nobody wears, or none: nothing to swap.
+  assert.equal(shirtNumberOf('us-RW', { learnerId: 'us-LB', youNumber: 3 }), 7);
+  assert.equal(shirtNumberOf('us-RW', { learnerId: 'us-LB', youNumber: 23 }), 7);
+  assert.equal(shirtNumberOf('us-RW', { learnerId: 'us-LB' }), 7);
+  assert.equal(shirtNumberOf(BALL_ID, you), null);
+  assert.equal(tokenLabel('us-RW', 'number'), '7');
+});
+
+test('board: in Player mode pitch labels are 16 px and YOUR tag 14 px or more on a phone; Coach mode keeps its sizes', () => {
+  const P = BOARD_DEFAULTS;
+  const LP = playerLabelParams();
+  // A 390 px phone held upright: the pitch's width (plus margins) across about 374 px, and the whole pitch (Match day).
+  const phone = pxPerMetre({ width: 374, height: 600 }, focusViewBox('vertical', { width: 374, height: 600 }, { x0: 10, x1: 60 }));
+  const whole = pxPerMetre({ width: 374, height: 420 }, viewBoxFor('vertical'));
+  for (const pxm of [phone, whole, 3.2]) {
+    const label = 1.5 * labelScale(pxm, LP) * pxm;
+    assert.ok(label >= P.playerLabelPx - 0.2, `${pxm.toFixed(2)} px/m: a label ${label.toFixed(1)} px tall`);
+    const k = tokenScale(pxm);
+    const tag = 1.15 * tagScale(pxm, k, { player: true }) * k * pxm;
+    assert.ok(tag >= P.playerTagPx - 0.2, `${pxm.toFixed(2)} px/m: the tag ${tag.toFixed(1)} px tall`);
+  }
+  assert.ok(P.playerLabelPx >= 16 && P.playerTagPx >= 14);
+  assert.equal(tagScale(phone, tokenScale(phone)), 1, 'Coach mode: the tag as drawn before');
+  assert.equal(labelScale(phone), labelScale(phone, P), 'Coach mode: the labels as before');
+  assert.equal(tagScale(40, 1, { player: true }), 1, 'a big board needs no help');
 });
 
 test('board (browser): the hint hand resolves (at once under reduced motion) and leaves YOU where you are', async () => {
@@ -504,4 +566,28 @@ test('board (browser): the hint hand resolves (at once under reduced motion) and
     assert.equal(token.style.transform, before, 'YOU back on the real spot');
     await board.showHintHand({ from: null, to: { x: 1, y: 1 } }); // bad input: resolves at once
   });
+});
+
+test('board (browser): a label written with clear: "you" never covers YOU or YOUR name tag', async () => {
+  if (isNode) return;
+  const container = document.createElement('div');
+  container.style.cssText = 'position:fixed;left:0;top:0;width:360px;height:560px;opacity:0;pointer-events:none';
+  document.body.appendChild(container);
+  const board = createBoard(container, { orientation: 'vertical', labels: 'number' });
+  try {
+    const hit = (a, b) => !(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top);
+    const ring = { x: 40, y: 20 };
+    // YOU a little behind the ring and to one side (on screen: below it, to the right), where the words above the
+    // ring used to sit on YOUR name tag; then level with it, then in front of it.
+    for (const spot of [{ x: 36.5, y: 27 }, { x: 40, y: 28 }, { x: 45, y: 22 }, { x: 33, y: 17 }]) {
+      board.render(frameWith(spot), { learnerId: 'us-LCB' });
+      board.setMarkers([{ type: 'label', at: ring, text: 'Best spot', tone: 'good', lift: 'token', clear: 'you' }]);
+      const label = board.el.querySelector('.mk-label').getBoundingClientRect();
+      const body = board.el.querySelector('.token.is-learner .token-body').getBoundingClientRect();
+      const tagBox = board.el.querySelector('.token.is-learner .token-you rect').getBoundingClientRect();
+      assert.ok(label.width > 0, 'drawn');
+      assert.ok(!hit(label, body), `YOU at (${spot.x}, ${spot.y}): the label is off YOU`);
+      assert.ok(!hit(label, tagBox), `YOU at (${spot.x}, ${spot.y}): the label is off YOUR tag`);
+    }
+  } finally { board.destroy(); container.remove(); }
 });

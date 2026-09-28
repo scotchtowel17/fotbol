@@ -7,7 +7,7 @@ import {
   PASS_DEFAULTS, STRINGS, LABELS, labelStyle, outcomeKey, passOutcome, starsOf, wordFor, receiverOf, optionsByReceiver,
   orderTargets, rankOptions, shirtOf, carrierOf, roleOfDrill, aimOf, revealMarkers, previewMarkers, flashMarkers, passFlight,
   flightFrame, repFocus, BOARD_TONES, pickLine, whyFor, repTitle, questionOf, briefOf, historyEntry, passRecordId, hashString, nodeSeed, roleFor,
-  generateReps, assembleSet,
+  generateReps, assembleSet, genuinelyOn, passTargets, revealPicks, labelSide, revealFocus, betterLine, revealZoom,
 } from '../js/ui/player/pass.js';
 
 // ---- a small frame and rating in the engine's shapes (research/passing.md §4.1)
@@ -561,4 +561,140 @@ test('pass: a generated drill plays as the screen expects: YOU on the ball at th
     const p = freeze.players.find((q) => q.id === receiverOf(o));
     assert.ok(p.x >= f.x0 && p.x <= f.x1, `${o.id} stays in view on a phone`);
   }
+});
+
+// ---- the play-test fixes: the question, fewer targets and labels on a phone, the better pass named, redirects
+
+test('pass: the question is the task: "Pick the best pass." (12 words or fewer)', () => {
+  assert.equal(STRINGS.question, 'Pick the best pass.');
+  assert.ok(words(STRINGS.question) <= 12);
+  assert.equal(questionOf({ questionKid: "Who's open?", source: { kind: 'generated' } }), 'Pick the best pass.');
+});
+
+test('pass: no target far from the ball, nor the keeper, unless that pass is really on', () => {
+  const byReceiver = optionsByReceiver(rating.options, 'us-LCB');
+  assert.equal(genuinelyOn(opt('us-GK', 'good', 79)), true, 'a safe pass is on');
+  assert.equal(genuinelyOn(opt('us-GK', 'good', 60, { tags: [{ tag: 'too-safe', kind: 'problem' }] })), false, 'the too-safe one is not');
+  assert.equal(genuinelyOn(best), true);
+  assert.equal(genuinelyOn(opt('us-ST', 'risky', 70)), false);
+  const far = { ...frame, players: frame.players.map((p) => (p.id === 'us-RW' ? { ...p, x: 70, y: 64 } : p)) }; // 60 m from the ball
+  const t = passTargets(byReceiver, far, 'us-LCB');
+  assert.ok(!t.has('us-RW'), 'the right winger, 60 m away and cut out: no target');
+  assert.ok(t.has('us-GK'), 'the keeper, safe here: a target');
+  const noKeeper = passTargets(new Map([...byReceiver, ['us-GK', opt('us-GK', 'risky', 60)]]), frame, 'us-LCB');
+  assert.ok(!noKeeper.has('us-GK'), 'the keeper when that pass is not on: no target');
+  const longBest = new Map([['us-RW', { ...opt('us-RW', 'best', 100), point: { x: 70, y: 64 } }]]);
+  assert.ok(passTargets(longBest, far, 'us-LCB').has('us-RW'), 'a long pass that is the best stays');
+  assert.equal(PASS_DEFAULTS.farPass, 45);
+});
+
+test('pass: the reveal labels the best, your pick and two others (a good one beside a trap), each where it covers nobody', () => {
+  const byReceiver = optionsByReceiver(rating.options, 'us-LCB');
+  const picks = revealPicks(byReceiver, { frame, carrierId: 'us-LCB', choiceId: 'us-ST', bestId: 'us-LCM' });
+  assert.equal(picks.size, 4, [...picks].join());
+  assert.ok(picks.has('us-LCM') && picks.has('us-ST'), 'the best and yours');
+  const others = [...picks].filter((id) => id !== 'us-LCM' && id !== 'us-ST');
+  assert.ok(others.some((id) => byReceiver.get(id).label === 'risky' || byReceiver.get(id).label === 'offside'), 'one of another colour: the risky pass nearest the ball');
+  assert.equal(revealPicks(byReceiver, { frame, carrierId: 'us-LCB', choiceId: 'us-LCM', bestId: 'us-LCM' }).size, 3, 'the best picked: it and two others');
+  const m = revealMarkers({ rating, frame, carrierId: 'us-LCB', choiceId: 'us-ST', labels: picks });
+  assert.deepEqual(m.filter((x) => x.receiverId).map((x) => x.receiverId).sort(), [...picks].sort(), 'only those are labelled');
+  // A label goes to the side of its player where nobody stands: here, a teammate just above (as the screen shows it).
+  const crowd = { players: [P('us-LCM', 42, 24), P('them-DM', 42, 20.5)] };
+  assert.equal(labelSide({ at: { x: 42, y: 24 }, text: '★ Best', frame: crowd, orientation: 'horizontal', k: 1, skip: ['us-LCM'] }), 'below');
+  assert.equal(labelSide({ at: { x: 42, y: 24 }, text: '★ Best', frame: { players: [P('them-DM', 42, 27.5)] }, orientation: 'horizontal', k: 1 }), 'above', 'the same, the other way');
+  assert.equal(labelSide({ at: { x: 42, y: 24 }, text: '★ Best', frame: { players: [P('them-DM', 45, 24)] }, orientation: 'vertical', k: 1 }), 'below', 'a phone: up the screen is forward');
+  assert.equal(labelSide({ at: { x: 42, y: 24 }, text: '★ Best', frame: { players: [] } }), 'above', 'nobody near: above');
+  const taken = [];
+  labelSide({ at: { x: 42, y: 24 }, text: '★ Best', frame: { players: [] }, taken });
+  assert.equal(labelSide({ at: { x: 43, y: 24 }, text: '✓ Good', frame: { players: [] }, taken }), 'below', 'never over an earlier label');
+  // The crop: the ball and the labelled players, not the whole team.
+  const f = revealFocus({ rating, frame, carrierId: 'us-LCB', labels: new Set(['us-LCM', 'us-DM']), choiceId: 'us-DM' });
+  assert.deepEqual(f, { x0: 22 - PASS_DEFAULTS.focusPad, x1: 42 + PASS_DEFAULTS.focusPad });
+  assert.equal(PASS_DEFAULTS.revealOthers, 2);
+});
+
+test('pass: a safe pass that was not the best names the better one in simple words ("Safe. Your striker\'s run was on.")', () => {
+  const runBest = { id: 'us-ST@space', targetId: 'us-ST', label: 'best', tags: [{ tag: 'into-space', kind: 'strength', kidTo: 'your striker' }] };
+  const safe = { id: 'us-RCB', label: 'good', tags: [] };
+  const r = { options: [runBest, safe], best: runBest };
+  const explain = { line: 'A safe pass that keeps the ball.', yours: { text: 'A safe pass that keeps the ball.' }, best: { text: 'Your striker can run onto it.', tag: 'into-space', id: 'us-ST@space' } };
+  assert.equal(betterLine({ explain, rating: r, option: safe }), "Safe. Your striker's run was on.");
+  assert.equal(betterLine({ explain: { ...explain, best: { ...explain.best, tag: 'free' } }, rating: r, option: safe }), 'Safe. Your striker was free, with nobody close.');
+  assert.equal(betterLine({ explain: { ...explain, best: { ...explain.best, tag: 'weird' } }, rating: r, option: safe }), 'Safe. Your striker was the better pass.');
+  assert.equal(betterLine({ explain, rating: r, option: { ...safe, label: 'risky' } }), null, 'only after a safe pass');
+  assert.equal(betterLine({ explain, rating: r, option: safe, graded: { isBest: true } }), null, 'not after one as good as the best');
+  assert.equal(betterLine({ explain: { ...explain, best: null }, rating: r, option: safe }), null, 'not after the best');
+  for (const [k, f] of Object.entries(STRINGS.better)) assert.ok(words(`${STRINGS.safe} ${f('your midfielder')}`) <= 14, k);
+});
+
+test('pass: with the engine, every safe pass that is not the best gets a line naming the better pass, 14 words at most', async () => {
+  const engine = await import('../js/engine/passing.js');
+  let seen = 0;
+  for (const name of ['ipBuildUp', 'ipProgression', 'ipFinalThird']) {
+    let f;
+    try { f = makeFrame(name); } catch { continue; }
+    if (!f?.carrierId) continue;
+    const r = engine.rateOptions(f, f.carrierId);
+    for (const o of r.options) {
+      const g = engine.gradePass(r, o.id);
+      const ex = engine.explainPass(r, o.id, { wording: 'kid' });
+      const line = betterLine({ explain: ex, rating: r, option: o, graded: g });
+      if (o.label === 'good' && !g.isBest) {
+        assert.ok(line && /^Safe\. /.test(line), `${name} ${o.id}: ${line}`);
+        assert.ok(words(line) <= 14, line);
+        assert.doesNotMatch(line, /\b(?:your teammate)\b/, `${name} ${o.id}: the better pass is named (${line})`);
+        seen++;
+      } else assert.equal(line, null, `${name} ${o.id} (${o.label})`);
+    }
+  }
+  assert.ok(seen > 0, 'the check saw safe passes that were not the best');
+});
+
+test('pass: a spot node goes to #/play before any set is built; the history keeps the stars shown', async () => {
+  const node = { id: 'close-down', kind: 'spot', principles: ['D1'] };
+  let built = false;
+  const r = await assembleSet({ node, road: {}, role: 'LB', seed: 1 }, { repKind: () => 'spot', buildSet: async () => { built = true; return []; }, generatePassDrill: fakeGenerator([]) });
+  assert.deepEqual(r, { reps: [], redirect: '#/play/close-down' });
+  assert.equal(built, false, 'no set built for the redirect (it once built a whole spot set first)');
+  let ctxSeen = null;
+  await assembleSet({ node: { id: 'free-player', kind: 'pass', principles: ['PA3'] }, role: 'LB', seed: 1, app: { id: 'app' } }, {
+    repKind: () => 'pass', buildSet: async (_n, ctx) => { ctxSeen = ctx; return [{ kind: 'pass', drill: { id: 'a' } }]; }, generatePassDrill: fakeGenerator([]),
+  });
+  assert.deepEqual(ctxSeen.app, { id: 'app' }, 'the app goes to road.js, which counts the set as begun');
+  const h = historyEntry({ t: 1, drill: { id: 'x', principles: ['PA3'] }, role: 'LB', option: { id: 'us-ST', label: 'good' }, graded: { score: 80, outcome: 'completed' }, stars: 2 });
+  assert.equal(h.stars, 2);
+  assert.equal('stars' in historyEntry({ t: 1, drill: {}, role: 'LB', option: null, graded: null, stars: 9 }), false);
+});
+
+test('pass: the quick set is the free-player idea mixed with playing forward (the Road\'s quickPass)', async () => {
+  const road = await import('../js/ui/player/road.js');
+  const r = road.normalizeRoad(await loadJSON('data/road.json'));
+  assert.deepEqual(r.quickPass, ['free-player', 'play-forward']);
+  const calls = [];
+  const gen = (o) => { calls.push(o); return { id: `pass-${o.seed}-${o.principles.join('')}`, kind: 'pass', learner: { role: o.role }, principles: [...o.principles] }; };
+  const quick = await road.buildQuickPassSet({ road: r, profile: road.pickGroup(null, 'MID'), seed: 3, generators: { pass: gen, forwardable: () => true } });
+  assert.equal(quick.length, 5);
+  assert.deepEqual(quick.map((q) => q.lesson), ['free-player', 'play-forward', 'free-player', 'play-forward', 'free-player']);
+  assert.ok(quick.every((q) => q.nodeId === road.QUICK_PASS));
+  assert.deepEqual([...calls].sort((a, b) => a.seed - b.seed).map((c) => c.principles.join()), ['PA3,PA4', 'PA2,PA5', 'PA3,PA4', 'PA2,PA5', 'PA3,PA4'], 'slot by slot');
+});
+
+test('pass: a phone zooms its reveal onto the play (the board keeps the whole width, so the stage shows a slice of it)', () => {
+  const phone = { width: 359, height: 470 };
+  // The ball, the best and your pick on the left half: zoomed, and slid so the play is in the middle.
+  const z = revealZoom({ rating, frame, carrierId: 'us-LCB', labels: new Set(['us-LCM', 'us-LB']), choiceId: 'us-LB@space', stage: phone });
+  assert.ok(z && z.z >= PASS_DEFAULTS.zoomMin && z.z <= PASS_DEFAULTS.zoomMax, JSON.stringify(z));
+  assert.equal(z.width, Math.round(phone.width * z.z));
+  assert.ok(z.offset >= 0 && z.offset <= z.width - phone.width);
+  const px = z.width / 74; // CSS px per metre across the pitch
+  for (const y of [8, 24, 26]) { // the left back's run, the midfielder, the ball
+    const at = (y + 3) * px - z.offset;
+    assert.ok(at >= 0 && at <= phone.width, `y ${y} is on screen (${Math.round(at)} px)`);
+  }
+  // Play from touchline to touchline: no zoom worth having.
+  assert.equal(revealZoom({ rating, frame, carrierId: 'us-LCB', labels: new Set(['us-LB', 'us-RB']), choiceId: 'us-RB', stage: phone }), null);
+  // A long stretch of pitch: the length must still fit, so it zooms less or not at all.
+  const tall = revealZoom({ rating, frame, carrierId: 'us-LCB', labels: new Set(['us-LCM', 'us-LW']), choiceId: 'us-LW', stage: { width: 359, height: 300 } });
+  assert.ok(!tall || tall.z < z.z, JSON.stringify(tall));
+  assert.equal(revealZoom({ rating, frame, carrierId: 'us-LCB', stage: { width: 0, height: 0 } }), null);
 });

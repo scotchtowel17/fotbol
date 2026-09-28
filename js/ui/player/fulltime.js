@@ -5,8 +5,11 @@
 //   ★★★ ★★☆ ★☆☆ ★★★ ★★☆      one small star row per rep, then the total
 //   +40 XP  [=======>    ]     the XP bar sweeps from before to after (a level up fills it, says so, and starts again)
 //   (node) ☆☆☆ → ★★☆           the Road node's stars before → after
-//   [ New sticker: Back Up Your Buddy ]   each card, badge or kit earned, one at a time, big (tap Next for the next)
-//   Best move: back up your buddy
+//   [ New sticker: Back Up Your Buddy ]   each card, badge or kit earned, one at a time, big: "More" steps to the
+//                                         next (never a second "Next" next to the main button); 3 at most, then
+//                                         "+2 more on your card" (a link to #/card, where they all are)
+//   Best move: you are backing up your teammate at an angle   only for a rep with 2 stars or more, naming what you
+//                                         did (the rep's `move`; else, as "Who's open?" sends it, its idea's name)
 //   Good work today. Take a break?        after about 15 minutes of play today (R22)
 //   [ Home ]  [ Play again ]              Home is the main button; Play again is neutral and never automatic
 //
@@ -31,6 +34,8 @@ export const FULLTIME_DEFAULTS = Object.freeze({
   rowStepMs: 90, // [D] the star rows appear this far apart...
   sweepMs: 700, // [D] ...and the XP bar sweeps this long (each leg of a level up)
   levelPauseMs: 500, // [D] a full bar holds this long before the new level shows
+  maxItems: 3, // [D] rewards shown one by one at most (biggest first); the rest wait on the card screen (R29: no pile-up)
+  bestMoveStars: 2, // [D] "Best move" names a rep with at least this many stars (a 1-star rep is not a best move)
 });
 
 /** The store key (under 'fotbol:') for today's play time. */
@@ -40,7 +45,8 @@ export const STRINGS = Object.freeze({
   fullTime: SHARED.fullTime,
   home: SHARED.home,
   playAgain: SHARED.playAgain,
-  next: SHARED.next,
+  more: 'More',
+  moreOnCard: (n) => `+${n} more on your card`,
   stars: SHARED.stars,
   starsTotal: (n) => `${n} ${n === 1 ? 'star' : 'stars'}`,
   xp: (n) => `+${n} XP`,
@@ -113,26 +119,43 @@ export function earnedItems(gained, { principles = {} } = {}) {
 }
 
 /**
- * Everything Full time shows, as plain data (pure).
- * @returns {{ rows: number[], total: number, max: number, xpGain: number, before: object, after: object, levelUp: boolean,
- *   items: object[], best: string|null, nodeStars: { before: number, after: number }|null }}
+ * What a rep's "Best move" says (pure): its `move` (what you did, from the reveal: "you stayed onside"), else the name
+ * of its idea in sentence case ("Back up your buddy"); `move: null` means nothing to name (no praise on the rep).
  */
-export function fullTimeModel({ reps = [], xpBefore, xpAfter, gained, nodeStars = null, principles = {} } = {}) {
+export function bestMoveName(rep) {
+  if (rep?.move === null) return null;
+  if (typeof rep?.move === 'string' && rep.move.trim()) return rep.move.trim();
+  return typeof rep?.title === 'string' && rep.title.trim() ? sentenceCase(rep.title) : null;
+}
+
+/**
+ * Everything Full time shows, as plain data (pure). `best` is the best rep's move, from a rep with bestMoveStars (2)
+ * or more (the first of the best); `items` are the rewards to show, maxItems (3) at most, biggest first, and
+ * `moreItems` how many more wait on the card screen.
+ * @param {{ reps?: { stars: number, title?: string, move?: string|null }[], xpBefore?: number, xpAfter?: number,
+ *   gained?: object, nodeStars?: object|null, principles?: object }} opts
+ * @returns {{ rows: number[], total: number, max: number, xpGain: number, before: object, after: object, levelUp: boolean,
+ *   items: object[], moreItems: number, allItems: object[], best: string|null, nodeStars: { before: number, after: number }|null }}
+ */
+export function fullTimeModel({ reps = [], xpBefore, xpAfter, gained, nodeStars = null, principles = {} } = {}, P = FULLTIME_DEFAULTS) {
   const rows = (Array.isArray(reps) ? reps : []).map((r) => clampStars(r?.stars));
   const g = cleanGains(gained);
   const xb = Number.isFinite(xpBefore) ? xpBefore : 0;
   const xa = Number.isFinite(xpAfter) ? Math.max(xpAfter, xb) : xb + g.xp;
   const before = levelFor(xb), after = levelFor(xa);
-  let best = null, bestStars = 0;
+  let best = null, bestStars = P.bestMoveStars - 1;
   (Array.isArray(reps) ? reps : []).forEach((r, i) => {
-    if (rows[i] > bestStars && typeof r?.title === 'string' && r.title.trim()) { bestStars = rows[i]; best = sentenceCase(r.title); }
+    const name = rows[i] > bestStars ? bestMoveName(r) : null;
+    if (name) { bestStars = rows[i]; best = name; }
   });
   const ns = nodeStars && Number.isFinite(nodeStars.before) && Number.isFinite(nodeStars.after)
     ? { before: clampStars(nodeStars.before), after: clampStars(Math.max(nodeStars.after, nodeStars.before)) } : null;
+  const allItems = earnedItems(g, { principles });
+  const items = allItems.slice(0, Math.max(0, P.maxItems));
   return {
     rows, total: rows.reduce((a, b) => a + b, 0), max: rows.length * 3,
     xpGain: Math.max(0, Math.round(xa - xb)), before, after, levelUp: after.level > before.level || !!g.levelUp,
-    items: earnedItems(g, { principles }), best, nodeStars: ns,
+    items, moreItems: allItems.length - items.length, allItems, best, nodeStars: ns,
   };
 }
 
@@ -215,7 +238,8 @@ export function showFullTime(root, app, opts = {}) {
     ]),
   ]) : null;
 
-  // Earned rewards, one at a time, big.
+  // Earned rewards, one at a time, big: "More" steps to the next (3 at most); the last says how many more wait on
+  // the card screen, with a way there.
   const items = m.items;
   const itemBox = items.length ? el('section', { class: 'ft-items', 'aria-live': 'polite' }) : null;
   let itemIndex = 0;
@@ -226,7 +250,8 @@ export function showFullTime(root, app, opts = {}) {
     itemBox.replaceChildren(el('div', { class: ['ft-item', `ft-item--${it.kind}`, it.tier === 3 && 'is-gold'] }, [
       el('span', { class: 'ft-item-icon', 'aria-hidden': 'true', text: it.icon }),
       el('p', { class: 'ft-item-text', tabindex: '-1', text: it.text }),
-      more ? button(STRINGS.next, { className: 'ft-item-next', onClick: () => { itemIndex++; showItem(); itemBox.querySelector('.ft-item-text')?.focus({ preventScroll: true }); } }) : null,
+      more ? button(STRINGS.more, { className: 'ft-item-more', icon: 'arrow', onClick: () => { itemIndex++; showItem(); itemBox.querySelector('.ft-item-text')?.focus({ preventScroll: true }); } }) : null,
+      !more && m.moreItems > 0 ? el('a', { class: 'ft-item-card', href: '#/card', text: STRINGS.moreOnCard(m.moreItems) }) : null,
     ]));
   }
 
@@ -253,7 +278,7 @@ export function showFullTime(root, app, opts = {}) {
 
   // The XP sweep (a level up: fill, "Level up", then fill again from the start of the new level).
   const pct = (p) => `${Math.round(Math.max(0, Math.min(1, p)) * 1000) / 10}%`;
-  const milestone = m.levelUp || m.items.some((it) => it.tier === 3);
+  const milestone = m.levelUp || m.allItems.some((it) => it.tier === 3);
   const celebrate = () => {
     if (!milestone) return;
     if (budget?.take?.()) {

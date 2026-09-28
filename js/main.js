@@ -17,9 +17,11 @@
 // Every route works in both modes: a Coach route opened in Player mode shows the Coach header, whose "Back to Player
 // mode" returns to '#/'. Each module exports mount(root, app, params) → void | unmount() and is loaded with a dynamic
 // import(), so one that doesn't exist yet shows a friendly "coming soon" card instead of breaking the app.
+// app.navigate(hash) pushes a history entry; app.navigate(hash, { replace: true }) replaces the current one, for a
+// screen that sends you on to another (so Back never lands on the redirect again: navigateTo).
 //
-// Pure helpers (parseHash, resolveRoute, normalizeSettings, mergeSettings, effectiveWording, MODE_INFO, settingsLinks,
-// isDevMode) are exported for tests; the app only boots when the page has a #app element.
+// Pure helpers (parseHash, resolveRoute, navigateTo, normalizeSettings, mergeSettings, effectiveWording, MODE_INFO,
+// settingsLinks, isDevMode) are exported for tests; the app only boots when the page has a #app element.
 
 import * as store from './store.js';
 import { loadAppData } from './data.js';
@@ -95,6 +97,28 @@ export function parseHash(hash = '') {
 export function toHash(target = '') {
   const s = String(target).replace(/^#?\/?/, '');
   return `#/${s}`;
+}
+
+/**
+ * Go to a route (app.navigate). A push adds a history entry and lets 'hashchange' route (or routes again when the
+ * address is already there). `replace: true` swaps the current entry for the new address and routes at once: a
+ * screen that sends you on (a pass node opened at '#/play/<id>' goes to '#/pass/<id>') must not leave its own address
+ * behind, or Back would land on it and be sent on again, trapped.
+ * @param {string} target  '#/pass/x', 'pass/x' or '/pass/x'
+ * @param {{ replace?: boolean }} opts
+ * @param {{ location: { hash: string }, history?: { state: any, replaceState: Function }, route: () => any }} env
+ * @returns {string} the hash gone to
+ */
+export function navigateTo(target, { replace = false } = {}, { location, history, route }) {
+  const hash = toHash(target);
+  if (replace) {
+    let swapped = false;
+    try { history.replaceState(history.state, '', hash); swapped = true; } catch { /* no history API: a plain hash change below */ }
+    if (swapped) { route(); return hash; }
+  }
+  if (location.hash === hash) route();
+  else location.hash = hash;
+  return hash;
 }
 
 /**
@@ -226,10 +250,9 @@ function createApp() {
       listeners.add(fn);
       return () => listeners.delete(fn);
     },
-    navigate(target) {
-      const hash = toHash(target);
-      if (location.hash === hash) route();
-      else location.hash = hash;
+    /** Go to a route; `{ replace: true }` replaces the current history entry (a redirect: Back skips it). */
+    navigate(target, opts = {}) {
+      navigateTo(target, opts, { location, history, route });
     },
     /** board.js createBoard, with the learner's nickname (if set) as the tag over their token. */
     createBoard: (container, opts = {}) => createBoard(container, { youLabel: youLabel(loadRewards(app)), ...opts }),

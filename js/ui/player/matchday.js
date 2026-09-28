@@ -32,7 +32,7 @@ import { award, loadRewards, emptyGains } from '../rewards-store.js';
 import { createBurstBudget } from '../celebrate.js';
 import * as S from '../session.js';
 import { showFullTime } from './fulltime.js';
-import { starsForScore, wordForStars, pickLine } from './play.js';
+import { starsForScore, wordForStars, pickLine, cueMarker, praiseOf, bestSpotMarker, PLAY_DEFAULTS } from './play.js';
 import { STRINGS as SHARED, roleCard } from './strings.js';
 
 export const MATCHDAY_DEFAULTS = Object.freeze({
@@ -438,7 +438,7 @@ export async function mount(root, app) {
     els.title.hidden = true;
     setTip('');
     drawMoment(sample, a);
-    els.line.textContent = pickLine({ feedback: a.judgement.feedback, stars: starsForScore(a.judgement.result.score) });
+    els.line.textContent = pickLine({ feedback: a.judgement.feedback, praise: praiseOf(a.judgement.result), stars: starsForScore(a.judgement.result.score) });
     const back = button(STRINGS.back, { variant: 'primary', icon: 'arrow', className: 'pl-main', onClick: () => { stopLoops(); els.stage.hidden = true; els.results.hidden = false; setPhase('done'); els.results.querySelector('.ft-title')?.focus({ preventScroll: true }); } });
     put(els.actions, button(STRINGS.watchIt, { icon: 'play', className: 'pl-again', onClick: () => playLeadUp(sample, a) }), back);
     back.focus({ preventScroll: true });
@@ -451,9 +451,10 @@ export async function mount(root, app) {
     const marks = [];
     const off = dist(sample.spot, a.ghost.spot);
     if (off >= 1) marks.push({ type: 'arrow', from: sample.spot, to: a.ghost.spot, tone: 'fix' });
-    if (off >= 3.5 * board.tokenScale) marks.push({ type: 'label', at: a.ghost.spot, text: STRINGS.bestSpot, tone: 'good', lift: 'token' });
-    const hl = a.judgement.feedback.cue?.highlight;
-    if (hl) marks.push({ ...hl, tone: 'cue', pulse: false });
+    if (off >= PLAY_DEFAULTS.labelClear * board.tokenScale) marks.push(bestSpotMarker(sample.spot, a.ghost.spot, board));
+    // One cue, as a "Find your spot" reveal draws it: a line only with its name on it (play.js cueMarker).
+    const cue = cueMarker(a.judgement.feedback.cue, { rules: a.judgement.result.rules, ball: a.frame.ball });
+    if (cue) marks.push(cue);
     board.setMarkers(marks);
   }
 

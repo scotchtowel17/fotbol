@@ -1,6 +1,8 @@
 // Home: what fotbol is, your player card (kit, level, stars: js/ui/celebrate.js), "pick your position",
 // your path through the modules, and the ways in (Learn, Explore, Drill, Live). The chosen role is saved in
-// settings (app.settings.role) for every other mode to use.
+// settings (app.settings.role) for every other mode to use. In Coach mode (the full app, for coaches and parents)
+// a short note on top says what Coach mode is and that playing here never changes the player's card: rewards are
+// earned in Player mode only (js/ui/rewards-store.js award).
 //
 // Module cards (M0-M3, data/curriculum.json) read progress only: the tutorial from the store key
 // 'tutorial' (learn.js) and mastery stars from 'skills' (elo.mastery). A module is finished when the
@@ -62,6 +64,8 @@ const COPY = {
     blurbs: {},
     foot: 'No accounts and no tracking: your progress stays in this browser. ',
     credits: 'Credits and sources',
+    coachNote: 'Coach mode is for coaches and parents: every drill, with scores and the full reasons.',
+    coachNote2: 'Nothing played here changes the player\'s card: stars, stickers and levels are earned in Player mode.',
   },
   kid: {
     kicker: 'Learn to play football',
@@ -82,6 +86,8 @@ const COPY = {
     },
     foot: 'No accounts. Your progress stays on this device. ',
     credits: 'Who made this',
+    coachNote: 'This is Coach mode, for coaches and parents.',
+    coachNote2: 'Playing here does not change the player card. Stars and stickers come from Player mode.',
   },
 };
 
@@ -344,6 +350,11 @@ function modeCards(app) {
   }));
 }
 
+/** The note on top of the Coach home (Coach mode only): what it is, and that the player's card is not changed here. */
+function coachNote(copy) {
+  return el('p', { class: 'coach-note', role: 'note' }, [el('strong', { text: copy.coachNote }), ' ', copy.coachNote2]);
+}
+
 /** Mode contract (ARCHITECTURE §5.9). @returns {() => void} unmount */
 export async function mount(root, app) {
   const positions = picturePositions(app.data.formations);
@@ -376,6 +387,7 @@ export async function mount(root, app) {
     const P = PATH_COPY[w === 'kid' ? 'kid' : 'standard'];
 
     root.replaceChildren(el('div', { class: 'home' }, [
+      app.settings.mode === 'coach' ? coachNote(copy) : null,
       el('section', { class: 'hero', 'aria-labelledby': 'home-title' }, [
         el('p', { class: 'hero-kicker', text: copy.kicker }),
         el('h1', { id: 'home-title', text: copy.title }),

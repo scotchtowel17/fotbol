@@ -3,7 +3,7 @@
 //   #/card            an FC-style player card: nickname, shirt number, kit, rank, level ring, four skill ratings 0-99
 //                     (Defend / Help / Pass / Shape: skillRatings below), stars on your Road, days played this week
 //   #/card/stickers   the sticker album by chapter: bronze, silver or gold; a mystery silhouette links to its node
-//   #/card/badges     every badge: icon, short name, progress bar
+//   #/card/badges     every badge Player mode can earn: icon, short name, progress bar (Coach-only ones once earned)
 //   #/card/kit        the kit locker: shirt colours (locked ones show their level), a big number grid, a nickname
 //                     from the pick-list (js/rewards.js NICKNAMES); Save applies it app-wide (js/ui/rewards-store.js)
 // One line says the stats never leave the device (R38).
@@ -101,8 +101,9 @@ export function cardMetal(rankId) {
 }
 
 /**
- * The sticker album: one sticker per principle of each Road node (each principle once), by chapter. Its tier is the
- * best of its sticker card (js/rewards.js cardTier, from mastery) and its node's stars: 1 bronze, 2 silver, 3 gold;
+ * The sticker album: one sticker per principle of each Road node (each principle once), by chapter. Its tier is its
+ * sticker card's (js/rewards.js cardTier: 1 bronze, 2 silver, 3 gold), which only mastery earns (the idea's recent
+ * plays average 2 stars or more: rewards.js stickerReady), never a node's stars alone (a 1-star node is not mastery);
  * 0 = not collected yet (a mystery silhouette that links to its node when the node is open).
  * @returns {{ chapters: { id, title, stickers: { id, name, tier, nodeId, href, unlocked }[] }[], collected, total,
  *   tiers: { 1: number, 2: number, 3: number } }}
@@ -115,7 +116,7 @@ export function stickerAlbum({ road, profile, rewards, principles } = {}) {
     id: c.id,
     title: c.title,
     stickers: c.nodes.filter((n) => n.kind !== 'mix').flatMap((n) => (n.principles ?? []).filter((id) => !seen.has(id) && seen.add(id)).map((id) => {
-      const tier = Math.max(Math.min(3, Number(Rewards.cardTier?.(rewards, id)) || 0), n.stars);
+      const tier = Math.max(0, Math.min(3, Math.round(Number(Rewards.cardTier?.(rewards, id)) || 0)));
       if (tier) tiers[tier]++;
       const kid = byId[id]?.kidName;
       return { id, name: typeof kid === 'string' && kid ? kid : n.title, tier, nodeId: n.id, href: n.href, unlocked: n.unlocked };
@@ -127,11 +128,15 @@ export function stickerAlbum({ road, profile, rewards, principles } = {}) {
 
 const pick = (v) => (v && typeof v === 'object' ? String(v.kid ?? v.standard ?? '') : String(v ?? ''));
 
-/** Every badge for the grid: icon, short name, progress (js/rewards.js badgeProgress). */
-export function badgeList(rewardsState) {
+/**
+ * The badges for the grid: icon, short name, progress (js/rewards.js badgeProgress). A badge only Coach mode's tutorial
+ * or Explore can give (`coachOnly`: "Kick-off", "Explorer") cannot be earned in Player mode, so it shows only once
+ * earned; `all` lists every badge.
+ */
+export function badgeList(rewardsState, { all = false } = {}) {
   let list = [];
   try { list = Rewards.badgeProgress(rewardsState); } catch { list = []; }
-  return list.map((b) => ({
+  return list.filter((b) => all || !b.coachOnly || b.earned).map((b) => ({
     id: b.id, icon: b.icon, name: pick(b.name), description: pick(b.description), earned: !!b.earned,
     current: b.current ?? 0, goal: b.goal ?? 1, progress: clamp01(b.progress), day: rewardsState?.badges?.[b.id]?.day ?? null,
   }));

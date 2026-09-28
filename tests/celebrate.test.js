@@ -149,6 +149,28 @@ test('celebrate: one celebration per rep: stars, XP, a short tag, one chip per b
   assert.match(kid.sr, /70 XP/);
 });
 
+test('celebrate: Coach mode shows no rewards: every Coach screen that awards or draws them checks earnsRewards first', async () => {
+  // Coach mode earns nothing (award() does nothing there), so a reward row, the drill summary's rewards card ("+0 XP"),
+  // a floating celebration or a reward sound could only ever show zeros: the Coach screens leave them out.
+  const coach = { ...fakeApp(), settings: { wording: 'standard', mode: 'coach' } };
+  assert.deepEqual(award(coach, { type: 'explore-s' }, { grade: 'S' }), emptyGains());
+  assert.deepEqual(coach.shown, [], 'nothing celebrated (no sounds, no burst)');
+  let files = ['home', 'learn', 'explore', 'drill', 'live', 'progress', 'trophies', 'author', 'credits', 'dev'];
+  if (isNode) {
+    const { readdir } = await import('node:fs/promises');
+    files = [...new Set([...files, ...(await readdir(new URL('../js/ui/modes/', import.meta.url))).filter((f) => f.endsWith('.js')).map((f) => f.slice(0, -3))])];
+  }
+  const hooks = /\baward\(app\b|\bsessionCard\(|\bcelebrate\??\.show\(/;
+  const showing = [];
+  for (const f of files) {
+    const src = await loadText(`js/ui/modes/${f}.js`);
+    if (!hooks.test(src)) continue;
+    showing.push(f);
+    assert.match(src, /\bearnsRewards\(app\)/, `${f}.js awards or draws rewards: it must check earnsRewards(app) (none in Coach mode)`);
+  }
+  assert.deepEqual(showing.sort(), ['drill', 'explore', 'learn', 'live']);
+});
+
 test('celebrate: badge and sticker chips are six words at most, plus the icon, in both wordings', () => {
   for (const w of ['standard', 'kid']) {
     const all = rewardChips({ badges: BADGES.map((b) => b.id) }, { wording: w });

@@ -192,6 +192,11 @@ a.pm-tile:hover { color: var(--text); border-color: var(--pm-hot-deep); }
 .pm-tile.is-locked { background: var(--surface-2); color: var(--text-muted); box-shadow: none; border-style: dashed; }
 .pm-tile.is-locked .pm-tile-icon { background: var(--surface-3); color: var(--text-muted); }
 .pm-tile-hint { font-size: 1rem; font-weight: 600; line-height: 1.25; }
+/* The locked Match day tile is a button: a tap shows the Big Match on the Road (js/ui/player/home.js showGate). */
+button.pm-tile { width: 100%; font: inherit; text-align: left; cursor: pointer; appearance: none; }
+button.pm-tile.is-locked:hover { border-color: var(--pm-hot-deep); color: var(--text); }
+.pm-tile-hint { display: inline-flex; align-items: center; gap: 6px; }
+.pm-tile-gate { flex: none; color: var(--pm-hot-deep); }
 
 .pm-week { display: flex; align-items: center; gap: 12px; margin: 0; font-weight: 700; font-size: 1rem; color: var(--text-muted); }
 
@@ -238,6 +243,19 @@ a.pm-node:active .pm-node-disc { transform: translateY(2px); }
 @keyframes pm-pulse {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.07); }
+}
+/* The node that opens Match day shows its title (the locked tile says "Finish" and its trophy). */
+.pm-node-label {
+  max-width: 11ch; padding: 2px 10px; border-radius: 999px; text-align: center;
+  background: var(--surface); border: 1px solid var(--border); color: var(--text);
+  font-size: 1rem; font-weight: 800; line-height: 1.25;
+}
+.pm-node.is-locked .pm-node-label { color: var(--text-muted); }
+/* A tap on the locked Match day tile: that node pulses three times (a steady ring under reduced motion). */
+.pm-node.is-pulse .pm-node-disc { animation: pm-gate 0.8s ease-in-out 3; outline: 4px solid var(--pm-hot); outline-offset: 4px; }
+@keyframes pm-gate {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.14); }
 }
 
 /* ------------------------------------------------------------------ kick-off */
@@ -450,6 +468,16 @@ a.pm-sticker.is-mystery:hover { border-color: var(--pm-hot-deep); color: var(--t
 /* ------------------------------------------------------------------ motion */
 
 @media (prefers-reduced-motion: reduce) {
-  .pm-node.is-current .pm-node-disc { animation: none; }
+  .pm-node.is-current .pm-node-disc, .pm-node.is-pulse .pm-node-disc { animation: none; }
 }
-:root[data-reduced-motion="true"] .pm-node.is-current .pm-node-disc { animation: none; }
+:root[data-reduced-motion="true"] .pm-node.is-current .pm-node-disc,
+:root[data-reduced-motion="true"] .pm-node.is-pulse .pm-node-disc { animation: none; }
+
+/* ------------------------------------------------------------------ Coach mode: the note on the Coach home (js/ui/modes/home.js) */
+
+.coach-note {
+  margin: 0 0 20px; max-width: 760px; padding: 12px 16px; border-radius: var(--radius-sm, 10px);
+  background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--accent);
+  font-size: 1rem; line-height: 1.5; color: var(--text);
+}
+.coach-note strong { font-weight: 700; }

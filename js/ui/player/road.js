@@ -4,20 +4,34 @@
 //   loadRoad(app?) → Promise<road>          normalizeRoad(raw) → road      (main.js loads it once into app.data.road)
 //   loadProfile(app) → profile              saveProfile(app, profile)      normalizeProfile(raw), pickGroup(profile, group)
 //   roadNodes(road), nodeById(road, id), chapterOf(road, id), nodeStars(profile, id), roadModel(road, profile)
-//   isUnlocked(road, profile, id), nextNode(road, profile), isMatchdayUnlocked(road, profile)
+//   isUnlocked(road, profile, id), nextNode(road, profile), isMatchdayUnlocked(road, profile), matchdayGate(road)
+//   chapterOrder(road, group) → chapters, your group's lead chapter first (road.json `lead`)
 //   repKind(road, node) → 'spot' | 'pass'   nodeHref(road, node) → '#/play/<id>' | '#/pass/<id>'
-//   buildSet(node, { road, profile, index, load, rewards, skills, seed, formations, catalogue, generators }) → Promise<rep[]>
-//     rep = { kind: 'spot', scenario, mirrored, nodeId, recall?, generated?, extra?, twin?, repeat? }
-//         | { kind: 'pass', drill, nodeId, borrowed?, extra? }
+//   buildSet(node, { road, profile, index, load, rewards, skills, seed, formations, catalogue, generators, app }) → Promise<rep[]>
+//     rep = { kind: 'spot', scenario, mirrored, nodeId, recall?, generated?, borrowed?, spare?, extra?, twin?, repeat? }
+//         | { kind: 'pass', drill, nodeId, borrowed?, spare?, extra? }
+//     borrowed: played in another position; spare: past maxBorrowed, as nothing else in yours was left
+//     given the `app`, the set counts as started: startSet(app, nodeId, reps)
+//   startSet(app, nodeId, reps) → attempt     nodeAttempt(profile, id)   (the node's start counter; the last set's reps)
 //   buildFirstSet({ profile, index, load, seed, formations, catalogue, generators }) → Promise<rep[]>   the onboarding set (§4.1)
-//   buildQuickPassSet({ profile, seed, formations, catalogue, generators }) → Promise<rep[]>   '#/pass': mixed passing lessons
+//   buildQuickPassSet({ road, profile, seed, formations, catalogue, generators }) → Promise<rep[]>   '#/pass': the free
+//     player mixed with playing forward (road.json `quickPass`)
 //   setStarsFor(repStars) → 0..3            recordSet(app, nodeId, repStars) → { before, after, setStars, plays, unlocked, matchday }
 //   forwardPlan(ok[], count) → Set<slot>    repPicture(rep), nearDuplicate(a, b), ballAtFreeze(scenario)   (pure, tested)
 //
-// Profile: { version, group: 'DEF'|'MID'|'WING'|'STRIKER'|null, role, onboarded, road: { [nodeId]: { stars: 0..3, plays } } }.
+// Profile: { version, group: 'DEF'|'MID'|'WING'|'STRIKER'|null, role, onboarded,
+//            road: { [nodeId]: { stars: 0..3, plays, starts } }, last: { nodeId, ids: string[] } | null }.
 // `onboarded` turns true when the player picks a position on the kick-off screen: from then on '#/' is the Player home.
+// `plays` counts finished sets (recordSet); `starts` counts sets begun (startSet), and a set's seed takes it in, so
+// leaving or reloading in the middle of a set never deals the same reps again (no replaying known answers for XP);
+// `last` is the last set's reps, which the next set's recall rep never repeats.
 //
-// Sets (§3): a spot node gives 5 reps: first 1 recall rep from an earlier node you have played (R23), then authored
+// Next up (nextNode): your group's lead chapter first (data/road.json `lead`: "Help the ball" for everyone but
+// defenders, so attackers get attacking plays early), then the Road's order; the first open node under 2 stars, so a
+// fresh (0-star) or weak node comes before replaying a 2-star one; then the first under 3; else the last open one.
+//
+// Sets (§3): a spot node gives 5 reps: first 1 recall rep from another node you have played (R23: never the node you
+// are on, never on its ideas, never a rep of your last set, and from another node than the last set's when it can), then authored
 // scenarios whose principles meet the node's, in your position group first (mirrored when the side differs, so a left
 // back plays a right-back drill as a left back), then generated drills for your position (js/engine/spotdrill.js), then
 // authored ones for other positions; still short (ideas with few drills that the generator cannot make for your
@@ -28,9 +42,14 @@
 // a rep your position rarely gets is played by a teammate in your group (`borrowed`: a full-back's "free side" is the
 // centre-back's switch), then any pass on the idea, then another passing idea of the chapter (`extra`). A mix node
 // takes its chapter's nodes in turn. Generated reps carry the catalogue's titles and takeaways (data/principles.json),
-// and a set never holds two that look the same (nearDuplicate). A generator that comes back empty twice for a position
-// and its ideas is not asked again in that set. Deterministic for a seed (with the same index, profile and rewards).
-// The generators are imported lazily; a missing or failing one leaves the set to authored content.
+// and a set never holds two that look the same (nearDuplicate), two generated reps from one engine template, or two
+// generated spot reps with the same player on the ball at the freeze ("Their winger has the ball" twice). A spot
+// generator call is told the questions the set asks already (spotdrill.js avoidTemplates: the same drill, other words),
+// so a drill is turned away for its question only when no other question fits it. At most
+// maxBorrowed reps of a set are lent to another position (your group first). A generator is not asked for what the
+// engine says it cannot make (its canGenerate* helpers, when it has them), and one that comes back empty twice for a
+// position and its ideas is not asked again in that set. Deterministic for a seed (with the same index, profile and
+// rewards). The generators are imported lazily; a missing or failing one leaves the set to authored content.
 //
 // Pure except: loadProfile/saveProfile/recordSet (the store, through `app`), loadRoad (fetch), and buildSet's defaults
 // (bindRoad(app): the app's scenario loader, formations and road; else a same-origin fetch). Nothing here touches the
@@ -50,8 +69,15 @@ export const ROAD_DEFAULTS = Object.freeze({
   generatorNulls: 2, // [D] a generator that comes back empty this often for one position and set of ideas is not asked
   //                     again in that set (each call already tries 30-40 scenes: that position rarely gets those ideas)
   forwardPasses: 3, // [S] research/passing.md §6.4 (passdrill.js forwardSlots): 3 of a set's 5 passes want a forward best
+  maxSameBest: 2, // [D] at most this many reps of a set star a pass to the same position (passdrill.js maxSameBest); a
+  //                  winger's only forward receiver is usually the #9, so a winger's set then holds 2 forward bests, not 3
   nearSpot: 5, // [D] m: two reps for the same position with the ball this close at the freeze, and you starting as close
   //              (a pass rep: the same best pass), look like the same rep; a set keeps only the first
+  nextStars: 2, // [S] play-test: Next up offers an open node under this many stars before replaying one at it (2 stars
+  //               is good enough to move on; 0 or 1 is new or still weak)
+  maxBorrowed: 2, // [S] play-test: at most this many reps of a set played in another position ("Now you're ..."),
+  //                  unless nothing else in yours is left (the rep is then `spare`)
+  lastIds: 10, // [D] the last set's rep ids kept in the profile (a set is 5; room for a longer one)
 });
 
 /** Store key of the player profile (js/store.js adds the 'fotbol:' prefix). */
@@ -106,7 +132,8 @@ export function seededRandom(seed) {
 
 /**
  * data/road.json → the road the helpers use: bad chapters and nodes dropped, ids unique, every node tagged with its
- * `chapter`, and every mix node given its source chapter's principles and the kind of rep it plays (`repKind`).
+ * `chapter`, every mix node given its source chapter's principles and the kind of rep it plays (`repKind`), and each
+ * group's lead chapter (`lead`: a chapter id, or null for the Road's own order).
  */
 export function normalizeRoad(raw) {
   const r = isObj(raw) ? raw : {};
@@ -145,7 +172,23 @@ export function normalizeRoad(raw) {
     }
   }
   const unlockAfter = str(r.matchday?.unlockAfter);
-  return { version: 1, groups, defaultRoles, matchday: { unlockAfter: seen.has(unlockAfter) ? unlockAfter : null }, chapters };
+  const lead = {};
+  for (const g of GROUPS) {
+    const id = str(r.lead?.[g]);
+    lead[g] = chapters.some((c) => c.id === id) ? id : null;
+  }
+  // The quick "Who's open?" set's lessons: pass nodes, in turn (the first gets the odd rep).
+  const passIds = new Set(chapters.flatMap((c) => c.nodes).filter((n) => n.kind === 'pass').map((n) => n.id));
+  const quickPass = strings(r.quickPass).filter((id) => passIds.has(id));
+  return { version: 1, groups, defaultRoles, lead, quickPass, matchday: { unlockAfter: seen.has(unlockAfter) ? unlockAfter : null }, chapters };
+}
+
+/** The chapters in the order Next up takes them for a position group: the group's lead chapter first, then the Road's. */
+export function chapterOrder(road, group) {
+  const chapters = road?.chapters ?? [];
+  const lead = road?.lead?.[group];
+  const first = lead ? chapters.filter((c) => c.id === lead) : [];
+  return [...first, ...chapters.filter((c) => !first.includes(c))];
 }
 
 /** Every node, in road order. */
@@ -184,7 +227,7 @@ export function groupOfRole(role, groups = GROUP_FAMILIES) {
 // ---------------------------------------------------------------- the profile
 
 export function createProfile() {
-  return { version: 1, group: null, role: null, onboarded: false, road: {} };
+  return { version: 1, group: null, role: null, onboarded: false, road: {}, last: null };
 }
 
 /** A stored profile, sanitised (anything unreadable reads as a fresh start). */
@@ -198,9 +241,12 @@ export function normalizeProfile(raw) {
   if (isObj(raw.road)) {
     for (const [id, v] of Object.entries(raw.road)) {
       if (!ID_RE.test(id) || id === FIRST_SET || !isObj(v)) continue;
-      const stars = int(v.stars, 0, ROAD_DEFAULTS.maxStars), plays = int(v.plays, 0, 1e6);
-      if (stars || plays) p.road[id] = { stars, plays };
+      const stars = int(v.stars, 0, ROAD_DEFAULTS.maxStars), plays = int(v.plays, 0, 1e6), starts = int(v.starts, 0, 1e6);
+      if (stars || plays || starts) p.road[id] = { stars, plays, ...(starts ? { starts } : {}) };
     }
+  }
+  if (isObj(raw.last) && ID_RE.test(str(raw.last.nodeId))) {
+    p.last = { nodeId: str(raw.last.nodeId), ids: strings(raw.last.ids).slice(0, ROAD_DEFAULTS.lastIds) };
   }
   return p;
 }
@@ -237,6 +283,8 @@ export function onProfile(fn) {
 
 export const nodeStars = (profile, id) => int(profile?.road?.[id]?.stars, 0, ROAD_DEFAULTS.maxStars);
 export const nodePlays = (profile, id) => int(profile?.road?.[id]?.plays, 0, 1e6);
+/** How many sets of a node have begun (startSet); older profiles only counted finished ones (plays). */
+export const nodeAttempt = (profile, id) => Math.max(int(profile?.road?.[id]?.starts, 0, 1e6), nodePlays(profile, id));
 
 /**
  * A node is open when it is the first on the Road, when the node before it has a star, when you have played it, or,
@@ -253,12 +301,23 @@ export function isUnlocked(road, profile, nodeId, P = ROAD_DEFAULTS) {
   return !!(ch?.opensAfter && ch.nodes[0]?.id === nodeId && nodeStars(profile, ch.opensAfter) >= P.unlockStars);
 }
 
-/** Next up (§3): the first open node with fewer than 3 stars, in road order; with every open node at 3 stars, the last open one. */
-export function nextNode(road, profile) {
+/**
+ * Next up (§3, as play-tested): in your group's chapter order (chapterOrder: the lead chapter first), the first open
+ * node under nextStars (2) stars, so a new or weak node comes before replaying a 2-star one; then the first under 3;
+ * with every open node at 3 stars, the last open one in the Road's order.
+ */
+export function nextNode(road, profile, P = ROAD_DEFAULTS) {
   const nodes = roadNodes(road);
-  const open = nodes.filter((n) => isUnlocked(road, profile, n.id));
-  return open.find((n) => nodeStars(profile, n.id) < ROAD_DEFAULTS.maxStars) ?? open.at(-1) ?? nodes[0] ?? null;
+  const open = new Set(nodes.filter((n) => isUnlocked(road, profile, n.id, P)));
+  const group = GROUPS.includes(profile?.group) ? profile.group : groupOfRole(profile?.role, road?.groups);
+  const order = chapterOrder(road, group).flatMap((c) => c.nodes ?? []).filter((n) => open.has(n));
+  return order.find((n) => nodeStars(profile, n.id) < P.nextStars)
+    ?? order.find((n) => nodeStars(profile, n.id) < P.maxStars)
+    ?? [...open].at(-1) ?? nodes[0] ?? null;
 }
+
+/** The node whose star opens Match day (road.json `matchday.unlockAfter`: chapter 1's Big Match), or null. */
+export const matchdayGate = (road) => (road?.matchday?.unlockAfter ? nodeById(road, road.matchday.unlockAfter) : null);
 
 /** Match day opens when the road's `matchday.unlockAfter` node (chapter 1's Big Match) has a star. */
 export function isMatchdayUnlocked(road, profile) {
@@ -312,12 +371,38 @@ export function recordSet(app, nodeId, repStars = []) {
   }
   const after = Math.max(before, setStars);
   const plays = nodePlays(profile, id) + 1;
-  const next = { ...profile, road: { ...profile.road, [id]: { stars: after, plays } } };
+  const next = { ...profile, road: { ...profile.road, [id]: { ...profile.road[id], stars: after, plays } } };
   const openBefore = new Set(road ? roadNodes(road).filter((n) => isUnlocked(road, profile, n.id)).map((n) => n.id) : []);
   const matchBefore = road ? isMatchdayUnlocked(road, profile) : false;
   saveProfile(app, next);
   const unlocked = road ? roadNodes(road).filter((n) => !openBefore.has(n.id) && isUnlocked(road, next, n.id)).map((n) => n.id) : [];
   return { before, after, setStars, plays, unlocked, matchday: road ? !matchBefore && isMatchdayUnlocked(road, next) : false };
+}
+
+/**
+ * A set of a node begins: its start counter goes up (the next set's seed takes it in, so a reload or a quit in the
+ * middle deals fresh reps rather than the ones you have seen) and its reps become the profile's last set (the next
+ * recall rep never repeats one). buildSet calls it when it is given the app. The onboarding set ('first') and ids the
+ * loaded road does not know are not counted.
+ * @returns {number} the attempt this set was (0 for a node's first), or -1 when nothing was counted
+ */
+export function startSet(app, nodeId, reps = []) {
+  const id = String(nodeId ?? '');
+  const loaded = app?.data?.road ?? bound.app?.data?.road ?? null;
+  const road = loaded?.chapters?.length ? loaded : null;
+  if (!ID_RE.test(id) || id === FIRST_SET || (road && !nodeById(road, id))) return -1;
+  const profile = loadProfile(app);
+  const attempt = nodeAttempt(profile, id);
+  const ids = [...new Set((Array.isArray(reps) ? reps : []).map(repId).filter(Boolean))].slice(0, ROAD_DEFAULTS.lastIds);
+  const rec = { stars: nodeStars(profile, id), plays: nodePlays(profile, id), starts: attempt + 1 };
+  saveProfile(app, { ...profile, road: { ...profile.road, [id]: rec }, last: { nodeId: id, ids } });
+  return attempt;
+}
+
+/** A rep's drill id as a set remembers it (an authored drill and its mirror are one). */
+function repId(rep) {
+  const id = rep?.kind === 'pass' ? rep?.drill?.id : rep?.scenario?.id;
+  return typeof id === 'string' && id ? baseId(id) : null;
 }
 
 // ---------------------------------------------------------------- loading the road
@@ -392,6 +477,34 @@ async function forwardableFor(ctx) {
   };
 }
 
+/** The engine's up-front feasibility helper of a kind (spotdrill.js canGenerateSpot, passdrill.js canGeneratePass). */
+const FEASIBLE = Object.freeze({ spot: 'canGenerateSpot', pass: 'canGeneratePass' });
+
+/**
+ * Whether the generator can make a drill of a kind for a position on some of these ideas (in that direction, for a
+ * pass), as the engine measured up front (spotdrill.js canGenerateSpot(role, principles), passdrill.js
+ * canGeneratePass(role, principles, { direction })), so a set never waits on calls known to fail: a left back on "Find
+ * the Free Side" once took 1-2 s of empty calls. Injected generators may bring `canGenerate(kind, role, principles,
+ * direction)`. No helper: yes (the generator is asked, and an ask that comes back empty twice is dropped).
+ * @returns {Promise<(kind: 'spot'|'pass', role: string, principles: string[], direction?: string) => boolean>}
+ */
+async function feasibleFor(ctx) {
+  if (ctx.generators !== undefined) {
+    const f = ctx.generators?.canGenerate;
+    return (kind, role, principles, direction = 'any') => {
+      if (typeof f !== 'function') return true;
+      try { return f(kind, role, [...principles], direction) !== false; } catch { return true; }
+    };
+  }
+  const [spot, pass] = await Promise.all([engineModule('spot'), engineModule('pass')]);
+  const helpers = { spot: spot?.[FEASIBLE.spot], pass: pass?.[FEASIBLE.pass] };
+  return (kind, role, principles, direction = 'any') => {
+    const f = helpers[kind];
+    if (typeof f !== 'function' || !principles?.length) return true;
+    try { return f(role, [...principles], kind === 'pass' ? { direction } : undefined) !== false; } catch { return true; }
+  };
+}
+
 /** A breath for the page between generator calls (each takes 5-200 ms), so the loading screen stays alive. */
 const breathe = () => new Promise((r) => setTimeout(r, 0));
 
@@ -446,11 +559,50 @@ export function nearDuplicate(a, b, P = ROAD_DEFAULTS) {
   return !a.start || !b.start || dist(a.start, b.start) <= P.nearSpot;
 }
 
+/** Template ids that name no template (a plain scene): any number of them may share a set. */
+const PLAIN_TEMPLATES = new Set(['natural', 'scene', 'none', 'plain']);
+/** The hand-shaped scenes of passdrill.js (source.template), which look alike from drill to drill; its other
+ *  source.template values ('marked', 'free') vary a random scene, so they do not. */
+const HAND_SHAPED = new Set(['switch', 'own-goal']);
+
+/**
+ * What makes two generated reps look alike though their pictures differ (repPicture): the engine template they came
+ * from (drill.template, the engine's own id for it; else a hand-shaped source.template such as the switch of play) and,
+ * for a spot rep, the player on the ball at the freeze (the question names them: "Their winger has the ball. Where do
+ * you go?"). A set holds one generated rep per key. Authored reps have none.
+ * @returns {string[]}
+ */
+export function repLooks(rep) {
+  const d = rep?.kind === 'pass' ? rep.drill : rep?.scenario;
+  if (!isObj(d) || d.source?.kind !== 'generated') return [];
+  const keys = [];
+  const own = typeof d.template === 'string' && d.template ? d.template : null;
+  const t = own ?? (HAND_SHAPED.has(d.source?.template) ? d.source.template : null);
+  if (t && !PLAIN_TEMPLATES.has(t)) keys.push(`${rep.kind}|template|${t}`);
+  if (rep.kind === 'spot') {
+    const holder = carrierAtFreeze(d);
+    if (holder) keys.push(`spot|carrier|${holder}`);
+  }
+  return keys;
+}
+
+/** Who has the ball at a scenario's freeze (its carrier keys), or null. */
+export function carrierAtFreeze(s) {
+  const tl = s?.timeline;
+  const t = Number.isFinite(tl?.freezeAt) ? tl.freezeAt : Number.isFinite(tl?.duration) ? tl.duration : Infinity;
+  let id = null;
+  for (const k of Array.isArray(tl?.carrier) ? tl.carrier : []) {
+    if (isObj(k) && Number.isFinite(k.t) && k.t <= t + 1e-9) id = typeof k.id === 'string' && k.id ? k.id : null;
+  }
+  return id;
+}
+
 /**
  * What a set has taken so far: the drills used (an authored drill and its mirror count once), the pictures of its
- * reps (no near-duplicates) and how often each generator ask came back empty or gave a drill: an ask that came back
- * empty generatorNulls times more often than it gave one is not asked again (each call already tries 30-40 scenes, so
- * that position rarely gets those ideas).
+ * reps (no near-duplicates), the looks of its generated reps (repLooks: one each), how many reps it lent to another
+ * position (at most maxBorrowed), and how often each generator ask came back empty or gave a drill: an ask that came
+ * back empty generatorNulls times more often than it gave one is not asked again (each call already tries 30-40
+ * scenes, so that position rarely gets those ideas).
  */
 function setState() {
   const nulls = new Map(), hits = new Map();
@@ -458,17 +610,34 @@ function setState() {
   return {
     used: new Set(),
     pictures: [],
+    looks: new Set(),
+    borrowed: 0,
+    lifted: false,
     dry: (key) => (nulls.get(key) ?? 0) - (hits.get(key) ?? 0) >= ROAD_DEFAULTS.generatorNulls,
     empty: (key) => add(nulls, key),
     hit: (key) => add(hits, key),
+    /** Room for one more rep played in another position (always, once the set has run out of anything else). */
+    canBorrow() { return this.lifted || this.borrowed < ROAD_DEFAULTS.maxBorrowed; },
+    /** How a rep in another position is flagged: `borrowed`, and `spare` past maxBorrowed (nothing else was left). */
+    lend() { return this.borrowed >= ROAD_DEFAULTS.maxBorrowed ? { borrowed: true, spare: true } : { borrowed: true }; },
+    /** Out of reps in your position: a set short of reps may lend more than maxBorrowed rather than repeat one. */
+    lift() { this.lifted = true; },
     fresh(rep) {
       const pic = repPicture(rep);
-      return !pic || !this.pictures.some((p) => nearDuplicate(p, pic));
+      if (pic && this.pictures.some((p) => nearDuplicate(p, pic))) return false;
+      return repLooks(rep).every((k) => !this.looks.has(k));
+    },
+    /** The templates the set's generated reps of a kind came from (for a spot rep: the question it asks). */
+    templates(kind) {
+      const pre = `${kind}|template|`;
+      return [...this.looks].filter((k) => k.startsWith(pre)).map((k) => k.slice(pre.length));
     },
     take(id, rep) {
       this.used.add(id);
       const pic = repPicture(rep);
       if (pic) this.pictures.push(pic);
+      for (const k of repLooks(rep)) this.looks.add(k);
+      if (rep?.borrowed) this.borrowed++;
     },
   };
 }
@@ -522,6 +691,7 @@ function setContext(opts, road) {
     seed: opts.seed ?? 0,
     formations: opts.formations ?? app?.data?.formations ?? null,
     generators: opts.generators,
+    feasible: feasibleFor({ generators: opts.generators }), // Promise<(kind, role, principles, direction?) => boolean>
     reps: Math.max(1, int(opts.count ?? ROAD_DEFAULTS.reps, 1, 50)),
   };
 }
@@ -532,7 +702,7 @@ const sidesDiffer = (a, b) => { const x = sideOf(a), y = sideOf(b); return !!x &
 /**
  * Authored scenarios on these principles, best first: played in your role (after mirroring) before other roles, the
  * principle as the scenario's main one before a side one, fresh or low-star ones before ones you aced, then seeded.
- * @returns {{ id: string, mirror: boolean, role: string, inGroup: boolean, rank: any[] }[]}
+ * @returns {{ id: string, mirror: boolean, role: string, inGroup: boolean, principles: string[], rank: any[] }[]}
  */
 function authoredRefs(index, principles, ctx, salt) {
   const want = new Set(principles ?? []);
@@ -548,7 +718,7 @@ function authoredRefs(index, principles, ctx, salt) {
     const role = mirror ? mirrorRole(authored) : authored;
     const stars = ctx.rewards?.best?.[e.id]?.stars;
     const rank = [role === ctx.role ? 0 : 1, want.has(ps[0]) ? 0 : 1, Number.isFinite(stars) ? 1 + stars : 0, rng()];
-    out.push({ id: e.id, mirror, role, inGroup: ctx.families.includes(familyOf(authored)), rank });
+    out.push({ id: e.id, mirror, role, inGroup: ctx.families.includes(familyOf(authored)), principles: ps, rank });
   }
   return out.sort((a, b) => cmp(a.rank, b.rank));
 }
@@ -565,35 +735,56 @@ async function loadRef(ref, ctx) {
 }
 
 /**
- * The spot reps one list of ideas can give, in order: authored in your group, generated for your position, authored in
- * other positions. `set` (shared by a set) keeps each drill to one rep and generated reps apart (no near-duplicates).
+ * The spot reps one list of ideas can give, in order: authored in your position (mirrored to your side), authored in
+ * another position of your group, generated for your position, authored in other positions; the drills of your last
+ * set come only after all of those, in the same order (a set begun again after a reload, or played again, is fresh
+ * where the content allows). A rep in another position is `borrowed` and a set takes at most maxBorrowed of them.
+ * `set` (shared by a set) keeps each drill to one rep and generated reps apart (no near-duplicates, one per look:
+ * repLooks).
  * @param {{ id: string, principles: string[] }} target  a node, or ideas standing in for one
- * @param {{ nodeId?: string, extra?: boolean }} [tag]  the node the reps count for (default target.id); extra: from the
- *   chapter's other ideas
+ * @param {{ nodeId?: string, extra?: boolean, skip?: Set<string>, avoid?: Set<string> }} [tag]  nodeId: the node the reps
+ *   count for (default target.id); extra: from the chapter's other ideas; skip: drill ids never to take (the last set's,
+ *   for a recall rep); avoid: ideas a rep must not be about (the node you are on, for a recall rep)
  */
-function spotQueue(target, ctx, set, salt, { nodeId = target.id, extra = false } = {}) {
-  const refs = authoredRefs(ctx.index, target.principles, ctx, `${salt}|${target.id}`);
-  const tiers = [refs.filter((r) => r.inGroup), null, refs.filter((r) => !r.inGroup)];
+function spotQueue(target, ctx, set, salt, { nodeId = target.id, extra = false, skip = null, avoid = null } = {}) {
+  const refs = authoredRefs(ctx.index, target.principles, ctx, `${salt}|${target.id}`)
+    .filter((r) => !skip?.has(baseId(r.id)) && !(avoid && r.principles.some((p) => avoid.has(p))));
+  const last = new Set(ctx.profile?.last?.ids ?? []);
+  const byTier = (list) => [list.filter((r) => r.role === ctx.role), list.filter((r) => r.role !== ctx.role && r.inGroup), list.filter((r) => r.role !== ctx.role && !r.inGroup)];
+  const [own, group, others] = byTier(refs.filter((r) => !last.has(baseId(r.id))));
+  const again = byTier(refs.filter((r) => last.has(baseId(r.id)))).flat();
   const key = `spot|${ctx.role}|${target.principles.join(',')}`;
   const tag = (rep) => ({ ...rep, nodeId, ...(extra ? { extra: true } : {}) });
   let tries = 0;
   const maxTries = ctx.reps * ROAD_DEFAULTS.generatorTries;
   const fromRefs = async (list) => {
     for (const ref of list) {
-      if (set.used.has(baseId(ref.id))) continue;
-      set.used.add(baseId(ref.id));
+      const id = baseId(ref.id);
+      if (set.used.has(id)) continue;
+      const borrowed = ref.role !== ctx.role;
+      if (borrowed && !set.canBorrow()) return null;
+      set.used.add(id);
       const rep = await loadRef(ref, ctx);
-      if (rep) { set.take(baseId(ref.id), rep); return tag(rep); }
+      if (rep) {
+        const r = borrowed ? { ...rep, ...set.lend() } : rep;
+        set.take(id, r);
+        return tag(r);
+      }
     }
     return null;
   };
   const generated = async () => {
     const gen = await generatorFor(ctx, 'spot');
-    while (gen && tries < maxTries && !set.dry(key)) {
+    if (!gen || !(await ctx.feasible)('spot', ctx.role, target.principles)) return null;
+    while (tries < maxTries && !set.dry(key)) {
       const seed = seedFor(ctx, target.id, salt, 'gen', tries++);
+      // The questions the set asks already: the engine words the drill with another question that fits it
+      // (spotdrill.js avoidTemplates changes only the words), so a good drill is not dropped and regenerated for
+      // its question. Only a drill no other question fits is still turned away (set.fresh).
+      const avoidTemplates = set.templates('spot');
       let s = null;
       try {
-        s = await gen({ seed, role: ctx.role, principles: [...target.principles], formations: ctx.formations, catalogue: ctx.catalogue });
+        s = await gen({ seed, role: ctx.role, principles: [...target.principles], formations: ctx.formations, catalogue: ctx.catalogue, ...(avoidTemplates.length ? { avoidTemplates } : {}) });
       } catch (err) {
         console.warn('[fotbol] road: spot drill generation failed', err?.message ?? err);
       }
@@ -602,7 +793,7 @@ function spotQueue(target, ctx, set, salt, { nodeId = target.id, extra = false }
       set.hit(key);
       const id = String(s.id ?? `gen-${seed}`);
       const rep = { kind: 'spot', scenario: s, mirrored: false, generated: true };
-      if (set.used.has(id) || !set.fresh(rep)) continue;
+      if (set.used.has(id) || skip?.has(id) || !set.fresh(rep)) continue;
       set.take(id, rep);
       return tag(rep);
     }
@@ -610,7 +801,7 @@ function spotQueue(target, ctx, set, salt, { nodeId = target.id, extra = false }
   };
   return {
     async next() {
-      return (await fromRefs(tiers[0])) ?? (await generated()) ?? (await fromRefs(tiers[2]));
+      return (await fromRefs(own)) ?? (await fromRefs(group)) ?? (await generated()) ?? (await fromRefs(others)) ?? (await fromRefs(again));
     },
   };
 }
@@ -634,24 +825,33 @@ function fillUp(out, n) {
   return out;
 }
 
-/** The chapter nodes a mix node draws from (of one rep kind). */
+/** The chapter nodes a mix node (or the quick set: its `parts`) draws from (of one rep kind). */
 function mixParts(road, node, kind) {
+  if (node.parts?.length) return node.parts;
   const src = (road?.chapters ?? []).find((c) => c.id === node.from) ?? chapterOf(road, node.id);
   const parts = (src?.nodes ?? []).filter((x) => x.kind !== 'mix' && repKind(road, x) === kind && x.principles?.length);
   return parts.length ? parts : [node];
 }
 
-/** The ideas of a node's chapter (for a mix node: its source chapter) of one rep kind, the node's own left out. */
+/** The ideas of a node's chapter (for a mix node: its source chapter; the quick set: its parts') of one rep kind, the
+ *  node's own left out. */
 function chapterIdeas(road, node, kind) {
   const own = new Set(node.principles ?? []);
-  return [...new Set(mixParts(road, node, kind).flatMap((x) => x.principles ?? []))].filter((p) => !own.has(p));
+  const chapter = node.parts?.length ? chapterOf(road, node.parts[0].id) : null;
+  const nodes = chapter ? chapter.nodes.filter((x) => x.kind !== 'mix' && repKind(road, x) === kind) : mixParts(road, node, kind);
+  return [...new Set(nodes.flatMap((x) => x.principles ?? []))].filter((p) => !own.has(p));
 }
 
-/** Nodes before `node` on the Road that you have played (for the recall rep). */
-function earlierPlayed(road, profile, node) {
-  const nodes = roadNodes(road);
-  const i = nodes.findIndex((n) => n.id === node.id);
-  return nodes.slice(0, Math.max(0, i)).filter((n) => nodePlays(profile, n.id) > 0 || nodeStars(profile, n.id) > 0);
+/**
+ * Where a set's recall rep may come from (R23): the spot nodes you have played other than this one, on none of its
+ * ideas; another node than your last set's when there is one (a recall is spaced, not a replay of five minutes ago).
+ */
+export function recallSources(road, profile, node) {
+  const own = new Set(node?.principles ?? []);
+  const played = roadNodes(road).filter((n) => n.id !== node?.id && n.kind === 'spot'
+    && (nodePlays(profile, n.id) > 0 || nodeStars(profile, n.id) > 0) && !n.principles.some((p) => own.has(p)));
+  const fresh = played.filter((n) => n.id !== profile?.last?.nodeId);
+  return fresh.length ? fresh : played;
 }
 
 async function spotSet(node, ctx) {
@@ -660,32 +860,37 @@ async function spotSet(node, ctx) {
   const set = setState();
   const out = [];
   if (node.kind !== 'mix' && ROAD_DEFAULTS.recall > 0 && n > 1) {
-    const earlier = earlierPlayed(ctx.road, ctx.profile, node).filter((x) => x.kind === 'spot');
-    if (earlier.length) {
-      const from = earlier[Math.floor(rng() * earlier.length)];
-      const rep = await spotQueue(from, ctx, set, 'recall').next();
-      if (rep) out.push({ ...rep, recall: true });
+    // One recall rep: from another node you have played (never on this node's ideas), never a rep of your last set.
+    const sources = recallSources(ctx.road, ctx.profile, node);
+    const skip = new Set(ctx.profile.last?.ids ?? []);
+    const avoid = new Set(node.principles);
+    const first = Math.floor(rng() * sources.length);
+    for (let k = 0; k < sources.length; k++) {
+      const rep = await spotQueue(sources[(first + k) % sources.length], ctx, set, 'recall', { skip, avoid }).next();
+      if (rep) { out.push({ ...rep, recall: true }); break; }
     }
   }
   const targets = node.kind === 'mix' ? mixParts(ctx.road, node, 'spot') : [node];
   const queues = targets.map((t) => spotQueue(t, ctx, set, 'set'));
   const start = Math.floor(rng() * queues.length);
-  for (let turn = 0; out.length < n; turn++) {
-    let rep = null;
-    for (let j = 0; j < queues.length && !rep; j++) rep = await queues[(start + turn + j) % queues.length].next();
-    if (!rep) break;
-    out.push(rep);
-  }
-  // Thin for your position (few drills on these ideas, and ones the generator cannot make for it): the chapter's
-  // other ideas, before any drill comes back mirrored or twice.
-  const rest = out.length < n ? chapterIdeas(ctx.road, node, 'spot') : [];
-  if (rest.length) {
-    const q = spotQueue({ id: `${node.id}+chapter`, principles: rest }, ctx, set, 'chapter', { nodeId: node.id, extra: true });
-    while (out.length < n) {
-      const rep = await q.next();
+  const fill = async (qs, from = 0) => {
+    for (let turn = 0; out.length < n; turn++) {
+      let rep = null;
+      for (let j = 0; j < qs.length && !rep; j++) rep = await qs[(from + turn + j) % qs.length].next();
       if (!rep) break;
       out.push(rep);
     }
+  };
+  await fill(queues, start);
+  // Thin for your position (few drills on these ideas, and ones the generator cannot make for it): the chapter's
+  // other ideas; then, still short, more reps in other positions than maxBorrowed; only then a drill mirrored or twice.
+  const rest = out.length < n ? chapterIdeas(ctx.road, node, 'spot') : [];
+  const chapter = rest.length ? [spotQueue({ id: `${node.id}+chapter`, principles: rest }, ctx, set, 'chapter', { nodeId: node.id, extra: true })] : [];
+  await fill(chapter);
+  if (out.length < n) {
+    set.lift();
+    await fill(queues, start);
+    await fill(chapter);
   }
   return fillUp(out, n);
 }
@@ -701,11 +906,24 @@ export function forwardPlan(ok, count = ROAD_DEFAULTS.forwardPasses) {
   return new Set(Array.from({ length: count }, (_, k) => idx[Math.floor(((k + 0.5) * idx.length) / count)]));
 }
 
+/** The best pass's receiver as a role ('us-ST@space' → 'ST'), or null. */
+export const bestReceiver = (drill) => String(drill?.rating?.best?.targetId ?? '').replace(/^(us|them)-/, '').replace(/@.*$/, '') || null;
+
+/** Receivers already starred ROAD_DEFAULTS.maxSameBest times in these pass reps (sorted, for stable generator seeds). */
+export function avoidReceivers(reps, max = ROAD_DEFAULTS.maxSameBest) {
+  const n = new Map();
+  for (const r of reps) {
+    const role = r?.kind === 'pass' ? bestReceiver(r.drill) : null;
+    if (role) n.set(role, (n.get(role) ?? 0) + 1);
+  }
+  return [...n].filter(([, c]) => c >= max).map(([role]) => role).sort();
+}
+
 async function passSet(node, ctx) {
   const n = ctx.reps;
   const out = [];
   const set = setState();
-  const targets = node.kind === 'mix' ? mixParts(ctx.road, node, 'pass') : [node];
+  const targets = node.kind === 'mix' || node.parts?.length ? mixParts(ctx.road, node, 'pass') : [node];
   const want = new Set(targets.flatMap((t) => t.principles));
   const rng = seededRandom(`${ctx.seed}|${node.id}|pass`);
   const authored = ctx.index
@@ -727,33 +945,42 @@ async function passSet(node, ctx) {
   // The plan: the idea of each rep (a mix takes its nodes in turn) and which want a forward best (3 of 5 where the
   // ideas allow it). Seeds are consecutive integers from the set's seed, as generatePassSet uses them.
   const forwardable = await forwardableFor(ctx);
-  const start = Math.floor(rng() * targets.length);
+  const start = node.parts?.length ? 0 : Math.floor(rng() * targets.length); // the quick set: its first lesson leads
   const slots = Array.from({ length: n - out.length }, (_, i) => targets[(start + i) % targets.length]);
   const forward = forwardPlan(slots.map((t) => forwardable(t.principles, ctx.role)));
   const base = seedFor(ctx, node.id, 'pass');
   const others = chapterIdeas(ctx.road, node, 'pass');
   const anyone = LEARNABLE_ROLES.filter((r) => r !== ctx.role && !ctx.mates.includes(r) && !ctx.neighbours.includes(r));
+  const feasible = await ctx.feasible;
   const T = ROAD_DEFAULTS.generatorTries;
-  for (const [i, t] of slots.entries()) {
+  const got = new Array(slots.length).fill(null);
+  const slot = async (i, t) => {
     const dir = forward.has(i) ? 'forward' : 'any';
     // Your position on the idea; then a teammate in your group (a full-back's "free side" is a centre-back's switch),
     // then one in the groups next to yours (a striker's forward pass is a winger's); a forward slot then takes any
-    // pass from you or your group; then another passing idea of the chapter for you; last, anyone on the idea.
+    // pass from you or your group; then another passing idea of the chapter for you (forward first in a forward slot);
+    // last, anyone on the idea. A teammate plays at most maxBorrowed reps of a set, and nobody is asked for what the
+    // engine says it cannot make.
     const on = (roles, direction, principles = t.principles) => roles.map((r) => [r, principles, direction]);
+    // No receiver is starred in more than maxSameBest reps of a set (a winger's forward passes would all be to the #9):
+    // the generator marks those receivers out of the picture, so a winger's third forward slot falls back to 'any'.
+    const avoid = avoidReceivers([...out, ...got.filter(Boolean)]);
     const asks = [
       ...on([ctx.role, ...ctx.mates, ...ctx.neighbours], dir),
       ...(dir === 'forward' ? on([ctx.role, ...ctx.mates], 'any') : []),
-      ...(others.length ? on([ctx.role], 'any', others) : []),
+      ...(others.length ? [...(dir === 'forward' ? on([ctx.role], 'forward', others) : []), ...on([ctx.role], 'any', others)] : []),
       ...on(anyone, 'any'),
     ];
     let rep = null;
     for (const [role, principles, direction] of asks) {
-      const key = `pass|${role}|${principles.join(',')}|${direction}`;
+      if (role !== ctx.role && !set.canBorrow()) continue;
+      if (!feasible('pass', role, principles, direction)) continue;
+      const key = `pass|${role}|${principles.join(',')}|${direction}|${avoid.join(',')}`;
       for (let k = 0; k < T && !rep && !set.dry(key); k++) {
         const seed = base + i + k * 1009 * n;
         let drill = null;
         try {
-          drill = await gen({ seed, role, principles: [...principles], formations: ctx.formations, catalogue: ctx.catalogue, direction });
+          drill = await gen({ seed, role, principles: [...principles], formations: ctx.formations, catalogue: ctx.catalogue, direction, ...(avoid.length ? { avoid } : {}) });
         } catch (err) {
           console.warn('[fotbol] road: pass drill generation failed', err?.message ?? err);
         }
@@ -761,42 +988,64 @@ async function passSet(node, ctx) {
         if (!isObj(drill)) { set.empty(key); continue; }
         set.hit(key);
         const id = String(drill.id ?? `pass-${role}-${seed}`);
-        const r = { kind: 'pass', drill, nodeId: t.id, ...(role !== ctx.role ? { borrowed: true } : {}), ...(principles !== t.principles ? { extra: true } : {}) };
+        const r = { kind: 'pass', drill, nodeId: t.id, ...(role !== ctx.role ? set.lend() : {}), ...(principles !== t.principles ? { extra: true } : {}) };
         if (set.used.has(id) || !set.fresh(r)) continue;
         set.take(id, r);
         rep = r;
       }
       if (rep) break;
     }
-    if (rep) out.push(rep);
+    return rep;
+  };
+  // The forward slots first: they are the hard ones, so a teammate lends a hand there before anywhere else (the set
+  // keeps its slot order).
+  const order = [...slots.keys()].sort((a, b) => Number(forward.has(b)) - Number(forward.has(a)) || a - b);
+  for (const i of order) got[i] = await slot(i, slots[i]);
+  // Still short: more reps in other positions than maxBorrowed, rather than a short set.
+  if (got.some((r) => !r)) {
+    set.lift();
+    for (const i of order) if (!got[i]) got[i] = await slot(i, slots[i]);
   }
-  return out;
+  return [...out, ...got.filter(Boolean)];
 }
 
 /** '#/pass' (the home's "Who's open?" tile): a quick set of mixed passing lessons, no Road node. */
 export const QUICK_PASS = 'quick';
 
+/** The quick set's lessons when the road names none (road.json `quickPass`): Find the Free Player, then Play It Forward. */
+export const QUICK_PASS_NODES = Object.freeze(['free-player', 'play-forward']);
+
 /**
- * The quick passing set (§4.2's "Who's open?" tile): `count` generated pass drills for your position on any lesson,
- * built as a Road pass set is (3 of 5 with a forward best, no near-duplicates, a teammate in your group when your
- * position rarely gets a drill). Deterministic for a seed; pass a fresh seed for a fresh set.
- * @param {{ profile?, seed?, formations?, catalogue?, generators?, count?, app? }} [opts]
- * @returns {Promise<{ kind: 'pass', drill, nodeId: 'quick' }[]>}
+ * The quick passing set (§4.2's "Who's open?" tile): `count` generated pass drills for your position, built as a Road
+ * pass set is (3 of 5 with a forward best, no near-duplicates, one per template, a teammate in your group when your
+ * position rarely gets a drill, at most maxBorrowed), on the road's `quickPass` lessons in turn: the free player
+ * (the first rep, and the odd one) mixed with playing forward (play-tested: "who's open?" is the free-player idea).
+ * Without the road: any lesson. Deterministic for a seed; pass a fresh seed for a fresh set.
+ * @param {{ road?, profile?, seed?, formations?, catalogue?, generators?, count?, app? }} [opts]
+ * @returns {Promise<{ kind: 'pass', drill, nodeId: 'quick', lesson: string|null, borrowed?, extra? }[]>}  lesson: the node it teaches
  */
 export async function buildQuickPassSet(opts = {}) {
   const road = opts.road ?? bound.app?.data?.road ?? null;
   const ctx = setContext({ ...opts, index: [] }, road);
-  return passSet({ id: QUICK_PASS, kind: 'pass', principles: [], chapter: null }, ctx);
+  const ids = road?.quickPass?.length ? road.quickPass : QUICK_PASS_NODES;
+  const parts = ids.map((id) => nodeById(road, id)).filter((n) => n?.kind === 'pass' && n.principles?.length);
+  const node = { id: QUICK_PASS, kind: 'pass', principles: [...new Set(parts.flatMap((n) => n.principles))], chapter: null, ...(parts.length ? { parts } : {}) };
+  const reps = await passSet(node, ctx);
+  return reps.map((r) => ({ ...r, nodeId: QUICK_PASS, lesson: parts.length ? r.nodeId : null }));
 }
 
 /**
- * The reps of a node's set (§3, §8.1). Deterministic for a seed.
+ * The reps of a node's set (§3, §8.1). Deterministic for a seed and the profile: the node's start counter
+ * (nodeAttempt) goes into the seed, so each set of a node is new, and a set begun and left deals fresh reps next time.
  * @param {object|string} node  a road node (or its id, with `road`)
  * @param {{ road?, profile?, index?, load?, rewards?, skills?, seed?, formations?, catalogue?, generators?, count?, app? }} [opts]
  *   index: the scenario index (app.data.scenarios.index) or the scenario store itself; load: id → Promise<scenario>
  *   (default: the bound app's store, else a fetch); catalogue (or principles): data/principles.json for the generated
  *   drills' titles and takeaways (default: the bound app's); generators: { spot, pass } functions (and optionally
- *   forwardable(principles, role)), or null for none (default: the engine's, imported when first needed); count: reps (default 5)
+ *   forwardable(principles, role) and canGenerate(kind, role, principles, direction)), or null for none (default: the engine's,
+ *   imported when first needed; spot calls get generateSpotDrill's options, with avoidTemplates once the set has asked a
+ *   question); count: reps (default 5); app: the app playing the set: given it, the set counts as
+ *   started (startSet: the node's start counter goes up and these reps become the profile's last set)
  * @returns {Promise<object[]>} reps; a pass set can be empty when neither a generator nor authored pass drills exist
  */
 export async function buildSet(node, opts = {}) {
@@ -804,18 +1053,25 @@ export async function buildSet(node, opts = {}) {
   const n = asNode(road, node);
   if (!n?.id) return [];
   const ctx = setContext(opts, road);
-  return repKind(road, n) === 'pass' ? passSet(n, ctx) : spotSet(n, ctx);
+  const attempt = nodeAttempt(ctx.profile, n.id);
+  if (attempt) ctx.seed = `${ctx.seed}~${attempt}`;
+  const reps = await (repKind(road, n) === 'pass' ? passSet(n, ctx) : spotSet(n, ctx));
+  if (opts.app) {
+    try { startSet(opts.app, n.id, reps); } catch (err) { console.warn('[fotbol] road: could not count the set', err?.message ?? err); }
+  }
+  return reps;
 }
 
 /**
  * The onboarding set (§4.1, '#/play/first'): 3 easy reps for your position group, the easiest authored first (in your
- * role, then chapter 1's ideas first), then generated ones on chapter 1's ideas, then easy ones in other positions.
+ * role, then your group's first chapter's ideas first: chapterOrder, "Help the ball" for attackers), then generated
+ * ones on those ideas, then easy ones in other positions.
  * @param {{ road?, profile?, index?, load?, seed?, formations?, catalogue?, generators?, count?, app? }} [opts]
  */
 export async function buildFirstSet(opts = {}) {
   const road = opts.road ?? bound.app?.data?.road ?? null;
   const ctx = setContext({ ...opts, count: opts.count ?? ROAD_DEFAULTS.firstReps }, road);
-  const firstChapter = road?.chapters?.[0];
+  const firstChapter = chapterOrder(road, ctx.group)[0];
   const early = firstChapter ? [...new Set(firstChapter.nodes.filter((x) => x.kind === 'spot').flatMap((x) => x.principles))] : [];
   // Every authored spot scenario, easiest first; then in your role, then on chapter 1's ideas, then seeded.
   const rng = seededRandom(`${ctx.seed}|first`);

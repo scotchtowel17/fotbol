@@ -12,7 +12,8 @@
 //            opponents the pass takes out (Impect's "bypassed" test), lowered by pressure on the receiver
 //   utility  U (in goals): the chance we keep it x what it is worth, minus each way of losing it x what
 //            losing it there costs (Spearman 2017 Eq. 11 with more outcomes)
-//   score    100 - (U_best - U) / pointValue, then floored for a safe pass and capped for a red or critical one
+//   worth    U less a youth risk premium for a pass that is not safe (riskWorth): what the rating ranks by
+//   score    100 - (worth_best - worth) / pointValue, then floored for a safe pass and capped for a red or critical one
 // Static frames only (no velocities, no body shape). PURE: no DOM, no clock, no randomness.
 // Canonical frame: we attack +x; rate THEIR passes on swapTeams(frame).
 
@@ -31,12 +32,21 @@ export const PASS_DEFAULTS = Object.freeze({
   receiverReaction: 0.3, // [D] s: the receiver knows the pass is coming and steps to meet it
   softTau: 0.33, // [M] s, soft pitch-control temperature (RESEARCH 5.8)
   keeperWeight: 3, // [S] the keeper's control rate x3 (LaurieOnTracking lambda_gk)
+  // A marker tracking the runner (race into space, PA8): he moves when the runner moves, not when the pass is played.
+  // Without this a centre-back level with our #9 and 2 m from him lost the race to a ball behind the #9 7 times in 10
+  // (reaction 0.7 s against the runner's 0.3 s), so a ball into space behind a tightly marked #9 was starred.
+  markReaction: 0.3, // [D] s (= receiverReaction): a tracking marker reacts with the runner
+  markReach: 3, // [D] m: an opponent this close to the runner tracks him fully...
+  markFade: 2, // [D] m ...fading to not at all this much further away
+  markBehind: 1, // [D] m: ...when level with the runner or goal-side of him on his run (at most this far behind him)...
+  markBehindFade: 2, // [D] m ...fading to not at all this much further behind (a runner who is past him is away)
   // Body block: a defender on or next to the line stops the ball (the lane-open geometry, B3).
   blockReach: 1.0, // [D] m: full block within this of the line...
   blockSoft: 1.5, // [D] m ...fading to none this much further out
   blockMax: 0.9, // [D] a curled or lifted ball beats some blocks
   skip: 1, // [D] m: the passer's own first metre
   shield: 1, // [D] m: the receiver owns the last metre
+  runBehind: 3, // [D] a defender past the receiver's last metre (level with him, or behind) blocks as if this many times further
   step: 1, // [D] m between samples along the pass
   keeperMargin: 2, // [D] m: the keeper intercepts only inside his box plus this
   // Execution: a youth ground pass gets less accurate with length (logistic in metres).
@@ -72,13 +82,27 @@ export const PASS_DEFAULTS = Object.freeze({
   green: 0.8, // [D] pSafe at or above this (and a receiver not under pressure): good
   red: 0.5, // [D] pSafe below this: cut out
   pointValue: 0.001, // [D] U per score point: 1 point = 0.1 % of a goal
-  safeFloor: 60, // [D] a good (green) pass never scores below this: you kept the ball
+  // [D] points: a risky (amber) pass is ranked and scored this much below its expected utility (worth = U - riskWorth
+  // x pointValue, up to twice that as its safety falls to `red`; a cut-out pass twice), so a risky pass is starred
+  // only when it is worth clearly more than the best safe one: play forward when it is safe, keep the ball when it is not
+  // (PA2-PA5, PA13; research §6.8: "Risky, but worth it" where the reward is big, in front of their goal). A teaching
+  // prior for 11-year-olds, measured on generated drills (tests/passdrill.test.js "who's open"): 20 to 40 star the same.
+  riskWorth: 20,
+  // [D] a good (green) pass never scores below this: you kept the ball with a pass to a teammate in space. 75 = two stars
+  // ("Great", starsForScore): at 60 a safe pass to a free #8 earned one star ("Close") whenever the best was a risky
+  // ball to the #9 (the Player-mode review); a safe-but-slow one is held below it (tooSafeCap).
+  safeFloor: 75,
   redCap: 45, // [D] a cut-out pass scores at most this
   criticalCap: 30, // [D] offside, or across the front of our own goal
   bestMargin: 5, // [D] points: a good pass this close to the best also grades as the best
-  notBestCap: 89, // [D] anything else grades below S
-  tooSafeCap: 79, // [D] a safe square or back pass while a good forward pass was on (PA2)
-  forwardWindow: 10, // [D] points: a good forward pass within this of the best counts as "on" (PA2, PA13)
+  notBestCap: 89, // [D] anything else grades below S...
+  riskyCap: 74, // [D] ...and a risky (amber) pass that is not the best at most one star, "Close": the label says Risky!
+  tooSafeCap: 74, // [D] a safe square or back pass while a good forward pass was on (PA2): one star, "Close"...
+  tooSafeGap: 15, // [D] ...when it is more than this many points below the best (the forward pass is clearly better). At
+  //                 bestMargin (5) a free #8 beside you was "too safe" 6-10 points below the best in 6 of 10 cases
+  forwardWindow: 10, // [D] points: a good forward pass within this of the best counts as "on" (PA2, PA13)...
+  fwdOnPressure: 0.3, // [D] ...when its receiver is not marked (pressure below this = canTurnPressure): a safe pass to a free #6
+  //                     is not "too safe" next to a forward ball to a #9 with a centre-back 3 m goal-side of him (PA3)
   squareBand: 3, // [D] m: |dx| within this = square
   blockerMin: 0.05, // [D] an option names its likeliest interceptor only from this pInt
   blockerTag: 0.3, // [D] pInt from which the interceptor is the option's problem (PA4)
@@ -144,44 +168,61 @@ const inTheirBox = (x, y, m) => x >= LENGTH - PENALTY_AREA.depth - m && Math.abs
 
 /**
  * How likely each opponent is to cut out a ground pass from `ball` to `target`, and the lane's safety.
- * Samples every `step` m from `skip` past the ball to where the receiver meets the ball: to feet (a
- * `receiver` given) the receiver steps toward it, so a defender beyond the meeting point loses the race;
- * into space, up to `shield` short of the target. Per defender: pRun (Spearman time to intercept, logistic
- * in the best margin over the samples) and pBlock (a body block, from his closest distance to the line);
- * pInt = 1 - (1 - pBlock)(1 - pRun); pLane = product of (1 - pInt). The keeper counts only in his box.
- * @returns {{ pLane:number, L:number, meet:number, per: {id, role, pInt, pRun, pBlock, margin, at: {x,y}, dmin}[], top: object|null }}
- *   per sorted by pInt (largest first); top = per[0]
+ * The lane runs from `skip` past the ball to `shield` short of the target (the receiver owns the last metre).
+ * Per defender: pRun (Spearman time to intercept, logistic in the best margin over samples every `step` m) and
+ * pBlock (a body block, from his closest distance to the lane); pInt = 1 - (1 - pBlock)(1 - pRun); pLane =
+ * product of (1 - pInt). The keeper counts only in his box.
+ * To feet (a `receiver` given) the receiver steps toward the ball, so the race (pRun) is only run up to where
+ * he meets it: a defender beyond the meeting point loses that race. The block still covers the whole lane: a
+ * defender standing between the meeting point and the receiver is in the receiver's way, so he gets to the ball.
+ * @returns {{ pLane:number, L:number, meet:number, per: {id, role, pInt, pRun, pBlock, margin, at: {x,y,a}, dmin}[], top: object|null }}
+ *   per sorted by pInt (largest first); top = per[0]; `at` is where he cuts it out (his closest lane point for a block)
  */
 export function laneRisk(ball, target, opponents, P = PASS_DEFAULTS, receiver = null) {
   const L = dist(ball, target);
   const ux = (target.x - ball.x) / (L || 1), uy = (target.y - ball.y) / (L || 1);
   const a0 = Math.min(P.skip, L / 2);
-  let a1 = Math.max(a0, L - P.shield);
+  const aEnd = Math.max(a0, L - P.shield);
+  let a1 = aEnd;
   if (receiver) {
     // Where the receiver, stepping from the target toward the ball, meets it (closed form).
     const aMeet = ((P.receiverReaction + L / P.maxSpeed) * P.ballSpeed * P.maxSpeed) / (P.maxSpeed + P.ballSpeed);
-    a1 = Math.max(a0, Math.min(a1, aMeet));
+    a1 = Math.max(a0, Math.min(aEnd, aMeet));
   }
   const n = Math.max(1, Math.ceil((a1 - a0) / P.step));
+  const run = aEnd > a1 + 1e-9; // the receiver's run to the ball, from the meeting point back to his last metre
   const per = [];
   let pLane = 1;
   for (const o of opponents) {
     const gk = o.role === 'GK';
-    let best = -Infinity, ax = 0, ay = 0, aa = 0, dmin = Infinity;
+    let best = -Infinity, ax = 0, ay = 0, aa = 0, dmin = Infinity, cx = 0, cy = 0, ca = 0;
     for (let k = 0; k <= n; k++) {
       const a = a0 + ((a1 - a0) * k) / n;
       const sx = ball.x + ux * a, sy = ball.y + uy * a;
       if (gk && !inTheirBox(sx, sy, P.keeperMargin)) continue;
       const d = Math.hypot(sx - o.x, sy - o.y);
-      if (d < dmin) dmin = d;
+      if (d < dmin) { dmin = d; cx = sx; cy = sy; ca = a; }
       const m = a / P.ballSpeed - arrival(d, P);
       if (m > best) { best = m; ax = sx; ay = sy; aa = a; }
     }
-    if (best === -Infinity) continue;
-    const pRun = logistic((best * K_LOGIT) / P.sigma);
+    if (run) {
+      // A defender standing in the receiver's run to the ball is in his way: he blocks it. Only one in front of the
+      // receiver's last metre: one level with the receiver or behind him (beyond aEnd) is pressure, not a block, so
+      // the distance past that end counts runBehind times over.
+      const ox = o.x - ball.x, oy = o.y - ball.y;
+      const along = ox * ux + oy * uy, perp = Math.abs(ox * uy - oy * ux);
+      if (along >= a1) {
+        const a = Math.min(along, aEnd), d = Math.hypot(perp, P.runBehind * Math.max(0, along - aEnd));
+        const sx = ball.x + ux * a, sy = ball.y + uy * a;
+        if (d < dmin && !(gk && !inTheirBox(sx, sy, P.keeperMargin))) { dmin = d; cx = sx; cy = sy; ca = a; }
+      }
+    }
+    if (best === -Infinity && dmin === Infinity) continue;
+    const pRun = best === -Infinity ? 0 : logistic((best * K_LOGIT) / P.sigma);
     const pBlock = P.blockMax * clamp(1 - (dmin - P.blockReach) / P.blockSoft, 0, 1);
     const pInt = 1 - (1 - pBlock) * (1 - pRun);
-    per.push({ id: o.id, role: o.role, pInt, pRun, pBlock, margin: best, at: { x: ax, y: ay, a: aa }, dmin });
+    const at = pBlock > pRun || best === -Infinity ? { x: cx, y: cy, a: ca } : { x: ax, y: ay, a: aa };
+    per.push({ id: o.id, role: o.role, pInt, pRun, pBlock, margin: best, at, dmin });
     pLane *= 1 - pInt;
   }
   per.sort((a, b) => b.pInt - a.pInt);
@@ -190,7 +231,9 @@ export function laneRisk(ball, target, opponents, P = PASS_DEFAULTS, receiver = 
 
 /**
  * Soft pitch control at p for a ball arriving after tBall s (RESEARCH 5.8 closed form): our runner's share
- * against every opponent (the keeper x keeperWeight, and only in his box).
+ * against every opponent (the keeper x keeperWeight, and only in his box). Our runner reacts in receiverReaction,
+ * an opponent in reactionTime, except one tracking the runner (markedBy): he moves when the runner moves
+ * (markReaction), so a marker level with the runner or goal-side of him contests the ball.
  * @returns {{ pWin:number, rival: object|null }}  rival: the opponent with the largest share
  */
 export function raceAt(p, runner, opponents, tBall, P = PASS_DEFAULTS) {
@@ -201,11 +244,25 @@ export function raceAt(p, runner, opponents, tBall, P = PASS_DEFAULTS) {
   for (const o of opponents) {
     const gk = o.role === 'GK';
     if (gk && !keeperIn) continue;
-    const wo = (gk ? P.keeperWeight : 1) * w(o, P.reactionTime);
+    const react = gk ? P.reactionTime : P.reactionTime - markedBy(o, runner, p, P) * (P.reactionTime - P.markReaction);
+    const wo = (gk ? P.keeperWeight : 1) * w(o, react);
     wd += wo;
     if (wo > top) { top = wo; rival = o; }
   }
   return { pWin: wr / (wr + wd), rival };
+}
+
+/**
+ * How closely opponent `o` tracks a runner heading for p (0..1): fully within markReach of him (fading over markFade)
+ * and level with him or goal-side of him on his run (at most markBehind behind him, fading over markBehindFade).
+ */
+export function markedBy(o, runner, p, P = PASS_DEFAULTS) {
+  const dx = o.x - runner.x, dy = o.y - runner.y;
+  const near = clamp(1 - (Math.hypot(dx, dy) - P.markReach) / P.markFade, 0, 1);
+  if (!(near > 0)) return 0;
+  const rl = Math.hypot(p.x - runner.x, p.y - runner.y);
+  const behind = rl > 1e-9 ? -(dx * (p.x - runner.x) + dy * (p.y - runner.y)) / rl : 0; // metres behind the runner on his run
+  return near * clamp(1 - (behind - P.markBehind) / P.markBehindFade, 0, 1);
 }
 
 /**
@@ -289,12 +346,13 @@ export function kidName(p) {
  * @param {object} [params]  PASS_DEFAULTS overrides
  * @returns {PassRating} {
  *   carrierId, ball, vBall, lines: { front, mid, back, secondLast }, offsideX,
- *   options: PassOption[] (score, then U, descending), best: PassOption (= options[0]), fwdOn: boolean (a good forward
- *   pass within forwardWindow of the best), params }
+ *   options: PassOption[] (score, then worth, descending), best: PassOption (= options[0]), fwdOn: boolean (a good forward
+ *   pass to a receiver who is not marked, within forwardWindow of the best), params }
  * PassOption = { id ('us-LCM', or 'us-LW@space'), targetId, kind: 'feet'|'space', point, aim, receiverAt, len,
  *   direction: 'forward'|'square'|'back', pSafe, pLane, pExec, pWin,
  *   blocker: { id, pInt, at, via: 'block'|'run' } | null, receiverPressure, presserId, room, bypassed,
- *   lineBroken: 'front'|'mid'|'back'|null, offside, acrossOwnGoal, value, valueGain, U, score 0..100,
+ *   lineBroken: 'front'|'mid'|'back'|null, offside, acrossOwnGoal, value, valueGain, U (expected utility, goals),
+ *   worth (U less the risk premium: what options are ranked and scored by), score 0..100,
  *   colour: 'green'|'amber'|'red', label: 'best'|'good'|'risky'|'cut-out'|'offside'|'danger', critical,
  *   tags: [{ tag, principle, kind: 'problem'|'strength'|'direction', weight, who?, kidWho?, whoId?, n? }] }
  */
@@ -337,7 +395,12 @@ export function rateOptions(frame, carrierId = frame.carrierId, params) {
     const critical = offside || acrossOwnGoal;
     const colour = critical || pSafe < P.red ? 'red' : pSafe >= P.green && pr.pressure < P.pressureHigh ? 'green' : 'amber';
     const direction = dx > P.squareBand ? 'forward' : dx < -P.squareBand ? 'back' : 'square';
-    return { mate, point, kind, lane, race, pExec, pSafe, pr, rm, bypassed, vRec, U, dx, dy, offside, acrossOwnGoal, critical, colour, direction };
+    // What the rating ranks and scores by (a runner's space target is picked by it too): U, less riskWorth points for a
+    // risky pass, up to twice that as it nears a cut-out (and twice for one), so a risky pass has to be worth clearly
+    // more than a safe one. Live (sequence.js) plays on U.
+    const risk = colour === 'green' ? 0 : colour === 'red' ? 2 : 1 + clamp((P.green - pSafe) / (P.green - P.red), 0, 1);
+    const worth = U - risk * P.riskWorth * P.pointValue;
+    return { mate, point, kind, lane, race, pExec, pSafe, pr, rm, bypassed, vRec, U, worth, dx, dy, offside, acrossOwnGoal, critical, colour, direction };
   };
 
   const raw = [];
@@ -352,27 +415,29 @@ export function rateOptions(frame, carrierId = frame.carrierId, params) {
       for (const u of [{ x: 1, y: 0 }, { x: (LENGTH - m.x) / gl, y: (MID_Y - m.y) / gl }]) {
         const pt = { x: clamp(m.x + u.x * lead, 1, LENGTH - 1.5), y: clamp(m.y + u.y * lead, 1, WIDTH - 1) };
         const o = assess(m, pt, 'space');
-        if (!top || o.U > top.U) top = o;
+        if (!top || o.worth > top.worth) top = o;
       }
     }
     if (top) space.push(top);
   }
-  space.sort((a, b) => b.U - a.U);
+  space.sort((a, b) => b.worth - a.worth);
   raw.push(...space.slice(0, P.maxSpaceTargets));
 
-  // Scores: the utility given up against the best non-critical option, on a fixed scale, then the category rules.
-  const pool = raw.filter((o) => !o.critical);
-  const Ubest = Math.max(...(pool.length ? pool : raw).map((o) => o.U));
+  // Scores: the worth given up against the best option that can be starred (not critical, and not cut out while any
+  // pass is not), on a fixed scale, then the category rules. So the starred pass always scores 100.
+  const open = raw.filter((o) => !o.critical && o.colour !== 'red');
+  const pool = open.length ? open : raw.filter((o) => !o.critical);
+  const Wbest = Math.max(...(pool.length ? pool : raw).map((o) => o.worth));
   for (const o of raw) {
-    let s = 100 - (Ubest - o.U) / P.pointValue;
+    let s = 100 - (Wbest - o.worth) / P.pointValue;
     if (o.colour === 'green') s = Math.max(s, P.safeFloor);
     if (o.colour === 'red') s = Math.min(s, P.redCap);
     if (o.critical) s = Math.min(s, P.criticalCap);
     o.score = Math.round(clamp(s, 0, 100));
   }
-  raw.sort((a, b) => b.score - a.score || b.U - a.U);
+  raw.sort((a, b) => b.score - a.score || b.worth - a.worth);
   const bestScore = raw[0].score;
-  const fwdOn = raw.some((o) => o.colour === 'green' && o.direction === 'forward' && o.score >= bestScore - P.forwardWindow);
+  const fwdOn = raw.some((o) => o.colour === 'green' && o.direction === 'forward' && o.pr.pressure < P.fwdOnPressure && o.score >= bestScore - P.forwardWindow);
 
   const finish = (o, isBest) => {
     const top = o.lane.top;
@@ -405,6 +470,7 @@ export function rateOptions(frame, carrierId = frame.carrierId, params) {
       value: o.vRec,
       valueGain: o.vRec - vBall,
       U: o.U,
+      worth: o.worth,
       score: o.score,
       colour: o.colour,
       label,
@@ -467,7 +533,7 @@ function tagsOf(o, { ball, lines, P, fwdOn, isBest, bestScore, nameCtx }) {
   add(o.direction);
   // PA2 / PA13: a safe square or back pass while a good forward pass was on is too safe (gradePass caps it);
   // with nothing forward on, the best safe one is right.
-  if (!isBest && fwdOn && o.colour === 'green' && o.direction !== 'forward' && !o.critical && bestScore - o.score > P.bestMargin) add('too-safe');
+  if (!isBest && fwdOn && o.colour === 'green' && o.direction !== 'forward' && !o.critical && bestScore - o.score > Math.max(P.bestMargin, P.tooSafeGap)) add('too-safe');
   if (isBest && o.colour === 'green' && o.direction !== 'forward' && !fwdOn) add('keep-it');
   const recv = { to: nameOf(o.mate, nameCtx), kidTo: kidName(o.mate) };
   for (const x of t) Object.assign(x, recv);
@@ -676,8 +742,9 @@ export function optionOf(rating, choiceId) {
 
 /**
  * Grade the learner's choice. S: the best, a good option within bestMargin of it, or a coach-keyed `accept`
- * id; otherwise the option's score capped at notBestCap, a safe-but-slow option (too-safe) at tooSafeCap
- * (a good pass never drops below safeFloor), a cut-out one at redCap and a critical one at criticalCap.
+ * id; otherwise the option's score capped at notBestCap, a risky one at riskyCap, a safe-but-slow option (too-safe)
+ * at tooSafeCap (any other good pass never drops below safeFloor), a cut-out one at redCap and a critical one at
+ * criticalCap. So in stars: the best 3; a good pass 2 (a safe-but-slow one 1); a risky one at most 1; a cut-out 0.
  * We grade the decision, not a dice roll: the outcome is the most likely one.
  * @returns {{ score:number, grade:'S'|'A'|'B'|'C'|'D'|'F', stars:0|1|2|3, outcome:'completed'|'risky'|'cut-out'|'offside'|'danger',
  *             isBest:boolean, option: PassOption } | null}  null for an unknown choice
@@ -692,6 +759,7 @@ export function gradePass(rating, choiceId, { accept = [] } = {}) {
   if (isBest) score = Math.max(score, o.id === best.id ? score : best.score - P.bestMargin);
   else {
     score = Math.min(score, P.notBestCap);
+    if (o.colour === 'amber') score = Math.min(score, P.riskyCap);
     if (o.tags.some((t) => t.tag === 'too-safe')) score = Math.min(score, P.tooSafeCap);
   }
   const outcome = o.offside ? 'offside' : o.critical ? 'danger' : o.colour === 'red' ? 'cut-out' : o.colour === 'amber' ? 'risky' : 'completed';

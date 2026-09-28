@@ -5,9 +5,17 @@
 //
 // Policy: a rep earns 0-3 stars for how good the position was (starsForScore), and XP comes from stars and
 // improvement only: nothing for taking part, finishing a session or the tutorial, time spent or opening the app
-// (R28). Badges and sticker cards say what earned them; nothing is left to chance (R36); nothing compares you with
-// anyone (R21); and no count can break: training days only add up, and "days played this week" only fills up
-// within a week (R35).
+// (R28). Badges and sticker cards say what earned them, and every badge is for a skill (no badge for a first play or
+// for finishing); a sticker card means mastery: it is given only when the idea's recent plays average 2 stars or more
+// (stickerReady; js/ui/rewards-store.js award() checks it against the history). Nothing is left to chance (R36);
+// nothing compares you with anyone (R21); and no count can break: training days only add up, and "days played this
+// week" only fills up within a week (R35).
+//
+// Pace [D] (tests/rewards.test.js plays these sessions through): five 1-star plays reach level 2; a strong first
+// session (the 3-play kick-off set and two 5-play sets, mostly 3 stars) ends at level 3, never 4; six strong sets stay
+// below First Team (level 5), which takes about eight strong sets or twice as many average ones; Captain (level 8) and
+// Legend (level 11) take many weeks. XP: 10/20/30 per 1/2/3-star play, +10 for a drill's first 3 stars, +10 for
+// beating your best on it by 10, +10 per sticker card or upgrade, and each badge's own bonus (BADGES).
 
 import { familyOf } from './engine/roles.js';
 
@@ -16,15 +24,20 @@ export const REWARDS_DEFAULTS = Object.freeze({
   starXp: Object.freeze([0, 10, 20, 30]), // [D] XP for a rep with 0, 1, 2 or 3 stars (R28: nothing for just taking part)
   improveMin: 10, // [D] points above your previous best on a drill that count as improving
   improveXp: 10, // [D]
-  firstThreeStarXp: 20, // [D] the first 3 stars on a drill
+  firstThreeStarXp: 10, // [D] the first 3 stars on a drill (was 20: with generated drills it came with most 3-star plays)
   goodStars: 1, // [D] a rep with at least this many stars keeps "on a roll" going and counts toward a perfect session
   perfectSessionMinReps: 3, // [D]
   comebackStars: 2, // [D] a comeback: this many stars on a drill you once got 0 stars on
   liveStarXp: Object.freeze([0, 20, 40, 60]), // [D] a Live run (Match day) by its stars; it lasts about as long as 2-3 reps
   liveStarStars: 2, // [D] the Live-wire badge: a run with at least this many stars
+  liveTopStars: 3, // [D] the Red-hot badge: a run with this many stars
   exploreXp: 10, // [D] per S spot found in Explore (a best spot: a good position)...
   exploreXpPerDay: 5, // [D] ...for at most this many finds a day (no grinding)
-  cardXp: 30, // [D] per new sticker card or card upgrade
+  cardXp: 10, // [D] per new sticker card or card upgrade (was 30): the sticker is the reward, the XP only marks it
+  stickerWindow: 5, // [D] a sticker card looks at the idea's last this-many counting plays (stickerReps)...
+  stickerMinReps: 3, // [D] ...needs at least this many of them (= elo.js masteryMinAttempts [D])...
+  stickerStars: 2, // [D] ...averaging at least this many stars: a card means mastery, not practice (10 plays at 0.9
+  //                    stars once earned one, from the Elo's partial credit alone)
   nicknameMax: 10,
 });
 
@@ -33,10 +46,11 @@ export const STAR_WORDS = Object.freeze(['Not yet', 'Close', 'Great', 'Spot on']
 
 /**
  * Total XP needed to reach level i + 1 (index 0 = level 1). Level 2 comes within the first set (about 5 reps even at
- * one star each); each later level costs a little more. Past the table, each level costs LEVEL_XP_STEP more.
+ * one star each); each later level costs more (the pace in the file comment; a strong set earns about 200 XP). Past
+ * the table, each level costs LEVEL_XP_STEP more.
  */
-export const LEVEL_XP = Object.freeze([0, 50, 150, 300, 500, 800, 1200, 1700, 2300, 3000, 3800, 4700, 5700, 6800, 8000, 9300]); // [D]
-const LEVEL_XP_STEP = 1400; // [D]
+export const LEVEL_XP = Object.freeze([0, 50, 250, 700, 1600, 2550, 3550, 4600, 5700, 6850, 8050, 9300, 10600, 11950, 13350, 14800]); // [D]
+const LEVEL_XP_STEP = 1500; // [D]
 
 export const RANKS = Object.freeze([
   Object.freeze({ from: 1, id: 'rookie', name: 'Rookie' }),
@@ -79,30 +93,36 @@ export const NICKNAMES = Object.freeze([
 const txt = (standard, kid = standard) => Object.freeze({ standard, kid });
 
 /**
- * Badges. `goal`/`counter` give progress for the trophy room; `xp` is the bonus on earning it. Badges for just
- * taking part (a first rep, finishing a Live run, coming back on 5 days) carry no XP (R28). Conditions live in
- * applyEvent(). The kid wording is Player mode's (stars, never grades) and passes tests/copy.test.js.
+ * Badges. `goal`/`counter` give progress for the trophy room; `xp` is the bonus on earning it [D] (halved when the
+ * pace was retuned). Every badge is for a skill, never for taking part or finishing (R28): 'first-rep' (once "Boots
+ * on", a first play) is now "Top form" (3 stars on 10 plays), and 'live-finisher' (once "Went the distance", finishing
+ * a Live run) is now "Red hot" (3 stars in a Live run); the ids stay, so old records keep their meaning out of
+ * normalizeRewards (a version 1 state drops those two). "Regular" (5 days) and the rank badges carry no XP.
+ * `coachOnly`: earned only in Coach mode's tutorial and Explore, so Player mode's card hides it until earned.
+ * Conditions live in applyEvent(). The kid wording is Player mode's (stars, never grades) and passes tests/copy.test.js.
  */
 export const BADGES = Object.freeze([
-  { id: 'first-steps', icon: '🎓', xp: 0, name: txt('Graduate', 'Kick-off'), description: txt('Finish the pitch tutorial.', 'Learn how the pitch works.') },
-  { id: 'first-rep', icon: '👟', xp: 0, name: txt('Boots on'), description: txt('Finish your first drill.', 'Finish your first play.') },
-  { id: 'first-s', icon: '⭐', xp: 40, name: txt('Spot on'), description: txt('Get 3 stars on a drill for the first time.', 'Get 3 stars for the first time.') },
-  { id: 'hat-trick', icon: '🎩', xp: 80, name: txt('Hat-trick'), description: txt('Get 3 stars on three drills in a row.', 'Get 3 stars three times in a row.'), goal: 3, counter: 'bestSRun' },
-  { id: 'on-a-roll', icon: '🔥', xp: 60, name: txt('On a roll'), description: txt('Earn a star or more on five drills in a row.', 'Earn a star five times in a row.'), goal: 5, counter: 'bestGoodRun' },
-  { id: 'perfect-session', icon: '💯', xp: 60, name: txt('Perfect session', 'Perfect set'), description: txt('Earn a star or more on every drill of a session.', 'Earn a star on every play of a set.') },
-  { id: 'comeback', icon: '💪', xp: 60, name: txt('Comeback'), description: txt('Get 2 stars or more on a drill you once got no stars on.', 'Get 2 stars on a play you once missed.') },
-  { id: 'all-rounder', icon: '🧩', xp: 80, name: txt('All-rounder'), description: txt('Earn a star in every kind of outfield position.', 'Earn a star in every position.'), goal: 6, counter: 'families' },
-  { id: 'live-finisher', icon: '⏱️', xp: 0, name: txt('Went the distance'), description: txt('Finish a Live run.', 'Finish a match day.') },
-  { id: 'live-star', icon: '🌟', xp: 80, name: txt('Live wire'), description: txt('Earn 2 stars or more in a Live run.', 'Get 2 stars in a match day.') },
-  { id: 'explorer', icon: '🧭', xp: 40, name: txt('Explorer'), description: txt('Find 5 S spots in Explore.', 'Find 5 best spots in Explore.'), goal: 5, counter: 'exploreS' },
-  { id: 'collector', icon: '🗂️', xp: 80, name: txt('Collector'), description: txt('Collect 10 sticker cards.'), goal: 10, counter: 'cards' },
-  { id: 'gold-card', icon: '🥇', xp: 60, name: txt('Gold standard'), description: txt('Turn a sticker card gold.', 'Get a gold sticker.') },
+  { id: 'first-steps', icon: '🎓', xp: 0, coachOnly: true, name: txt('Graduate', 'Kick-off'), description: txt('Finish the pitch tutorial.', 'Learn how the pitch works.') },
+  { id: 'first-s', icon: '⭐', xp: 20, name: txt('Spot on'), description: txt('Get 3 stars on a drill for the first time.', 'Get 3 stars for the first time.') },
+  { id: 'hat-trick', icon: '🎩', xp: 40, name: txt('Hat-trick'), description: txt('Get 3 stars on three drills in a row.', 'Get 3 stars three times in a row.'), goal: 3, counter: 'bestSRun' },
+  { id: 'first-rep', icon: '🎯', xp: 40, name: txt('Top form'), description: txt('Get 3 stars on 10 drills.', 'Get 3 stars on 10 plays.'), goal: 10, counter: 'threes' },
+  { id: 'on-a-roll', icon: '🔥', xp: 30, name: txt('On a roll'), description: txt('Earn a star or more on five drills in a row.', 'Earn a star five times in a row.'), goal: 5, counter: 'bestGoodRun' },
+  { id: 'perfect-session', icon: '💯', xp: 30, name: txt('Perfect session', 'Perfect set'), description: txt('Earn a star or more on every drill of a session.', 'Earn a star on every play of a set.') },
+  { id: 'comeback', icon: '💪', xp: 30, name: txt('Comeback'), description: txt('Get 2 stars or more on a drill you once got no stars on.', 'Get 2 stars on a play you once missed.') },
+  { id: 'all-rounder', icon: '🧩', xp: 40, name: txt('All-rounder'), description: txt('Earn a star in every kind of outfield position.', 'Earn a star in every position.'), goal: 6, counter: 'families' },
+  { id: 'live-star', icon: '🌟', xp: 40, name: txt('Live wire'), description: txt('Earn 2 stars or more in a Live run.', 'Get 2 stars in a match day.') },
+  { id: 'live-finisher', icon: '🌡️', xp: 60, name: txt('Red hot'), description: txt('Earn 3 stars in a Live run.', 'Get 3 stars in a match day.') },
+  { id: 'explorer', icon: '🧭', xp: 20, coachOnly: true, name: txt('Explorer'), description: txt('Find 5 S spots in Explore.', 'Find 5 best spots in Explore.'), goal: 5, counter: 'exploreS' },
+  { id: 'collector', icon: '🗂️', xp: 40, name: txt('Collector'), description: txt('Collect 10 sticker cards.'), goal: 10, counter: 'cards' },
+  { id: 'gold-card', icon: '🥇', xp: 30, name: txt('Gold standard'), description: txt('Turn a sticker card gold.', 'Get a gold sticker.') },
   { id: 'regular', icon: '📅', xp: 0, name: txt('Regular'), description: txt('Train on 5 different days.', 'Play on 5 different days.'), goal: 5, counter: 'days' },
   { id: 'captain', icon: '🧢', xp: 0, name: txt('Captain'), description: txt('Reach the Captain rank.', 'Become Captain.') },
   { id: 'legend', icon: '🏆', xp: 0, name: txt('Legend'), description: txt('Reach the Legend rank.', 'Become a Legend.') },
 ].map(Object.freeze));
 
 export const BADGES_BY_ID = Object.freeze(Object.fromEntries(BADGES.map((b) => [b.id, b])));
+/** Badges whose meaning changed with version 2 of the rewards state (a version 1 record of them is dropped). */
+const RETIRED_V1 = Object.freeze(['first-rep', 'live-finisher']);
 
 /** Sticker card tiers by mastery stars (js/engine/elo.js mastery(): 1..3). */
 export const CARD_TIERS = Object.freeze({ 1: 'bronze', 2: 'silver', 3: 'gold' });
@@ -158,12 +178,12 @@ export const paletteById = (id) => KIT_PALETTES.find((p) => p.id === id) ?? KIT_
 
 export function createRewards() {
   return {
-    version: 1,
+    version: 2, // 2: 'first-rep' and 'live-finisher' are skill badges (BADGES); a version 1 record of them is dropped
     xp: 0,
     best: {}, // baseScenarioId → { score, stars, low, grade? } (best score, most stars, lowest score; Coach mode's grade)
     badges: {}, // badgeId → { day }
     cards: {}, // principleId → { tier: 1|2|3 }
-    counters: { reps: 0, sessions: 0, liveRuns: 0, exploreS: 0, sRun: 0, bestSRun: 0, goodRun: 0, bestGoodRun: 0 },
+    counters: { reps: 0, sessions: 0, liveRuns: 0, exploreS: 0, sRun: 0, bestSRun: 0, goodRun: 0, bestGoodRun: 0, threes: 0 },
     families: {}, // role family → true (a rep with a star or more in it)
     days: {}, // 'YYYY-MM-DD' → true (training days; missing one never costs anything)
     explore: { day: null, rewarded: 0 },
@@ -213,7 +233,12 @@ export function normalizeRewards(raw) {
       s.best[id] = { score, stars, low, ...(grade ? { grade } : {}) };
     }
   }
-  if (isObj(raw.badges)) for (const id of Object.keys(raw.badges)) if (BADGES_BY_ID[id]) s.badges[id] = { day: typeof raw.badges[id]?.day === 'string' ? raw.badges[id].day : null };
+  const v1 = !(Number(raw.version) >= 2); // a state from before the skill badges (RETIRED_V1)
+  if (isObj(raw.badges)) {
+    for (const id of Object.keys(raw.badges)) {
+      if (BADGES_BY_ID[id] && !(v1 && RETIRED_V1.includes(id))) s.badges[id] = { day: typeof raw.badges[id]?.day === 'string' ? raw.badges[id].day : null };
+    }
+  }
   if (isObj(raw.cards)) {
     for (const [id, c] of Object.entries(raw.cards)) {
       const tier = Math.round(num(c?.tier, 0, 3));
@@ -264,6 +289,37 @@ export function badgeProgress(state) {
 
 /** Sticker tier (0 = not collected) of a principle's card. */
 export const cardTier = (state, principleId) => state?.cards?.[principleId]?.tier ?? 0;
+
+/**
+ * The stars of an idea's last counting plays (at most stickerWindow, oldest first): Player-mode plays that list the
+ * idea (a "Find your spot" rep, via 'play', or a "Who's open?" first try, mode 'pass') with no help (no worked example
+ * or glow aid). Coach-mode drills do not count: Coach mode shares the store but never earns (rewards-store.js award).
+ * A play's stars are the ones it showed (`stars`), else its score's.
+ * @param {object[]} history  the rep history, oldest first (js/ui/session.js loadHistory)
+ * @returns {number[]}
+ */
+export function stickerReps(history, principleId, P = REWARDS_DEFAULTS) {
+  const id = String(principleId ?? '');
+  const out = [];
+  if (!id || !Array.isArray(history)) return out;
+  for (let i = history.length - 1; i >= 0 && out.length < P.stickerWindow; i--) {
+    const h = history[i];
+    if (!isObj(h) || h.aid || !(h.mode === 'pass' || (h.mode === 'drill' && h.via === 'play'))) continue;
+    if (!Array.isArray(h.principles) || !h.principles.includes(id)) continue;
+    const stars = starInt(h.stars) ?? (isNum(h.score) ? starsForScore(h.score, P) : null);
+    if (stars !== null) out.push(stars);
+  }
+  return out.reverse();
+}
+
+/**
+ * Whether an idea's sticker card may be given or upgraded (R25: mastery, not practice; R28): at least stickerMinReps
+ * recent counting plays (stickerReps) averaging stickerStars or more.
+ */
+export function stickerReady(history, principleId, P = REWARDS_DEFAULTS) {
+  const reps = stickerReps(history, principleId, P);
+  return reps.length >= P.stickerMinReps && reps.reduce((a, b) => a + b, 0) / reps.length >= P.stickerStars - 1e-9;
+}
 
 // ---------------------------------------------------------------- days played this week (R35)
 
@@ -366,6 +422,7 @@ export function applyEvent(state, event, { day, params } = {}) {
       };
       if (prev && starsForScore(prev.low, P) === 0 && stars >= P.comebackStars) earn('comeback');
       c.reps++;
+      if (stars === 3) c.threes++;
       c.sRun = stars === 3 ? c.sRun + 1 : 0;
       c.bestSRun = Math.max(c.bestSRun, c.sRun);
       c.goodRun = stars >= P.goodStars ? c.goodRun + 1 : 0;
@@ -373,9 +430,9 @@ export function applyEvent(state, event, { day, params } = {}) {
       const fam = familyOf(event.role);
       if (OUTFIELD_FAMILIES.includes(fam) && stars >= P.goodStars) s.families[fam] = true;
       trainedToday();
-      earn('first-rep');
       if (stars === 3) earn('first-s');
       if (c.sRun >= 3) earn('hat-trick');
+      if (c.threes >= BADGES_BY_ID['first-rep'].goal) earn('first-rep');
       if (c.goodRun >= 5) earn('on-a-roll');
       if (Object.keys(s.families).length >= OUTFIELD_FAMILIES.length) earn('all-rounder');
       break;
@@ -393,8 +450,8 @@ export function applyEvent(state, event, { day, params } = {}) {
       c.liveRuns++;
       gained.xp += P.liveStarXp[stars] ?? 0;
       trainedToday();
-      earn('live-finisher');
       if (stars >= P.liveStarStars) earn('live-star');
+      if (stars >= P.liveTopStars) earn('live-finisher');
       break;
     }
     case 'explore-s': {

@@ -1,20 +1,28 @@
 // '#/pass' and '#/pass/<nodeId>': "Who's open?", the Player-mode passing set (docs/KID_REDESIGN.md §4.4).
 //
-//   #/pass            a quick set: PASS_DEFAULTS.reps generated pass drills for your position, mixed lessons (road.js buildQuickPassSet)
-//   #/pass/<nodeId>   a Road pass node (road.js buildSet); a spot node sends you to #/play/<nodeId>
+//   #/pass            a quick set: PASS_DEFAULTS.reps generated pass drills for your position on the free-player idea
+//                     mixed with playing forward (road.js buildQuickPassSet, data/road.json `quickPass`)
+//   #/pass/<nodeId>   a Road pass node (road.js buildSet, which counts the set as begun: a reload deals new reps); a
+//                     spot node sends you to #/play/<nodeId> before any set is built, replacing this address (Back
+//                     never lands on the redirect again)
 //
 // One rep (about 15 s):
 //   set      "You've got the ball" over the pitch; YOU is the carrier (spotlight: the ball, YOU, the teammates to pass to)
 //   watch    2-3 s of build-up (passdrill.js passDrillPlayback: nobody held back, so YOU run onto the ball), then the
 //            whistle and the freeze (passDrillFrame, the frame the engine rated)
-//   choose   the teammates are big numbered targets: a first tap previews a dotted pass line, a second tap (or Pass) plays it
+//   choose   "Pick the best pass." The teammates are big numbered targets (not one far away, nor the keeper, unless
+//            that pass is really on: passTargets): a first tap previews a dotted pass line, a second tap (or Pass) plays it
 //   result   the ball travels: "Cut out!" (the defender who got it flashes, a groan), "Safe" (quiet), "Line broken!" (a lift)
-//   reveal   every option labelled on the pitch with a shape and a colour (★ Best, ✓ Good, ! Risky, ✗ Cut out), the lanes
-//            of your pass and the best pass, their blockers ringed; stars, a word and one line (createPlayerReveal);
-//            Next / Why? / Try again (after 0-1 stars: the same freeze again, not recorded)
-// Each first try updates Elo (score / 100 on the drill's pass principles), the history ({ mode: 'pass', choice, outcome })
-// and the rewards (the rep, then a sticker for each principle whose mastery went up). At the end of the set: road.recordSet
-// (Road nodes), then showFullTime (js/ui/player/fulltime.js).
+//   reveal   the pitch crops to the play (a phone held upright zooms in on it: revealZoom; not under reduced motion)
+//            and labels Best, your pick and up to two others with a shape and a colour
+//            (★ Best, ✓ Good, ! Risky, ✗ Cut out), each label on the side of its player where nobody stands; the lanes
+//            of your pass and the best pass, their blockers ringed; stars, a word and one line (createPlayerReveal;
+//            a safe pass that was not the best names the better one: "Safe. Your striker's run was on.");
+//            Next / Why? / Try again (after 0-1 stars: the same freeze again, not recorded, never a celebration)
+// Each first try updates Elo (score / 100 on the drill's pass principles), the history ({ mode: 'pass', choice, outcome,
+// stars }) and the rewards (the rep, then a sticker for each principle whose mastery went up: rewards-store.js gives it
+// only when the idea's recent plays average 2 stars). At the end of the set: the set's stars as a rewards session ("Perfect
+// set"), road.recordSet (Road nodes), then showFullTime (js/ui/player/fulltime.js).
 //
 // The other areas' modules with behaviour (engine passing.js / passdrill.js, road.js, reveal.js, fulltime.js) load when the
 // screen opens, so this module imports in Node whatever state they are in (tests/copy.test.js reads STRINGS; only the
@@ -48,7 +56,15 @@ export const PASS_DEFAULTS = Object.freeze({
   genTries: 3, // [D] seeds tried for each generated rep a set still lacks (each tries many scenes itself) before giving up on it
   lineWords: 14, // [S] §0 rule 3: the reveal line is at most 14 words
   focusPad: 3, // [D] metres kept in view beyond the play on a phone held upright (board.setFocus)
+  farPass: 45, // [S] play-test: a teammate further than this (m) from the ball is no target, unless the pass is really on
+  revealOthers: 2, // [S] play-test: the reveal labels Best, your pick and up to this many others (a crowded phone pitch)
+  labelEm: 0.62, // [D] a label's width per character, in its font size (the ★/✓ shape, a space, the word)
+  labelGap: 2.3, // [D] m: a token's drawn radius, when the board does not say (labelSide: a label clears it)
+  zoomMax: 1.8, // [D] a phone's reveal draws the pitch at most this many times bigger (revealZoom)...
+  zoomMin: 1.15, // [D] ...and not at all when it would gain less than this
+  zoomPad: 7, // [D] m kept across the pitch on each side of the play (the labels are wide)
 });
+const P0 = PASS_DEFAULTS;
 
 /**
  * Every word this screen shows (tests/copy.test.js checks them: word budgets, reading age, no codes). Words other
@@ -58,7 +74,7 @@ export const STRINGS = Object.freeze({
   title: "Who's open?",
   loading: SHARED.loading,
   setCard: "You've got the ball",
-  question: "Who's open? Tap the best pass.",
+  question: 'Pick the best pass.',
   pass: 'Pass',
   passTo: (n = 8) => `Pass to number ${n}`,
   number: (n = 8) => `Number ${n}`,
@@ -71,6 +87,21 @@ export const STRINGS = Object.freeze({
   missNote: SHARED.missNote,
   lineGood: 'Good pass. It got to your teammate.',
   lineBad: 'Look for a teammate with nobody close.',
+  // A safe pass that was not the best: "Safe." and the better pass, named (betterLine; who = "your striker").
+  safe: 'Safe.',
+  better: Object.freeze({
+    run: (who = 'your teammate') => `${cap(who)}'s run was on.`,
+    free: (who = 'your teammate') => `${cap(who)} was free, with nobody close.`,
+    turn: (who = 'your teammate') => `${cap(who)} could turn and run at goal.`,
+    front: (who = 'your teammate') => `${cap(who)} was past their front players.`,
+    mid: (who = 'your teammate') => `${cap(who)} was past their midfielders.`,
+    behind: (who = 'your teammate') => `${cap(who)} was in behind their defenders.`,
+    far: (who = 'your teammate') => `${cap(who)} was free on the far side.`,
+    box: (who = 'your teammate') => `${cap(who)} was free in front of their box.`,
+    goal: (who = 'your teammate') => `${cap(who)} was free in front of goal.`,
+    forward: (who = 'your teammate') => `${cap(who)} was open for a forward pass.`,
+    other: (who = 'your teammate') => `${cap(who)} was the better pass.`,
+  }),
   whyTitle: 'Pass it right',
   whySummary: 'Pass to a teammate with nobody close and a clear path.',
   emptyTitle: 'No passes ready',
@@ -86,6 +117,12 @@ export const STRINGS = Object.freeze({
   doneTitle: SHARED.fullTime,
   doneStars: (n = 0, max = 15) => `${n} of ${max} stars`,
 });
+
+/** 'your striker' → 'Your striker' (a template's name at the start of a sentence). */
+function cap(s) {
+  const t = String(s ?? '');
+  return t ? t[0].toUpperCase() + t.slice(1) : t;
+}
 
 // ---------------------------------------------------------------- labels and outcomes (pure)
 
@@ -199,6 +236,87 @@ export function optionsByReceiver(options = [], carrierId = null) {
 }
 
 /**
+ * A pass that is really on: the best, or a good (safe) one that is not just the too-safe option when a better forward
+ * pass was there (passing.js tags it 'too-safe').
+ */
+export const genuinelyOn = (o) => o?.label === 'best' || (o?.label === 'good' && !(o.tags ?? []).some((t) => t?.tag === 'too-safe'));
+
+/**
+ * The teammates you may pass to (the targets, and the reveal's options): optionsByReceiver less anyone further than
+ * farPass from the ball and the keeper, unless that pass is really on (genuinelyOn). A crowded phone pitch keeps only
+ * the passes worth weighing.
+ * @param {Map<string, object>} byReceiver  optionsByReceiver's map
+ * @returns {Map<string, object>}
+ */
+export function passTargets(byReceiver, frame, carrierId = frame?.carrierId ?? null, P = PASS_DEFAULTS) {
+  const ball = ballOf(frame, carrierId);
+  const out = new Map();
+  for (const [rid, o] of byReceiver ?? []) {
+    const at = posOf(frame, rid);
+    const far = !!(ball && at) && dist(ball, at) > P.farPass;
+    if ((far || rid === 'us-GK') && !genuinelyOn(o)) continue;
+    out.set(rid, o);
+  }
+  return out;
+}
+
+/**
+ * The options the reveal labels (a crowded phone pitch labels no more): the best, your pick, and up to revealOthers
+ * others, nearest the ball first (the ones you most likely weighed), one of another colour family than those two
+ * first (a good pass beside a trap, say).
+ * @returns {Set<string>} receiver ids
+ */
+export function revealPicks(options, { frame, carrierId, choiceId = null, bestId = null } = {}, P = PASS_DEFAULTS) {
+  const ball = ballOf(frame, carrierId);
+  const list = [...(options instanceof Map ? options.entries() : [])];
+  const out = new Set();
+  for (const [rid, o] of list) if (o.id === bestId || o.id === choiceId || o.label === 'best') out.add(rid);
+  const toneOf = (o) => labelStyle(o.label).tone;
+  const tones = new Set(list.filter(([rid]) => out.has(rid)).map(([, o]) => toneOf(o)));
+  const rest = list.filter(([rid]) => !out.has(rid)).map(([rid, o]) => ({ rid, o, d: ball && posOf(frame, rid) ? dist(ball, posOf(frame, rid)) : Infinity }))
+    .sort((a, b) => a.d - b.d || (a.rid < b.rid ? -1 : 1));
+  const picked = [];
+  for (const r of rest) if (picked.length < P.revealOthers && !tones.has(toneOf(r.o)) && !picked.some((q) => toneOf(q.o) === toneOf(r.o))) picked.push(r);
+  for (const r of rest) if (picked.length < P.revealOthers && !picked.includes(r)) picked.push(r);
+  for (const r of picked) out.add(r.rid);
+  return out;
+}
+
+/**
+ * Which side of its player a label goes (above or below, as the screen shows it), so it covers no other player: the
+ * side whose box touches fewer players' tokens (and earlier labels), above on a tie. The label is text 1.6 m × k tall
+ * (css/pass.css, board.js --board-label-k) and as wide as its characters, written where board.js drawLabel puts it
+ * (its baseline lift + 0.8 m above the point, or lift + 0.5 m + 1.1 k below it); a token is a circle of radius `pad`.
+ * @param {{ at: {x,y}, text: string, frame, orientation?: 'vertical'|'horizontal', k?: number, lift?: number, pad?: number,
+ *   taken?: object[], skip?: string[] }} o  taken: boxes of labels placed before this one (avoided too); the chosen box
+ *   is added to it. skip: players not to count (the one labelled)
+ * @returns {'above'|'below'}
+ */
+export function labelSide({ at, text = '', frame, orientation = 'horizontal', k = 1, lift = 2.4, pad = P0.labelGap, taken = [], skip = [] } = {}, P = PASS_DEFAULTS) {
+  const h = 1.6 * k, w = Math.max(1, [...String(text)].length) * P.labelEm * h;
+  // How far from the point the text reaches, on each side (metres, away from the point): its descent to its cap height.
+  const reach = { above: [lift + 0.8 - 0.25 * h, lift + 0.8 + 0.8 * h], below: [lift + 0.5 + 1.1 * k - 0.8 * h, lift + 0.5 + 1.1 * k + 0.25 * h] };
+  // The box in world metres. The vertical board runs world x up the screen (view y = LENGTH - x) and world y across it;
+  // the horizontal board draws world y down the screen.
+  const box = (side) => {
+    const [n, f] = reach[side];
+    const s = side === 'above' ? 1 : -1;
+    if (orientation === 'vertical') {
+      const x0 = at.x + s * n, x1 = at.x + s * f;
+      return { x0: Math.min(x0, x1), x1: Math.max(x0, x1), y0: at.y - w / 2, y1: at.y + w / 2 };
+    }
+    const y0 = at.y - s * n, y1 = at.y - s * f;
+    return { x0: at.x - w / 2, x1: at.x + w / 2, y0: Math.min(y0, y1), y1: Math.max(y0, y1) };
+  };
+  const hits = (b) => (frame?.players ?? []).filter((p) => !skip.includes(p.id) && p.x >= b.x0 - pad && p.x <= b.x1 + pad && p.y >= b.y0 - pad && p.y <= b.y1 + pad).length
+    + taken.filter((t) => t.x0 < b.x1 && t.x1 > b.x0 && t.y0 < b.y1 && t.y1 > b.y0).length;
+  const up = box('above'), down = box('below');
+  const side = hits(down) < hits(up) ? 'below' : 'above';
+  taken.push(side === 'above' ? up : down);
+  return side;
+}
+
+/**
  * The tap targets in a steady order (keyboard focus and the screen-reader list): from our goal forward, then across.
  * Ids with no position in the frame go last, by id.
  */
@@ -259,16 +377,18 @@ const lineX = (rating, key) => {
 
 /**
  * The reveal on the pitch (§4.4 step 5), as board markers (board.js setMarkers; `cls` is for css/pass.css):
- *   - every teammate option labelled just above the player with its shape and word (★ Best, ✓ Good, ! Risky,
- *     ✗ Cut out, ✗ Offside, ✗ Danger) in its colour (lift 'token': it clears the token at any board size);
+ *   - the options labelled with their shape and word (★ Best, ✓ Good, ! Risky, ✗ Cut out, ✗ Offside, ✗ Danger) in
+ *     their colour, just above or below the player (lift 'token': it clears the token at any board size; labelSide: the
+ *     side where it covers nobody): every teammate, or those `labels` names (revealPicks: Best, yours and two others);
  *   - the lanes of your pass and the best pass (solid good, dashed risky, dotted cut out), a space pass with the run;
  *   - the defender who blocks either lane ringed, with ✗ where the ball would be cut out;
  *   - the offside line after an offside pass, the line your pass broke after "Line broken!".
- * @param {{ rating, frame, carrierId, choiceId? }} opts
+ * @param {{ rating, frame, carrierId, choiceId?, targets?: Map, labels?: Set<string>, orientation?, k?, lift?, pad? }} opts
+ *   targets: the options on show (passTargets; default every teammate's); orientation, k, lift, pad: the board's (labelSide)
  */
-export function revealMarkers({ rating, frame, carrierId, choiceId = null } = {}) {
+export function revealMarkers({ rating, frame, carrierId, choiceId = null, targets = null, labels = null, orientation = 'horizontal', k = 1, lift, pad } = {}) {
   const markers = [];
-  const byReceiver = optionsByReceiver(rating?.options, carrierId);
+  const byReceiver = targets instanceof Map ? targets : optionsByReceiver(rating?.options, carrierId);
   const ball = ballOf(frame, carrierId);
   const chosen = choiceId ? (rating?.options ?? []).find((o) => o.id === choiceId) ?? null : null;
   const best = rating?.best ?? rankOptions(rating?.options ?? [])[0] ?? null;
@@ -297,14 +417,72 @@ export function revealMarkers({ rating, frame, carrierId, choiceId = null } = {}
     const x = lineX(rating, chosen.lineBroken);
     if (x !== null) markers.push({ type: 'line-x', x, tone: 'good', dashed: true, cls: 'ps-mk ps-mk--good ps-xline', line: chosen.lineBroken });
   }
-  // A label over every teammate option.
-  for (const [rid, o] of byReceiver) {
+  // A label by each option on show (the best and yours first, so theirs get the clear side), off the other players.
+  const taken = [];
+  const shown = [...byReceiver].filter(([rid]) => !labels || labels.has(rid))
+    .sort(([, a], [, b]) => Number(b.label === 'best' || b.id === choiceId) - Number(a.label === 'best' || a.id === choiceId));
+  for (const [rid, o] of shown) {
     const at = posOf(frame, rid);
     if (!at) continue;
     const L = labelStyle(o.label);
-    markers.push({ type: 'label', at, text: L.text, tone: L.boardTone, lift: 'token', cls: `${L.cls} ps-opt ps-opt--${L.key}${o.id === choiceId ? ' is-yours' : ''}`, optionId: o.id, receiverId: rid, label: L.key });
+    const side = labelSide({ at, text: L.text, frame, orientation, k, taken, skip: [rid], ...(Number.isFinite(lift) ? { lift } : {}), ...(Number.isFinite(pad) ? { pad } : {}) });
+    markers.push({ type: 'label', at, text: L.text, tone: L.boardTone, lift: 'token', ...(side === 'below' ? { below: true } : {}), cls: `${L.cls} ps-opt ps-opt--${L.key}${o.id === choiceId ? ' is-yours' : ''}`, optionId: o.id, receiverId: rid, label: L.key });
   }
   return markers;
+}
+
+/**
+ * How much a phone held upright can zoom its reveal onto the play (pure). board.js always keeps the whole pitch width
+ * in view on a phone and crops only its length (setFocus), so the reveal draws the board wider than the stage (`z`
+ * times) and slides it (`offset` CSS px) so the play is in the middle: the ball, the labelled players and the spaces
+ * aimed at, zoomPad metres across either side, and their length (plus board.js focusPad) must still fit the stage.
+ * The vertical board's world y runs across the screen from -margin (3 m) over WIDTH + 2 margins (74 m).
+ * @param {{ rating, frame, carrierId, labels?: Set<string>, choiceId?, stage: { width: number, height: number } }} o
+ * @returns {{ z: number, width: number, offset: number } | null}  null: no zoom worth having
+ */
+export function revealZoom({ rating, frame, carrierId, labels = null, choiceId = null, stage } = {}, P = PASS_DEFAULTS) {
+  const sw = Number(stage?.width), sh = Number(stage?.height);
+  if (!(sw > 0 && sh > 0)) return null;
+  const pts = [];
+  const ball = ballOf(frame, carrierId);
+  if (ball) pts.push(ball);
+  for (const o of rating?.options ?? []) {
+    const rid = receiverOf(o);
+    if (!rid?.startsWith('us-') || (labels ? !labels.has(rid) : o.id !== choiceId && o.label !== 'best')) continue;
+    const r = posOf(frame, rid);
+    if (r) pts.push(r);
+    if (o.point && Number.isFinite(o.point.x) && (o.id === choiceId || o.label === 'best')) pts.push(o.point);
+  }
+  if (pts.length < 2) return null;
+  const across = 74, margin = 3, focusPad = 6; // board.js: WIDTH + 2 × margin, and setFocus's pad along the pitch
+  const ys = pts.map((p) => p.y), xs = pts.map((p) => p.x);
+  const y0 = Math.min(...ys) - P.zoomPad, y1 = Math.max(...ys) + P.zoomPad;
+  const along = Math.max(...xs) - Math.min(...xs) + 2 * (P.focusPad + focusPad);
+  const z = Math.min(P.zoomMax, across / Math.max(1, y1 - y0), (across * sh) / (sw * along));
+  if (!(z >= P.zoomMin)) return null;
+  const width = Math.round(sw * z);
+  const centre = (((y0 + y1) / 2 + margin) * width) / across;
+  const offset = Math.round(Math.min(width - sw, Math.max(0, centre - sw / 2)));
+  return { z: Math.round(z * 100) / 100, width, offset };
+}
+
+/**
+ * The pitch length the reveal needs in view (board.setFocus): the ball, and the labelled options' players and the
+ * spaces the engine aimed at, and nothing else (a phone crops to it).
+ */
+export function revealFocus({ rating, frame, carrierId, labels = null, choiceId = null } = {}, P = PASS_DEFAULTS) {
+  const xs = [];
+  const ball = ballOf(frame, carrierId);
+  if (ball) xs.push(ball.x);
+  for (const o of rating?.options ?? []) {
+    const rid = receiverOf(o);
+    if (!rid?.startsWith('us-') || (labels ? !labels.has(rid) : o.id !== choiceId && o.label !== 'best')) continue;
+    const r = posOf(frame, rid);
+    if (r) xs.push(r.x);
+    if (o.point && Number.isFinite(o.point.x) && (o.id === choiceId || o.label === 'best')) xs.push(o.point.x);
+  }
+  if (!xs.length) return null;
+  return { x0: Math.min(...xs) - P.focusPad, x1: Math.max(...xs) + P.focusPad };
 }
 
 /** The dotted preview line from the ball to a teammate (§4.4 step 3): it points at the player, never at the engine's aim. */
@@ -397,6 +575,28 @@ export function pickLine(explain, { good = false } = {}, P = PASS_DEFAULTS) {
   return good ? STRINGS.lineGood : STRINGS.lineBad;
 }
 
+/** The best pass's main reason (explainPass best.tag) → how STRINGS.better names it. */
+const BETTER = Object.freeze({
+  'into-space': 'run', free: 'free', 'can-turn': 'turn', 'breaks-first-line': 'front', 'breaks-midfield-line': 'mid',
+  'in-behind': 'behind', switch: 'far', 'zone-14': 'box', 'cut-back': 'goal', forward: 'forward',
+});
+
+/**
+ * After a safe pass that was not the best (a good one, not within reach of the best): "Safe." and the better pass,
+ * named in simple words from explainPass's `best` (its reason) and the rating (who it goes to): "Safe. Your striker's
+ * run was on." null otherwise, or when it would pass the 14-word budget.
+ * @param {{ explain, rating, option, graded? }} o
+ */
+export function betterLine({ explain, rating, option, graded = null } = {}, P = PASS_DEFAULTS) {
+  const best = explain?.best;
+  if (!best || option?.label !== 'good' || graded?.isBest) return null;
+  const bo = (rating?.options ?? []).find((o) => o.id === best.id) ?? rating?.best ?? null;
+  if (!bo || bo.id === option.id) return null;
+  const who = (bo.tags ?? []).find((t) => typeof t?.kidTo === 'string' && t.kidTo)?.kidTo ?? 'your teammate';
+  const text = `${STRINGS.safe} ${STRINGS.better[BETTER[best.tag] ?? 'other'](who)}`;
+  return wordCount(text) <= P.lineWords ? text : null;
+}
+
 /**
  * The "Why?" sheet (§4.3 step 7; reveal.js keeps it to 60 words): the idea's name and one-line summary in simple
  * wording (the rep's lesson, drill.principles, when the explanation is about it: a "Find the Free Player" rep missed
@@ -435,8 +635,8 @@ export function repTitle(drill, principles = {}) {
 }
 
 /**
- * The question at the freeze (≤ 12 words): "Who's open? Tap the best pass." (it says how to answer, too); an authored
- * drill's own simple question when it has one.
+ * The question at the freeze (≤ 12 words): "Pick the best pass." (the task, not "who's open?": the best pass is not
+ * always to the teammate with the most room); an authored drill's own simple question when it has one.
  */
 export function questionOf(drill) {
   const q = drill?.questionKid;
@@ -451,11 +651,12 @@ export function briefOf(drill) {
 }
 
 /** The history entry of a pass rep (ARCHITECTURE §5.12 plus research/passing.md §4.5: mode, choice, outcome; nodeId as play.js). */
-export function historyEntry({ t, drill, role, option, graded, bestId = null, ms = null, nodeId = null }) {
+export function historyEntry({ t, drill, role, option, graded, bestId = null, ms = null, nodeId = null, stars = null }) {
   return {
     t, mode: 'pass', id: drill?.id ?? null, title: drill?.title ?? drill?.titleKid ?? STRINGS.title,
     principles: [...(drill?.principles ?? [])], role, score: graded?.score ?? 0, grade: graded?.grade ?? null,
     choice: option?.id ?? null, outcome: outcomeKey(option, graded), best: bestId, ms, nodeId,
+    ...(Number.isInteger(stars) && stars >= 0 && stars <= 3 ? { stars } : {}), // the stars it showed (rewards.js stickerReps)
   };
 }
 
@@ -521,18 +722,25 @@ export async function generateReps({
 
 /**
  * The reps of a set.
- *   A Road node: road.buildSet's pass reps; a node that gives only spot reps → { redirect: '#/play/<id>' }.
- *   No node (the quick set): road.buildQuickPassSet, mixed lessons built as a Road pass set is (a forward best in 3 of
- *   5 against the "always pass back" trap, research/passing.md §6.4; no two reps that look the same); without it, the
- *   engine's generatePassSet.
+ *   A Road node: road.buildSet's pass reps (given the app, road.js counts the set as begun); a spot node (repKind, asked
+ *   first, so no set is built for it) or one that gives only spot reps → { redirect: '#/play/<id>' }.
+ *   No node (the quick set): road.buildQuickPassSet, the free-player idea mixed with playing forward, built as a Road
+ *   pass set is (a forward best in 3 of 5 against the "always pass back" trap, research/passing.md §6.4; no two reps
+ *   that look the same); without it, the engine's generatePassSet.
  * Either way a set still short of `count` is topped up with generatePassDrill (on the node's principles).
- * @param {{ node?, road?, profile?, role, seed, formations, catalogue?, index?, rewards?, skills?, count? }} ctx
- * @param {{ buildSet?, buildQuickPassSet?, generatePassSet?, generatePassDrill?, warn? }} deps  warn: where failures are logged (console.warn)
+ * @param {{ node?, road?, profile?, role, seed, formations, catalogue?, index?, rewards?, skills?, count?, app? }} ctx
+ * @param {{ buildSet?, buildQuickPassSet?, generatePassSet?, generatePassDrill?, repKind?, warn? }} deps  warn: where failures are logged (console.warn)
  * @returns {Promise<{ reps: { kind: 'pass', drill }[], redirect?: string }>}
  */
 export async function assembleSet(ctx, deps = {}) {
   const count = ctx.count ?? PASS_DEFAULTS.reps;
   const warn = deps.warn ?? console.warn;
+  const toPlay = ctx.node ? `#/play/${encodeURIComponent(ctx.node.id)}` : null;
+  if (ctx.node && typeof deps.repKind === 'function') {
+    let kind = null;
+    try { kind = deps.repKind(ctx.road, ctx.node); } catch { kind = null; }
+    if (kind === 'spot') return { reps: [], redirect: toPlay };
+  }
   let reps = [];
   if (ctx.node && typeof deps.buildSet === 'function') {
     let built = [];
@@ -540,14 +748,16 @@ export async function assembleSet(ctx, deps = {}) {
       built = await deps.buildSet(ctx.node, {
         road: ctx.road, profile: ctx.profile, index: ctx.index ?? [], rewards: ctx.rewards, skills: ctx.skills, seed: ctx.seed, formations: ctx.formations,
         catalogue: ctx.catalogue, // data/principles.json: the generated drills' names and takeaways
+        ...(ctx.app ? { app: ctx.app } : {}), // the set counts as begun (road.js startSet): a reload deals new reps
       });
     } catch (err) { warn('[fotbol] pass: buildSet failed', err); }
     built = Array.isArray(built) ? built : [];
     reps = built.filter((r) => r?.kind === 'pass' && r.drill);
-    if (!reps.length && built.some((r) => r?.kind === 'spot')) return { reps: [], redirect: `#/play/${encodeURIComponent(ctx.node.id)}` };
+    if (!reps.length && built.some((r) => r?.kind === 'spot')) return { reps: [], redirect: toPlay };
   } else if (!ctx.node && typeof deps.buildQuickPassSet === 'function') {
     try {
       const built = await deps.buildQuickPassSet({ road: ctx.road, profile: ctx.profile, seed: ctx.seed ?? 1, count, formations: ctx.formations, catalogue: ctx.catalogue });
+      // (no app: the quick set is dealt from the clock, fresh every time, and is no Road node to count)
       reps = (Array.isArray(built) ? built : []).filter((r) => r?.kind === 'pass' && r.drill?.id);
     } catch (err) { warn('[fotbol] pass: buildQuickPassSet failed', err); }
   } else if (!ctx.node && typeof deps.generatePassSet === 'function') {
@@ -574,10 +784,11 @@ const tryImport = async (url) => {
 
 /** The other areas' modules (engine, shell, play), loaded when the screen opens. */
 async function loadDeps() {
-  const [passing, passdrill, road, reveal, fulltime] = await Promise.all([
+  const [passing, passdrill, road, reveal, fulltime, board] = await Promise.all([
     tryImport('../../engine/passing.js'), tryImport('../../engine/passdrill.js'), tryImport('./road.js'), tryImport('./reveal.js'), tryImport('./fulltime.js'),
+    tryImport('../board.js'),
   ]);
-  return { passing, passdrill, road, reveal, fulltime };
+  return { passing, passdrill, road, reveal, fulltime, board };
 }
 
 /** The Road (data/road.json): the app's copy, else road.js's loader, else the file. */
@@ -631,19 +842,28 @@ export async function mount(root, app, params = []) {
   // A bad or locked node id never dead-ends: it plays a quick set, and the address says so.
   if (nodeId && !node) { try { history.replaceState(null, '', '#/pass'); } catch { /* keep the address */ } }
   const role = roleFor(profile);
-  const plays = node ? profile?.road?.[node.id]?.plays ?? 0 : 0;
-  const seed = node ? nodeSeed(node.id, plays) : (Date.now() % 2147483647) >>> 0;
+  // A spot node plays in #/play: go there before any set is built, replacing this address (Back skips it).
+  let spotNode = false;
+  try { spotNode = !!node && typeof roadMod?.repKind === 'function' && roadMod.repKind(roadData, node) === 'spot'; } catch { spotNode = false; }
+  if (spotNode) { app.navigate(`#/play/${encodeURIComponent(node.id)}`, { replace: true }); return () => { alive = false; }; }
+  // A node's n-th set (its start counter: road.js counts a set when it begins, so a reload deals new reps).
+  let attempt = node ? profile?.road?.[node.id]?.plays ?? 0 : 0;
+  try { if (node && typeof roadMod?.nodeAttempt === 'function') attempt = roadMod.nodeAttempt(profile, node.id); } catch { /* the plays */ }
+  const seed = node ? nodeSeed(node.id, attempt) : (Date.now() % 2147483647) >>> 0;
 
   await new Promise((r) => setTimeout(r, 30)); // let "Getting the pitch ready" paint: generating a set takes a moment
   const { reps, redirect } = await assembleSet(
     {
       node, road: roadData, profile, role, seed, formations, catalogue: app.data?.principles, index: app.data?.scenarios?.index ?? [],
-      rewards: loadRewards(app), skills: S.loadSkills(app.store),
+      rewards: loadRewards(app), skills: S.loadSkills(app.store), app,
     },
-    { buildSet: roadMod?.buildSet, buildQuickPassSet: roadMod?.buildQuickPassSet, generatePassSet: passdrill.generatePassSet, generatePassDrill: passdrill.generatePassDrill },
+    {
+      buildSet: roadMod?.buildSet, buildQuickPassSet: roadMod?.buildQuickPassSet, repKind: roadMod?.repKind,
+      generatePassSet: passdrill.generatePassSet, generatePassDrill: passdrill.generatePassDrill,
+    },
   );
   if (!root.isConnected) return () => {};
-  if (redirect) { app.navigate(redirect); return () => { alive = false; }; }
+  if (redirect) { app.navigate(redirect, { replace: true }); return () => { alive = false; }; }
   if (!reps.length) {
     root.replaceChildren(notice({ title: STRINGS.emptyTitle, text: STRINGS.emptyText, actions: [linkButton(STRINGS.back, '#/', { variant: 'primary', icon: 'arrow' })] }));
     return () => { alive = false; };
@@ -673,7 +893,13 @@ export async function mount(root, app, params = []) {
   root.replaceChildren(view);
 
   const kitNumber = loadRewards(app)?.kit?.number ?? null; // YOUR shirt shows your kit number (as in play.js)
-  const board = app.createBoard(els.board, { orientation: 'auto', labels: 'number', youNumber: Number.isInteger(kitNumber) ? kitNumber : null });
+  const youNumber = Number.isInteger(kitNumber) ? kitNumber : null;
+  const board = app.createBoard(els.board, { orientation: 'auto', labels: 'number', youNumber });
+  /** A teammate's number as the board draws it (board.js shirtNumberOf: YOUR kit number swapped in), else §5's. */
+  const numberOf = (id) => {
+    try { if (typeof deps.board?.shirtNumberOf === 'function') return deps.board.shirtNumberOf(id, { learnerId: rep?.carrierId ?? null, youNumber }) ?? shirtOf(id); } catch { /* §5's */ }
+    return shirtOf(id);
+  };
   const reveal = typeof deps.reveal?.createPlayerReveal === 'function' ? deps.reveal.createPlayerReveal(els.reveal, { app }) : fallbackReveal(els.reveal);
   cleanups.push(() => { try { reveal.destroy?.(); } catch { /* gone */ } }, () => { try { board.destroy(); } catch { /* gone */ } });
 
@@ -742,11 +968,18 @@ export async function mount(root, app, params = []) {
 
   const clearTargets = () => board.disableTargets();
   /** The teammates as big numbered tap targets (board.js): a first tap previews, a second tap confirms. */
-  const enableTargets = (ids, { onTap, onPreview }) => board.enableTargets({ ids, onTap, onPreview, labelFor: (id) => STRINGS.teammate(shirtOf(id) ?? '') });
+  const enableTargets = (ids, { onTap, onPreview }) => board.enableTargets({ ids, onTap, onPreview, labelFor: (id) => STRINGS.teammate(numberOf(id) ?? '') });
+  /** The board's layout for placing labels (labelSide): its orientation, label scale, token lift and drawn token radius. */
+  const layout = () => {
+    const k = Number.parseFloat(board.el?.style?.getPropertyValue?.('--board-label-k')) || 1;
+    const t = Number(board.tokenScale) || 1;
+    return { orientation: board.el?.dataset?.orientation === 'vertical' ? 'vertical' : 'horizontal', k, lift: 2.4 * t, pad: 1.8 * t };
+  };
 
   // ---- one rep
   function startRep(i) {
     stopAnim();
+    unzoomBoard();
     clearTargets();
     reveal.clear?.();
     hideBanner();
@@ -767,14 +1000,16 @@ export async function mount(root, app, params = []) {
       console.warn('[fotbol] pass: could not rate', drill?.id, err);
       return nextRep();
     }
-    const byReceiver = optionsByReceiver(rating?.options, rep.carrierId);
+    // The passes worth weighing: nobody far away, nor the keeper, unless that pass is really on (a crowded phone pitch).
+    const byReceiver = passTargets(optionsByReceiver(rating?.options, rep.carrierId), freeze, rep.carrierId);
     const targets = orderTargets([...byReceiver.keys()], freeze);
     if (!targets.length) return nextRep();
-    Object.assign(rep, { at, from, freezeAt, freeze, rating, byReceiver, targets, preview: null, tries: 0, first: null, decisionStart: 0 });
     const sample = [];
     for (let t = from; t < freezeAt; t += 0.5) sample.push(at(t));
     sample.push(freeze);
-    try { board.setFocus?.(repFocus(sample, rating)); } catch { /* optional */ }
+    const onShow = { ...rating, options: (rating?.options ?? []).filter((o) => byReceiver.has(receiverOf(o))) };
+    Object.assign(rep, { at, from, freezeAt, freeze, rating, byReceiver, targets, preview: null, tries: 0, first: null, decisionStart: 0, view: repFocus(sample, onShow) });
+    try { board.setFocus?.(rep.view); } catch { /* optional */ }
     renderDots();
     showSet();
   }
@@ -821,11 +1056,13 @@ export async function mount(root, app, params = []) {
   function showChoose() {
     dockMode('choose');
     stopAnim();
+    unzoomBoard(); // back from the reveal's zoom (Try again)
     hideCard();
     hideBanner();
     reveal.clear?.();
     els.list.replaceChildren();
     spotlight(null); // the whole picture for the decision: who is open depends on where they are
+    try { board.setFocus?.(rep.view); } catch { /* optional */ } // back from the reveal's crop (Try again)
     draw(rep.freeze);
     setMarkers([]);
     rep.preview = null;
@@ -846,7 +1083,7 @@ export async function mount(root, app, params = []) {
     setMarkers(rep.preview ? previewMarkers({ frame: rep.freeze, carrierId: rep.carrierId, receiverId: rep.preview }) : []);
     if (!els.passBtn) return;
     els.passBtn.disabled = !rep.preview;
-    if (rep.preview) els.passBtn.setAttribute('aria-label', STRINGS.passTo(shirtOf(rep.preview) ?? '')); else els.passBtn.removeAttribute('aria-label');
+    if (rep.preview) els.passBtn.setAttribute('aria-label', STRINGS.passTo(numberOf(rep.preview) ?? '')); else els.passBtn.removeAttribute('aria-label');
   }
 
   function play(receiverId) {
@@ -886,29 +1123,59 @@ export async function mount(root, app, params = []) {
     stopAnim();
     hideBanner();
     const a = rep.last;
-    draw(rep.freeze); // back to the moment of the decision: every option, labelled
-    drawReveal();
+    draw(rep.freeze); // back to the moment of the decision: the best, your pick and two others, labelled
+    rep.picks = revealPicks(rep.byReceiver, { frame: rep.freeze, carrierId: rep.carrierId, choiceId: a.option.id, bestId: rep.rating?.best?.id ?? null });
     const isBest = !!a.graded?.isBest || a.option.label === 'best';
-    const line = pickLine(a.explain, { good: isBest || a.option.label === 'good' });
+    // A safe pass that was not the best names the better one ("Safe. Your striker's run was on.").
+    const line = betterLine({ explain: a.explain, rating: rep.rating, option: a.option, graded: a.graded }) ?? pickLine(a.explain, { good: isBest || a.option.label === 'good' });
     const why = whyFor({ explain: a.explain, principles, drill: rep.drill, isBest, option: a.option, line });
     // After a first miss in the set, once: high standards plus belief (R20).
     const note = a === rep.first && a.stars === 0 && !set.missNoted ? STRINGS.missNote : '';
     if (note) set.missNoted = true;
     // The pitch's labels, for a screen reader.
-    els.list.replaceChildren(...rankOptions([...rep.byReceiver.values()]).map((o) => el('li', { text: `${STRINGS.number(shirtOf(receiverOf(o)) ?? '')}: ${labelStyle(o.label).word}` })));
+    els.list.replaceChildren(...rankOptions([...rep.byReceiver.values()]).filter((o) => rep.picks.has(receiverOf(o))).map((o) => el('li', { text: `${STRINGS.number(numberOf(receiverOf(o)) ?? '')}: ${labelStyle(o.label).word}` })));
     const last = set.index + 1 >= set.reps.length;
     reveal.show({
       stars: a.stars, word: wordFor(a.stars), line,
       why: { title: why.title, summary: why.summary, reasons: why.reasons, praise: why.praise }, note,
       onNext: () => (last ? finish() : nextRep()),
       onRetry: a.stars <= P.retryMaxStars ? () => retry() : undefined,
+      celebrate: a === rep.first, // the set's one big celebration: a first try only, never practice
     });
+    drawReveal(); // after the card: the dock has its height, so a phone's zoom fits the stage that is left
     refreshRewards(app); // the header catches up now (the award held it back until the reveal)
   }
 
   function drawReveal() {
     if (!rep?.last) return;
-    setMarkers(revealMarkers({ rating: rep.rating, frame: rep.freeze, carrierId: rep.carrierId, choiceId: rep.last.option.id }));
+    const choiceId = rep.last.option.id;
+    rep.picks ??= revealPicks(rep.byReceiver, { frame: rep.freeze, carrierId: rep.carrierId, choiceId, bestId: rep.rating?.best?.id ?? null });
+    // A phone crops to the play the reveal talks about (board.setFocus) and zooms in on it (zoomBoard), then the labels
+    // go where they cover nobody (once the board has laid itself out again at the new size).
+    const area = { rating: rep.rating, frame: rep.freeze, carrierId: rep.carrierId, labels: rep.picks, choiceId };
+    try { board.setFocus?.(revealFocus(area) ?? rep.view); } catch { /* optional */ }
+    const zoomed = zoomBoard(area);
+    const place = () => setMarkers(revealMarkers({ ...area, targets: rep.byReceiver, ...layout() }));
+    place();
+    if (zoomed) requestAnimationFrame(() => requestAnimationFrame(() => { if (alive && view.dataset.phase === 'reveal') place(); }));
+  }
+
+  /** The reveal's zoom on a phone held upright (revealZoom; never under reduced motion, R41). @returns {boolean} zoomed */
+  function zoomBoard(area) {
+    unzoomBoard();
+    if (reducedMotion(app) || board.el?.dataset?.orientation !== 'vertical') return false;
+    const z = revealZoom({ ...area, stage: { width: els.board.clientWidth, height: els.board.clientHeight } });
+    if (!z) return false;
+    try { board.setOrientation?.('vertical'); } catch { /* keeps its own */ } // a wide board must not turn sideways
+    Object.assign(els.board.style, { flex: 'none', width: `${z.width}px`, marginLeft: `${-z.offset}px` });
+    els.board.dataset.zoom = String(z.z);
+    return true;
+  }
+  function unzoomBoard() {
+    if (!els.board.dataset.zoom) return;
+    delete els.board.dataset.zoom;
+    Object.assign(els.board.style, { flex: '', width: '', marginLeft: '' });
+    try { board.setOrientation?.('auto'); } catch { /* keeps its own */ }
   }
 
   /** Try again: the same freeze, the same choices; practice only (the first try is what counts). */
@@ -930,7 +1197,7 @@ export async function mount(root, app, params = []) {
         set.streak = S.updateStreak(set.streak, { day: S.dayKey(new Date()), score });
         S.saveStreak?.(app.store, set.streak);
       }
-      S.appendHistory(app.store, historyEntry({ t: Date.now(), drill, role, option: a.option, graded: a.graded, bestId: rep.rating?.best?.id ?? null, ms: a.ms, nodeId: node?.id ?? null }));
+      S.appendHistory(app.store, historyEntry({ t: Date.now(), drill, role, option: a.option, graded: a.graded, bestId: rep.rating?.best?.id ?? null, ms: a.ms, nodeId: node?.id ?? null, stars: a.stars }));
     } catch (err) { console.warn('[fotbol] pass: could not save the rep', err); }
     // The stars the reveal shows are the stars the rewards count (rewards.js repStars).
     let gained = award(app, { type: 'rep', scenarioId: passRecordId(drill), role, grade, score, stars: a.stars }, { celebrate: false });
@@ -950,6 +1217,8 @@ export async function mount(root, app, params = []) {
     clearTargets();
     const results = set.results.filter(Boolean);
     const repStars = results.map((r) => r.stars);
+    // The set's first tries as a rewards session: a star on every play is "Perfect set" (a skill, never for finishing).
+    if (repStars.length) set.gained = mergeGains(set.gained, award(app, { type: 'session', stars: repStars }, { celebrate: false }));
     let nodeStars = null;
     if (node && typeof roadMod?.recordSet === 'function') {
       try { nodeStars = roadMod.recordSet(app, node.id, repStars); } catch (err) { console.warn('[fotbol] pass: could not record the set', err); }
@@ -997,6 +1266,15 @@ export async function mount(root, app, params = []) {
     try { ftCleanup?.(); } catch { /* gone */ }
     teardownStage();
   };
+}
+
+
+/** Reduced motion: the app's setting or the device's (as celebrate.js reducedMotion, which this module does not load up
+ *  front; the reveal's zoom is a camera move, R41). */
+function reducedMotion(app) {
+  if (app?.settings?.reducedMotion) return true;
+  if (globalThis.document?.documentElement?.dataset?.reducedMotion === 'true') return true;
+  try { return !!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
 }
 
 // ---------------------------------------------------------------- fallbacks (when the play area's screens are missing)

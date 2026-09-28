@@ -21,6 +21,7 @@
 .ps-view { min-height: 0; }
 .ps {
   display: grid;
+  grid-template-columns: minmax(0, 1fr); /* never wider than the screen: the reveal's zoom widens the board, not the page */
   grid-template-rows: auto minmax(0, 1fr) auto;
   grid-template-areas: "bar" "stage" "dock";
   height: calc(100vh - var(--header-h, 0px));
@@ -33,8 +34,11 @@
   display: flex; align-items: center; gap: 12px;
   padding: 4px 16px 0 8px; min-height: 48px;
 }
-.ps-stage { grid-area: stage; position: relative; min-height: 0; display: flex; padding: 4px 8px 6px; overflow: clip; }
+.ps-stage { grid-area: stage; position: relative; min-width: 0; min-height: 0; display: flex; padding: 4px 8px 6px; overflow: clip; }
 .ps-board { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; }
+/* A phone's reveal zooms onto the play (pass.js revealZoom): the board is drawn wider than the stage and slid sideways
+   (inline width and margin-left); the stage clips the rest. */
+.ps-board[data-zoom] { flex: none; }
 .ps-board > .board { flex: 1; }
 .ps-dock {
   grid-area: dock;
@@ -110,7 +114,8 @@
 @keyframes ps-pop { from { opacity: 0; transform: translate(-50%, -50%) scale(0.85); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
 @keyframes ps-drop { from { opacity: 0; transform: translate(-50%, -10px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
-/* ---- pitch markers (board.js setMarkers with ps-* classes) */
+/* ---- pitch markers (board.js setMarkers with ps-* classes). Option labels: Best, your pick and two others (pass.js
+   revealPicks), each on the side of its player where nobody stands; board.js keeps Player-mode labels 16 px or more. */
 .ps-view .mk.ps-mk--good, .ps-view .mk-label.ps-mk--good { --mk: var(--ps-good); }
 .ps-view .mk.ps-mk--warn, .ps-view .mk-label.ps-mk--warn { --mk: var(--ps-warn); }
 .ps-view .mk.ps-mk--bad, .ps-view .mk-label.ps-mk--bad { --mk: var(--ps-bad); }

@@ -7,9 +7,9 @@
 No account, no ads, no tracking. Your progress stays on your device.
 
 <p>
-  <img src="docs/screenshots/player-reveal.png" width="260" alt="A play has just been judged: YOU, a left back, stands a little way from a ring marked Best spot, with an arrow to it. Below: two of three stars, the word Great, and the line: Slide toward your teammate, there is a big gap between you. Buttons: Why?, See what happens, Next.">
-  <img src="docs/screenshots/player-home.png" width="260" alt="The home screen: a big Play button (Next: Back Up Your Buddy, 5 plays), two tiles (Who's open? and a locked Match day: Finish Big Match), three of seven dots for the days played this week, and the start of the Road with its first stops and their stars.">
-  <img src="docs/screenshots/player-pass.png" width="260" alt="Who's open?: you have the ball near the sideline, every teammate is circled as a big target, and a dotted line previews the pass you picked. The question: Who's open? Tap the best pass. Buttons: Watch again, Pass.">
+  <img src="docs/screenshots/player-reveal.png" width="260" alt="A play has just been judged: YOU, a left back with the nickname Rocket, stands a little way from a ring marked Best spot, and a dashed line across the pitch is labelled Your midfielders. Below: two of three stars, the word Great, and the line: Slide toward your teammate, there is a big gap between you. Buttons: Why?, See what happens, Next.">
+  <img src="docs/screenshots/player-home.png" width="260" alt="The home screen: your shirt, nickname and level at the top, a big Play button (Next: Back Up Your Buddy, 5 plays), two tiles (Who's open? and a locked Match day that says Finish, with a trophy), three of seven dots for the days played this week, and the start of the Road with its first stops and their stars.">
+  <img src="docs/screenshots/player-pass.png" width="260" alt="Who's open?: you have the ball near the left touchline, the teammates you could pass to are circled as big targets, and a dotted line previews a pass to your striker. The question: Pick the best pass. Buttons: Watch again, Pass.">
 </p>
 
 ## Your first minute
@@ -17,20 +17,20 @@ No account, no ads, no tracking. Your progress stays on your device.
 1. Tap **Play**, then tap what you play: **Defender**, **Midfielder**, **Winger** or **Striker**. That's it: no sign-up, no tour.
 2. A short bit of play runs. The whistle blows and play freezes: "The ball is on the other side now. Where do you go?"
 3. The first time, a hand shows you the best spot, then it's your turn. Drag yourself there (or tap yourself, then tap a spot) and press **Lock it**.
-4. The pitch shows the best spot as a ring with an arrow from where you stood. You get 0 to 3 stars and one word (Spot on, Great, Close or Not yet), never a grade or a score out of 100. **Why?** tells you a little more, **Try again** gives you the same idea on the other side, and **See what happens** plays on.
+4. The pitch shows the best spot as a ring with an arrow from where you stood. You get 0 to 3 stars and one word (Spot on, Great, Close or Not yet), never a grade or a score out of 100. **Why?** tells you a little more, **Try again** gives you the same idea on the other side (just practice: your first try is the one that counts), and **See what happens** plays on.
 5. After three plays it's Full time. Then you pick your shirt colour, number and a nickname, and you're on the home screen.
 
 ## Player mode and Coach mode
 
 **Player mode** is what everyone sees first, and it is built for young players (the design and the research behind it are in [docs/KID_REDESIGN.md](docs/KID_REDESIGN.md)):
 
-- **The Road**: four chapters (Defend together, Help the ball, Pass it right, Move as one) of short sets of five plays, each about one or two ideas like "Back Up Your Buddy" or "Stay in Line". Stars on a stop open the next one, and each chapter ends with a match.
-- **Who's open?**: now you have the ball. Tap the teammate you'd pass to, watch the ball go, and see every option marked on the pitch: ★ Best, ✓ Good, ! Risky or ✗ Cut out.
+- **The Road**: four chapters (Defend together, Help the ball, Pass it right, Move as one) of short sets of five plays, each about one to three ideas like "Back Up Your Buddy" or "Stay in Line". Stars on a stop open the next one, each chapter ends with a match, and midfielders, wingers and strikers get the attacking chapter early. Stop a set whenever you like: the plays you finished still count.
+- **Who's open?**: now you have the ball. Tap the teammate you'd pass to, watch the ball go, and see the options marked on the pitch: ★ Best, ✓ Good, ! Risky or ✗ Cut out.
 - **Match day**: 45 seconds of play where you keep moving to the best spot, with your ring telling you Hot, Warm or Cold.
 - **Your card**: a player card with your ratings, a sticker album, badges and your kit.
 - Words kids can read (checked for reading age), no codes or jargon on screen, and rewards that are fair: stars come from good positions, the days-played-this-week dots only fill up, nothing is left to chance, and nothing compares you with anyone else.
 
-**Coach mode** is for coaches and parents: open the settings and choose "Coach or parent? Open Coach mode" (and "Back to Player mode" to return). It is the full tool:
+**Coach mode** is for coaches and parents: open the settings and choose "Coach or parent? Open Coach mode" (and "Back to Player mode" to return). It is the full tool, and playing in it never changes the player's card (stars, XP, stickers and badges are earned in Player mode only):
 
 - **Drill**: the 36 authored situations, scored out of 100 with a grade, the principle behind each reason, a cue question before the answer, and a summary per session.
 - **Learn**: a seven-step guided tour of the pitch, plus a library of every principle with sources and a reading list.
@@ -73,7 +73,7 @@ The engine lives in `js/engine/`. It is plain JavaScript that runs the same in t
 
 Your score is 55% "how close to your zone" and 45% "which principles you met". Breaking a hard rule, such as being offside or playing their striker onside, caps it at 59. Player mode turns the score into stars (3 at 90, 2 at 75, 1 at 55) and never shows the number. The other 21 players move automatically as an authored ball path plays out, so each drill is a moving scene with no physics engine behind it.
 
-When you have the ball ("Who's open?"), `js/engine/passing.js` rates every pass you could play: how likely it is to arrive (the lane, who can get there first, the pressure on your teammate) and what it gains (lines broken, space, the danger if it is lost). `js/engine/passdrill.js` builds those drills from match-like scenes and keeps only the ones with a clear best pass and a tempting wrong one. `js/engine/spotdrill.js` builds new "Find your spot" drills the same way, so the Road never runs out of plays, and keeps only the ones that pass the same quality checks as the 36 hand-made drills.
+When you have the ball ("Who's open?"), `js/engine/passing.js` rates every pass you could play: how likely it is to arrive (the lane, who can get there first, the pressure on your teammate) and what it gains (lines broken, space, the danger if it is lost). A risky pass is starred only when it is worth clearly more than the best safe one, and a safe pass earns two stars or more unless a clearly better forward pass was on. `js/engine/passdrill.js` builds those drills from match-like scenes and keeps only the ones with a clear best pass and a tempting wrong one. `js/engine/spotdrill.js` builds new "Find your spot" drills the same way, so the Road never runs out of plays, and keeps only the ones that pass the same quality checks as the 36 hand-made drills.
 
 ## Run it locally
 

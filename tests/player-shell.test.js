@@ -55,12 +55,17 @@ test('home: the model has the next node and where it plays, the two tiles, the w
   assert.deepEqual(m.next, { id: 'close-down', title: 'Close Them Down', href: '#/play/close-down', reps: 5 });
   assert.equal(Home.STRINGS.next(m.next.title, m.next.reps), 'Next: Close Them Down · 5 plays');
   assert.deepEqual(m.tiles.pass, { href: '#/pass' });
-  assert.deepEqual(m.tiles.matchday, { href: '#/matchday', unlocked: false, hint: 'Finish Big Match' });
-  assert.equal(words(m.tiles.matchday.hint), 3);
+  assert.deepEqual(m.tiles.matchday, { href: '#/matchday', unlocked: false, hint: 'Finish Big Match', short: 'Finish', gate: { id: 'defend-match', title: 'Big Match', icon: 'trophy' } });
+  assert.equal(words(m.tiles.matchday.hint), 3, 'screen readers hear "Finish Big Match"');
+  // The Big Match (a trophy like every chapter match) shows its title, so "Finish" and its trophy on the tile point at it.
+  const labels = m.chapters.flatMap((c) => c.nodes).filter((n) => n.label);
+  assert.deepEqual(labels.map((n) => [n.id, n.label]), [['defend-match', 'Big Match']]);
   assert.deepEqual(m.week, { count: 0, max: 7 });
   assert.deepEqual(m.chapters.map((c) => [c.id, c.unlocked, c.showTitle]), [['defend', true, true], ['help', false, false], ['passing', false, false], ['shape', false, false]]);
   const later = Home.homeModel({ road, profile: profileWith('DEF', { 'close-down': 3, 'back-up': 3, 'goal-side': 3, 'defend-match': 1 }), rewards: createRewards(), today: '2026-09-27' });
   assert.equal(later.next.id, 'defend-match', 'Big Match has 1 star: still next up');
+  const wing = Home.homeModel({ road, profile: profileWith('WING', { 'close-down': 1 }), rewards: createRewards(), today: '2026-09-27' });
+  assert.deepEqual([wing.next.id, wing.chapters.find((c) => c.showTitle).id], ['get-open', 'help'], 'a winger\'s Play goes to Help the ball next');
   assert.equal(later.tiles.matchday.unlocked, true);
   const passNext = Home.homeModel({ road, profile: profileWith('MID', Object.fromEntries(['close-down', 'back-up', 'goal-side', 'defend-match', 'get-open', 'stay-wide', 'between-lines', 'crosses', 'help-match'].map((id) => [id, 3]))) });
   assert.equal(passNext.next.href, '#/pass/free-player', 'a pass node plays at #/pass');
@@ -75,18 +80,18 @@ test('home: the screen stays within 25 words wherever you are on the Road (R2, t
   for (let k = 0; k <= ids.length; k++) {
     for (const s of [1, 3]) {
       const stars = Object.fromEntries(ids.slice(0, k).map((id) => [id, s]));
-      const m = Home.homeModel({ road, profile: profileWith('DEF', stars), rewards: createRewards(), today: '2026-09-27' });
-      const visible = [
-        longNick, '10', '99', longRank, // the top bar: nickname, shirt number, level, rank
-        Home.STRINGS.play, Home.STRINGS.next(m.next.title, m.next.reps),
-        Home.STRINGS.whosOpen, Home.STRINGS.matchday, m.tiles.matchday.unlocked ? '' : m.tiles.matchday.hint,
-        Home.STRINGS.week,
-        ...m.chapters.filter((c) => c.showTitle).map((c) => c.title),
-      ];
-      const n = words(visible.join(' '));
-      worst = Math.max(worst, n);
-      assert.ok(n <= 25, `${n} words with ${k} nodes at ${s} stars: ${visible.join(' | ')}`);
-      assert.equal(m.chapters.filter((c) => c.showTitle).length, 1, 'one chapter title on show');
+      for (const group of ['DEF', 'WING']) {
+        const m = Home.homeModel({ road, profile: profileWith(group, stars), rewards: createRewards(), today: '2026-09-27' });
+        const visible = [
+          longNick, '10', '99', longRank, // the top bar: nickname, shirt number, level, rank
+          ...Home.homeWords(m), // Play, Next..., the tiles (the locked one says "Finish" with the trophy), This week, the chapter, the Big Match's label
+        ];
+        assert.ok(visible.includes(Home.STRINGS.play) && visible.includes('Big Match'));
+        const n = words(visible.join(' '));
+        worst = Math.max(worst, n);
+        assert.ok(n <= 25, `${n} words with ${k} nodes at ${s} stars (${group}): ${visible.join(' | ')}`);
+        assert.equal(m.chapters.filter((c) => c.showTitle).length, 1, 'one chapter title on show');
+      }
     }
   }
   assert.ok(worst >= 18, `the check saw real screens (${worst} words at most)`);
@@ -143,28 +148,36 @@ test('card: the card\'s metal follows the rank', () => {
   assert.equal(Card.cardMetal('nope'), 'bronze');
 });
 
-test('card: the sticker album has one sticker per Road principle, tiered by node stars or its sticker card', () => {
-  const rewards = { ...createRewards(), cards: { D3: { tier: 2 } } };
+test('card: the sticker album has one sticker per Road principle, tiered by its sticker card (mastery), never by node stars alone', () => {
+  const rewards = { ...createRewards(), cards: { D3: { tier: 2 }, D5: { tier: 1 }, U8: { tier: 3 } } };
   const album = Card.stickerAlbum({ road, profile: profileWith('DEF', { 'close-down': 1, 'goal-side': 3 }), rewards, principles: { byId: principles } });
   const nodes = R.roadNodes(road).filter((n) => n.kind !== 'mix');
   assert.equal(album.total, new Set(nodes.flatMap((n) => n.principles)).size);
   assert.deepEqual(album.chapters.map((c) => c.title), road.chapters.map((c) => c.title));
   const by = Object.fromEntries(album.chapters.flatMap((c) => c.stickers).map((s) => [s.id, s]));
-  assert.equal(by.D1.tier, 1, 'bronze from 1 node star');
-  assert.equal(by.D3.tier, 2, 'silver from the sticker card');
-  assert.equal(by.U8.tier, 3, 'gold from 3 node stars');
+  assert.equal(by.D1.tier, 0, 'a 1-star node is not mastery: no sticker');
+  assert.equal(by.T3.tier, 0, 'nor is a 3-star node without the card (rewards.js stickerReady gives cards)');
+  assert.equal(by.D5.tier, 1, 'bronze from the sticker card');
+  assert.equal(by.D3.tier, 2, 'silver');
+  assert.equal(by.U8.tier, 3, 'gold');
   assert.equal(by.B3.tier, 0);
-  assert.equal(by.B3.unlocked, false);
+  assert.equal(by.B3.unlocked, true, 'Get Open opens after Close Them Down');
+  assert.equal(by.U4.unlocked, false, 'Move as one is still closed');
   assert.equal(by.D4.href, '#/play/back-up', 'a mystery sticker links to its node');
   assert.equal(by.D1.name, principles.D1.kidName, 'kid names, never codes');
-  assert.deepEqual(album.tiers, { 1: 2, 2: 1, 3: 3 });
-  assert.equal(album.collected, 6);
+  assert.deepEqual(album.tiers, { 1: 1, 2: 1, 3: 1 });
+  assert.equal(album.collected, 3);
   for (const s of Object.values(by)) assert.doesNotMatch(s.name, /\b[A-Z]{1,2}\d{1,2}\b/, s.name);
 });
 
 test('card: badges carry an icon, a short name and progress; nicknames come from the pick-list', () => {
   const list = Card.badgeList(createRewards());
   assert.ok(list.length > 0);
+  // Coach mode's tutorial and Explore give "Kick-off" and "Explorer": Player mode cannot earn them, so they hide.
+  assert.ok(!list.some((b) => b.id === 'first-steps' || b.id === 'explorer'), 'no badge Player mode cannot earn');
+  assert.ok(Card.badgeList({ ...createRewards(), badges: { 'first-steps': { day: '2026-09-20' } } }).some((b) => b.id === 'first-steps' && b.earned), 'unless already earned');
+  assert.equal(Card.badgeList(createRewards(), { all: true }).length, list.length + 2);
+  assert.ok(!list.some((b) => /boots on|went the distance/i.test(b.name)), 'no badge for taking part');
   for (const b of list) {
     assert.ok(b.icon && b.name, b.id);
     assert.ok(b.progress >= 0 && b.progress <= 1);

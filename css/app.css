@@ -247,6 +247,9 @@ main:focus { outline: none; }
   transition: background-color 0.15s, border-color 0.15s, color 0.15s, transform 0.1s;
   -webkit-tap-highlight-color: transparent;
 }
+/* Player mode: buttons are body text, 16 px or more (KID_REDESIGN §5, R6); Coach mode keeps the size above. :where()
+   adds no weight, so a Player screen's own button sizes (player.css, play.css, pass.css) still win. */
+:where(.view--player) .btn { font-size: 1rem; }
 .btn:active { transform: translateY(1px); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn--primary { background: var(--accent); color: var(--accent-ink); }

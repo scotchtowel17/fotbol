@@ -1,7 +1,8 @@
 // Pass drills ("Who's open?"): the learner receives the ball in a short ball-scripted build-up and, at the
-// freeze, picks who to pass to. Generated from scenes (and two hand-shaped templates), checked by the drill
-// gates, rated by passing.js. Contract: docs/ARCHITECTURE.md §5.14. Rationale: docs/research/passing.md §4.5
-// (the drill and its gates), §4.6 (generating drills); docs/KID_REDESIGN.md §4.4, §6.1.
+// freeze, picks who to pass to. Generated from scenes (varied so a different teammate is open: one marked, one left
+// free; and two hand-shaped templates), checked by the drill gates, rated by passing.js; sets keep their bests varied.
+// canGeneratePass says up front which ideas a position never gets. Contract: docs/ARCHITECTURE.md §5.14. Rationale:
+// docs/research/passing.md §4.5 (the drill and its gates), §4.6 (generating drills); docs/KID_REDESIGN.md §4.4, §6.1.
 //
 // A pass drill is an ordinary ball-scripted scenario (ARCHITECTURE §5.3) with kind 'pass', answer.mode
 // 'pass', and the LEARNER AS THE CARRIER at the freeze, so it is played and judged with nobody held back:
@@ -10,7 +11,7 @@
 // (sequence.js createRng), no Math.random, no clock.
 
 import { clamp, dist, norm } from './geometry.js';
-import { MID_Y, clampToPitch } from './pitch.js';
+import { LENGTH, WIDTH, MID_Y, clampToPitch } from './pitch.js';
 import { LEARNABLE_ROLES, ROLE_INFO, playerId, parsePlayerId, mirrorPlayerId } from './roles.js';
 import { teamTargets } from './formation.js';
 import { autoFrame } from './scene.js';
@@ -21,6 +22,7 @@ import { rateOptions, PASS_DEFAULTS } from './passing.js';
 
 export const PASSDRILL_DEFAULTS = Object.freeze({
   maxAttempts: 40, // [D] candidate scenes per drill before generatePassDrill gives up (null)
+  fastFail: true, // an idea this position never gets a drill on (canGeneratePass, PASS_YIELD) gives null at once (false: try anyway)
   margin: 8, // [D] research §4.5: the best leads every other (non-accepted) option by at least this many points
   minChoices: 3, // [D] ...at least this many options are not cut out...
   forwardSlots: 3, // [D] ...and of every forwardCycle consecutive integer seeds, this many want a forward best
@@ -42,6 +44,25 @@ export const PASSDRILL_DEFAULTS = Object.freeze({
   crowdGap: 1.5, // [D] ...this many metres goal-side of them,
   screenBand: 14, // [D] ...and our central options (this close to the middle) nearest the ball, inside or behind it,
   screenAt: 0.5, // [D] ...are screened by their #9 or whoever is nearest, standing this far along the pass to them
+  // Who's open, varied (varyScene): the HELIOS shape puts a position's teammates and markers in much the same places every
+  // time (a full-back's winger free down the line in 9 of 10 scenes), so a natural scene's picture is varied:
+  markChance: 0.4, // [D] share of natural scenes where the plain best's receiver gets a marker tight on him...
+  freeChance: 0.3, // [D] ...and where a teammate ahead of the ball is left free (their players near him step away)
+  markGap: 1.6, // [D] m: the marker stands this far from him, goal-side and a little ball-side...
+  markFrom: 12, // [D] m: ...coming from at most this far away
+  freeRadius: 5, // [D] m: their players this close to the teammate left free step away...
+  freeGap: 7, // [D] m: ...to this far from him (the nearest such spot to where they started, out of the pass to him)...
+  freeLane: 3, // [D] m: ...at least this far from the line of that pass
+  freeReach: 32, // [D] m: the teammate left free is at most this far from the ball
+  maxMoveSpeed: 7, // [D] m/s: nobody walks to a new spot faster than this during the lead-in
+  shortFamilies: Object.freeze(['W', 'ST']), // [D] positions that sometimes come short to get the ball...
+  shortChance: 0.35, // [D] ...this share of their natural scenes...
+  shortDist: Object.freeze([6, 12]), // [D] ...this many metres from their spot, toward the passer and our goal
+  // Sets (generatePassSet) and similarPassDrills
+  maxSameBest: 2, // [D] at most this many drills of a set star a pass to the same position
+  nearBall: 3, // [D] m: two drills with the ball this close at the freeze look the same...
+  nearSameBest: 15, // [D] m: ...and so do two with the same best receiver and the ball this close (two pull-backs from a corner)
+  setTries: 3, // [D] seeds tried per slot of a set
   maxPassSpeed: 20, // [D] realism gate: no pass faster than this (m/s)...
   maxCarrySpeed: 7, // [D] ...and no carry faster than this
   tRound: 1e3, // times rounded to 1 ms...
@@ -256,47 +277,137 @@ export function forwardSlot(seed, D = PASSDRILL_DEFAULTS) {
 }
 
 /**
- * Generate a pass drill for a learner role, deterministic for (seed, role, principles, direction).
+ * Generate a pass drill for a learner role, deterministic for (seed, role, principles, direction, avoid, unlike).
  * Tries up to maxAttempts scenes from the seeded stream; keeps the first whose freeze passes the gates,
- * teaches one of `principles` (any pass principle when none is asked), has the wanted direction, and whose
- * mirror passes the gates too.
+ * teaches one of `principles` (any pass principle when none is asked), has the wanted direction, stars none of the
+ * receivers to `avoid`, looks like none of the drills in `unlike`, and whose mirror passes the gates too. A natural
+ * scene's picture is varied (varyScene) so the open teammate, and so the best pass, is not always the same one.
  * @param {{ seed?: number|string, role: string, principles?: string[], formations: {us:object, them?:object},
- *           catalogue?: object, direction?: 'forward'|'any'|'auto', params?: object }} opts
+ *           catalogue?: object, direction?: 'forward'|'any'|'auto', avoid?: string[], unlike?: object[], params?: object }} opts
  *   catalogue: data/principles.json (any form: {principles}, {list}, {byId}, array) for the titles and takeaway;
  *   direction 'auto' (default): 'forward' on forwardSlot(seed) seeds when a forward best can teach a principle asked
- *   (not PA13; PA10 only for a centre-back), else 'any'; params: PASSDRILL_DEFAULTS overrides, params.pass: PASS_DEFAULTS
- *   overrides; trace: an array that collects { attempt, template, reason } for every rejected scene (yield reports)
+ *   (not PA13; PA10 only for a centre-back), else 'any'; avoid: receivers the best pass must not go to, as roles or
+ *   player ids ('ST', 'us-LW'): a set builder's way to vary its bests (the generator marks them out of the picture;
+ *   the id then ends '-x-<roles>'); unlike: drills already in the set, which the new one must not look like
+ *   (similarPassDrills; a skipped scene is only skipped, so the drill is the one this seed gives at that attempt, and
+ *   its id ends '-a<attempt>' from the second attempt on); params: PASSDRILL_DEFAULTS overrides, params.pass:
+ *   PASS_DEFAULTS overrides; trace: an array that collects { attempt, template, reason } for every rejected scene
  * @returns {object|null} the drill (docs/ARCHITECTURE.md §5.14), or null when no scene passed
  */
-export function generatePassDrill({ seed = 1, role, principles = [], formations, catalogue, direction = 'auto', params, trace } = {}) {
+export function generatePassDrill({ seed = 1, role, principles = [], formations, catalogue, direction = 'auto', avoid = [], unlike = [], params, trace } = {}) {
   if (!formations?.us) throw new TypeError('generatePassDrill: formations.us is required');
   if (!LEARNABLE_ROLES.includes(role)) throw new TypeError(`generatePassDrill: role ${role} is not a learnable role`);
   const D = { ...PASSDRILL_DEFAULTS, ...params };
   const asked = principles.filter((p) => PASS_LESSONS[p]);
   if (principles.length && !asked.length) return null; // only v2 principles asked (PA7, PA14, PA15): nothing to generate
   const want = direction === 'auto' ? (forwardable(asked, role) && forwardSlot(seed, D) ? 'forward' : 'any') : direction;
+  if (D.fastFail && asked.length && !canGeneratePass(role, asked, { direction: want })) return null; // measured: never (fast)
+  const shun = new Set((avoid ?? []).map(receiverRole).filter(Boolean));
+  const pictures = (unlike ?? []).map(passDrillPicture).filter(Boolean);
+  const me = playerId('us', role);
   const rng = createRng(`pass|${role}|${seed}`);
   const reject = (attempt, template, reason) => { trace?.push({ attempt, template, reason }); };
+  // What must hold of a candidate's rating before the (costlier) drill checks: a string says what does not.
+  const why = (rating) => {
+    const gates = passDrillGates(rating, { params: D }).problems;
+    if (gates.length) return gates[0].replace(/:.*$/, '');
+    if (want === 'forward' && !isForward(rating.best)) return 'not forward';
+    if (shun.has(receiverRole(rating.best.targetId))) return 'a receiver to avoid';
+    if (pictures.length && pictures.some((q) => samePicture(q, { role, ball: rating.ball, best: receiverRole(rating.best.targetId) }, D))) return 'looks like a drill in the set';
+    const taught = passLessons(rating, asked.length ? asked : Object.keys(PASS_LESSONS).filter((p) => p !== 'PA1'));
+    if (!pickPrimary(rating, asked, taught) || (asked.length && !taught.length)) return 'not the lesson asked';
+    return null;
+  };
   for (let attempt = 0; attempt < D.maxAttempts; attempt++) {
     const template = pickTemplate(rng, role, asked, D);
-    const built = template === 'switch' ? switchScene(rng, role, formations, D)
+    const plain = template === 'switch' ? switchScene(rng, role, formations, D)
       : template === 'own-goal' ? ownGoalScene(rng, role, formations, D) : naturalScene(rng, role, formations, D);
-    if (typeof built === 'string') { reject(attempt, template, built); continue; }
-    const rating = rateOptions(built.frame, playerId('us', role), D.pass);
-    const gates = passDrillGates(rating, { params: D }).problems;
-    if (gates.length) { reject(attempt, template, gates[0].replace(/:.*$/, '')); continue; }
-    if (want === 'forward' && !isForward(rating.best)) { reject(attempt, template, 'not forward'); continue; }
+    if (typeof plain === 'string') { reject(attempt, template, plain); continue; }
+    const plainRating = rateOptions(plain.frame, me, D.pass);
+    // The candidates, in order. A template scene as it is. A natural one varied first (varyScene: who is open), the
+    // plain one after: when the caller avoids the plain best's receiver, mark him, else leave another teammate free (and
+    // never the plain scene); when a forward best is wanted and the plain one is not, leave a teammate ahead free.
+    let tries = [null];
+    if (!template) {
+      const u = rng.next();
+      if (shun.has(receiverRole(plainRating.best.targetId))) tries = ['marked', 'free'];
+      else if (want === 'forward' && !isForward(plainRating.best)) tries = ['free'];
+      else tries = [u < D.markChance ? 'marked' : u < D.markChance + D.freeChance ? 'free' : null, null].filter((v, i, a) => a.indexOf(v) === i);
+    }
+    let pick = null;
+    for (const variant of tries) {
+      let built = plain, rating = plainRating;
+      if (variant) {
+        const varied = varyScene(rng, role, formations, D, plain, plainRating, variant, want === 'forward', shun);
+        if (typeof varied === 'string') { reject(attempt, variant, varied); continue; }
+        built = varied;
+        rating = rateOptions(built.frame, me, D.pass);
+      }
+      const kind = template ?? variant;
+      const bad = why(rating);
+      if (bad) { reject(attempt, kind, bad); continue; }
+      pick = { built, rating, kind };
+      break;
+    }
+    if (!pick) continue;
+    const { built, rating, kind } = pick;
     const taught = passLessons(rating, asked.length ? asked : Object.keys(PASS_LESSONS).filter((p) => p !== 'PA1'));
     const primary = pickPrimary(rating, asked, taught);
-    if (!primary || (asked.length && !taught.length)) { reject(attempt, template, 'not the lesson asked'); continue; }
-    const drill = writeDrill({ seed, role, rating, built, primary, taught, asked, want, direction, attempt, template, catalogue, D });
+    const drill = writeDrill({ seed, role, rating, built, primary, taught, asked, want, direction, attempt, template: kind, avoid: [...shun].sort(), catalogue, D });
     const own = checkPassDrill(drill, { formations, params: D, mirror: false });
-    if (own.errors?.length || own.problems.length) { reject(attempt, template, `check: ${(own.errors ?? own.problems)[0]}`); continue; }
+    if (own.errors?.length || own.problems.length) { reject(attempt, kind, `check: ${(own.errors ?? own.problems)[0]}`); continue; }
     const mirrored = checkPassDrill(mirrorPassDrill(drill), { formations, params: D, mirror: false });
-    if (mirrored.errors?.length || mirrored.problems.length) { reject(attempt, template, `mirror: ${(mirrored.errors ?? mirrored.problems)[0]}`); continue; }
+    if (mirrored.errors?.length || mirrored.problems.length) { reject(attempt, kind, `mirror: ${(mirrored.errors ?? mirrored.problems)[0]}`); continue; }
     return drill;
   }
   return null;
+}
+
+/** The role of a pass option's receiver: 'us-LW@space', 'us-LW' or 'LW' → 'LW' (null when it is none). */
+function receiverRole(id) {
+  if (typeof id !== 'string' || !id) return null;
+  const bare = id.replace(/@.*$/, '');
+  const role = bare.includes('-') ? parsePlayerId(bare).role : bare;
+  return ROLE_INFO[role] ? role : null;
+}
+
+/**
+ * [M] Measured yield of generatePassDrill: the share of calls that give a drill on one principle, per role family, as
+ * [direction 'any', direction 'forward'] (8 seeds each, both sides; fastFail off). The zeros held on 24 more seeds each:
+ * no full-back switch or pass into space, no free-side switch for #8s and wingers, across-our-goal traps only for the back
+ * four (and the #6 now and then), no pull-back from the back four, and keeping the ball is never a forward pass.
+ * Re-measure after changing the generator or passing.js: tests/passdrill.test.js spot-checks the zeros.
+ */
+export const PASS_YIELD = Object.freeze({
+  PA2: Object.freeze({ CB: [1, 1], FB: [1, 1], DM: [0.75, 1], CM: [1, 1], W: [0.75, 1], ST: [0.88, 0.75] }),
+  PA3: Object.freeze({ CB: [1, 1], FB: [1, 1], DM: [1, 0.88], CM: [1, 1], W: [1, 0.75], ST: [1, 0.63] }),
+  PA4: Object.freeze({ CB: [1, 1], FB: [1, 1], DM: [1, 1], CM: [1, 1], W: [1, 1], ST: [1, 0.88] }),
+  PA5: Object.freeze({ CB: [1, 1], FB: [1, 1], DM: [0.88, 1], CM: [1, 1], W: [0.63, 1], ST: [0.88, 0.63] }),
+  PA6: Object.freeze({ CB: [0.63, 0.63], FB: [0, 0], DM: [0.13, 0.25], CM: [0, 0], W: [0, 0], ST: [0.13, 0] }),
+  PA8: Object.freeze({ CB: [0.13, 0.25], FB: [0, 0], DM: [0.75, 0.75], CM: [0.63, 0.63], W: [0.5, 1], ST: [0.75, 0.63] }),
+  PA9: Object.freeze({ CB: [1, 1], FB: [1, 1], DM: [0.88, 1], CM: [1, 1], W: [0.5, 1], ST: [1, 0.88] }),
+  PA10: Object.freeze({ CB: [1, 1], FB: [1, 1], DM: [0.13, 0.25], CM: [0, 0], W: [0, 0], ST: [0, 0] }),
+  PA11: Object.freeze({ CB: [0, 0], FB: [0, 0], DM: [1, 0.5], CM: [1, 0.63], W: [0.63, 0], ST: [1, 0.25] }),
+  PA12: Object.freeze({ CB: [1, 1], FB: [1, 1], DM: [1, 1], CM: [1, 1], W: [1, 1], ST: [1, 0.88] }),
+  PA13: Object.freeze({ CB: [0.63, 0], FB: [0.88, 0], DM: [1, 0.38], CM: [1, 0], W: [1, 0], ST: [1, 0] }),
+});
+
+/**
+ * Whether generatePassDrill can make a drill for this position on any of `principles` (a role such as 'LB', or a family
+ * such as 'FB'): true with none asked (any lesson), false with only v2 principles asked (PA7, PA14, PA15), else when
+ * PASS_YIELD measured at least `min` of calls giving one in that direction ('auto' counts as 'any'). A cheap check for a
+ * set builder: a call it says no to comes back null at once (fastFail), and one it says yes to may still fail for a seed.
+ * @param {string} roleOrFamily
+ * @param {string|string[]} principles
+ * @param {{ direction?: 'any'|'forward'|'auto', min?: number }} [opts]
+ */
+export function canGeneratePass(roleOrFamily, principles = [], { direction = 'any', min = 0.01 } = {}) {
+  const fam = ROLE_INFO[roleOrFamily]?.family ?? roleOrFamily;
+  const all = typeof principles === 'string' ? [principles] : principles ?? [];
+  const list = all.filter((p) => PASS_LESSONS[p]);
+  if (!all.length) return true;
+  const col = direction === 'forward' ? 1 : 0;
+  return list.some((p) => (PASS_YIELD[p]?.[fam]?.[col] ?? 1) >= min);
 }
 
 /** Whether a forward best can teach any of the principles asked, for this role (none asked: yes). */
@@ -316,7 +427,9 @@ export function passForwardable(principles = [], role) {
 
 /**
  * A set of `count` pass drills in which forwardSlots of every forwardCycle (3 of 5) have a forward best, unless no
- * principle asked can be taught by a forward pass for this role (see generatePassDrill). Deterministic for the inputs.
+ * principle asked can be taught by a forward pass for this role (see generatePassDrill); no more than maxSameBest (2)
+ * star a pass to the same position, and no two look alike (similarPassDrills: two pull-backs from the same corner, say).
+ * Deterministic for the inputs.
  * @returns {object[]} up to `count` drills (fewer only if generation fails for some slots)
  */
 export function generatePassSet({ seed = 1, count = 5, ...opts } = {}) {
@@ -325,15 +438,59 @@ export function generatePassSet({ seed = 1, count = 5, ...opts } = {}) {
   const asked = (opts.principles ?? []).filter((p) => PASS_LESSONS[p]);
   const forward = forwardable(asked, opts.role);
   const out = [];
+  const dry = new Set();
   for (let i = 0; i < count; i++) {
     const direction = forward && forwardSlot(i, D) ? 'forward' : 'any';
-    // A slot that fails tries a later seed (a stride no other slot of this set uses).
-    for (let k = 0; k < 3; k++) {
-      const d = generatePassDrill({ ...opts, seed: base + i + k * 1009 * count, direction });
-      if (d && !out.some((x) => x.id === d.id)) { out.push(d); break; }
+    // Receivers already starred maxSameBest times are avoided (the generator marks them out of the picture).
+    const n = new Map();
+    for (const x of out) { const r = receiverRole(x.rating?.best?.targetId); if (r) n.set(r, (n.get(r) ?? 0) + 1); }
+    const avoid = [...n].filter(([, c]) => c >= D.maxSameBest).map(([r]) => r).sort();
+    // A slot that fails (or looks like a drill already in the set) tries a later seed (a stride no other slot uses);
+    // a forward slot that cannot vary its receiver takes any direction (a winger's forward pass is nearly always to the #9).
+    const plan = direction === 'forward' ? ['forward', 'any'] : ['any'];
+    let got = null;
+    for (const dir of plan) {
+      const key = `${dir}|${avoid.join(',')}`;
+      if (dry.has(key)) continue; // came back empty for a whole slot, with fewer drills to be unlike: skip (fast)
+      // A forward best to someone new is often not there at all (a winger's forward pass is to the #9): one seed, then any.
+      const tries = dir === 'forward' && avoid.length ? 1 : D.setTries;
+      for (let k = 0; k < tries && !got; k++) {
+        const d = generatePassDrill({ ...opts, seed: base + i + k * 1009 * count, direction: dir, avoid, unlike: out });
+        if (d && !out.some((x) => x.id === d.id)) got = d;
+      }
+      if (got) break;
+      dry.add(key);
     }
+    if (got) out.push(got);
   }
   return out;
+}
+
+/**
+ * What a pass drill looks like to a player, for keeping a set varied: the position played, the ball at the freeze, the
+ * best pass's receiver (a role) and its kind ('feet' | 'space'), and the drill's variant or template.
+ * @returns {{ role: string, ball: {x:number,y:number}, best: string|null, kind: string|null, template: string|null } | null}
+ */
+export function passDrillPicture(drill) {
+  const r = drill?.rating;
+  if (!r?.ball || !drill?.learner?.role) return null;
+  return { role: drill.learner.role, ball: { x: r.ball.x, y: r.ball.y }, best: receiverRole(r.best?.targetId), kind: r.best?.kind ?? null, template: drill.source?.template ?? null };
+}
+
+/**
+ * Two pass drills a player would take for the same one (PASSDRILL_DEFAULTS): the same position with the ball within
+ * nearBall at the freeze, or the same position and the same best receiver with the ball within nearSameBest (two
+ * pull-backs to the #6 from the same corner).
+ */
+export function similarPassDrills(a, b, P = PASSDRILL_DEFAULTS) {
+  const x = passDrillPicture(a), y = passDrillPicture(b);
+  return !!x && !!y && samePicture(x, y, { ...PASSDRILL_DEFAULTS, ...P });
+}
+
+function samePicture(x, y, P) {
+  if (x.role !== y.role) return false;
+  const d = dist(x.ball, y.ball);
+  return d <= P.nearBall || (!!x.best && x.best === y.best && d <= P.nearSameBest);
 }
 
 function pickTemplate(rng, role, asked, D) {
@@ -357,12 +514,17 @@ function pickPrimary(rating, asked, taught) {
 
 // ---- scenes: where the learner receives, who passes, and the timeline that plays it
 
-/** A random scene: the learner receives in their own zone from a nearby teammate. */
+/**
+ * A random scene: the learner receives in their own zone from a nearby teammate. A winger or #9 sometimes comes short
+ * to get it (shortChance): the shape keeps them high and wide, so without this they only ever had the ball in their
+ * end, with the #9 as their one forward pass.
+ */
 function naturalScene(rng, role, formations, D) {
   const me = playerId('us', role);
   const S = { x: rng.range(10, 95), y: rng.range(6, 62) };
   const B0 = clampIn(teamTargets(formations.us, 'us', S, { inPossession: true })[role], D.edge);
-  return leadIn(rng, role, formations, D, { receive: B0, passerFrom: autoFrame({ formations, ball: B0, possession: 'us', carrierId: me }) });
+  const short = D.shortFamilies.includes(ROLE_INFO[role].family) && rng.chance(D.shortChance) ? rng.range(D.shortDist[0], D.shortDist[1]) : 0;
+  return leadIn(rng, role, formations, D, { receive: B0, passerFrom: autoFrame({ formations, ball: B0, possession: 'us', carrierId: me }), short });
 }
 
 /**
@@ -430,6 +592,77 @@ function ownGoalScene(rng, role, formations, D) {
   return rebuild(scene, [{ id: 'them-ST', keys: [{ t: 0, ...round(st, D) }, { t: scene.tArrive, ...round(lurk, D) }] }], formations);
 }
 
+/**
+ * Who's open, varied (natural scenes only), so the best pass is not always the same teammate for a position:
+ * 'marked': the opponent nearest the plain scene's best receiver (within markFrom; never their keeper or the player on
+ *   our ball) comes to stand markGap from him, goal-side and a little ball-side, so that pass is no longer on;
+ * 'free': a teammate ahead of the ball (or level with it, unless `forward`), within freeReach and not in `shun` (roles
+ *   the caller avoids as the best's receiver), is left free: their players within freeRadius of him step away to
+ *   freeGap (the nearest such spot to where each started).
+ * The movers walk there during the lead-in (override keys at 0 and at the reception), as the switch template's block
+ * does, at most maxMoveSpeed. Returns the rebuilt scene, or a string saying why there is none.
+ */
+function varyScene(rng, role, formations, D, scene, rating, kind, forward = false, shun = new Set()) {
+  const me = playerId('us', role);
+  const f = scene.frame, ball = f.ball;
+  const them = f.players.filter((p) => p.team === 'them' && p.role !== 'GK');
+  const onBall = them.reduce((a, p) => (!a || dist(p, ball) < dist(a, ball) ? p : a), null);
+  const movable = them.filter((p) => p !== onBall);
+  const moves = [];
+  let target = null;
+  if (kind === 'marked') {
+    const R = f.players.find((p) => p.id === rating.best.targetId);
+    if (!R || R.role === 'GK') return 'nobody to mark';
+    const m = movable.filter((p) => dist(p, R) <= D.markFrom).sort((a, b) => dist(a, R) - dist(b, R) || (a.id < b.id ? -1 : 1))[0];
+    if (!m) return 'nobody near enough to mark';
+    const g = norm({ x: LENGTH - R.x, y: MID_Y - R.y }), b = norm({ x: ball.x - R.x, y: ball.y - R.y });
+    const u = norm({ x: g.x + 0.5 * b.x, y: g.y + 0.5 * b.y });
+    moves.push([m.id, { x: R.x + u.x * D.markGap, y: R.y + u.y * D.markGap }]);
+    target = R.id;
+  } else {
+    // A teammate ahead of the ball (level with it too, unless a forward pass is wanted).
+    const front = forward ? PASS_DEFAULTS.squareBand : -PASS_DEFAULTS.squareBand;
+    const ahead = f.players.filter((p) => p.team === 'us' && p.id !== me && p.role !== 'GK' && !shun.has(p.role) && p.x > ball.x + front && dist(p, ball) <= D.freeReach);
+    if (!ahead.length) return 'nobody ahead to leave free';
+    const F = ahead[rng.int(0, ahead.length - 1)];
+    target = F.id;
+    const near = movable.filter((p) => dist(p, F) < D.freeRadius);
+    if (!near.length) return 'already free';
+    // Each steps to the spot freeGap from him nearest where he started (the shortest walk): every 45 degrees round him,
+    // on the pitch, out of the pass to him, and apart from the others who step away.
+    const taken = [];
+    for (const o of near) {
+      const start = scene.start.find((q) => q.id === o.id);
+      let best = null;
+      for (let k = 0; k < 8; k++) {
+        const a = (k * Math.PI) / 4;
+        const spot = { x: F.x + Math.cos(a) * D.freeGap, y: F.y + Math.sin(a) * D.freeGap };
+        if (spot.x < 1 || spot.x > LENGTH - 1 || spot.y < 1 || spot.y > WIDTH - 1) continue;
+        if (segmentDistance(spot, ball, F) < D.freeLane || taken.some((q) => dist(q, spot) < D.freeGap / 2)) continue;
+        if (!best || dist(spot, start) < dist(best, start)) best = spot;
+      }
+      if (!best) return 'nowhere to step away to';
+      taken.push(best);
+      moves.push([o.id, best]);
+    }
+  }
+  const overrides = [];
+  for (const [id, to] of moves) {
+    const start = scene.start.find((q) => q.id === id);
+    const spot = clampToPitch(to, 1);
+    if (dist(start, spot) / Math.max(scene.tArrive, 1e-9) > D.maxMoveSpeed) return 'too far to walk';
+    overrides.push({ id, keys: [{ t: 0, ...round(start, D) }, { t: scene.tArrive, ...round(spot, D) }] });
+  }
+  return { ...rebuild(scene, overrides, formations), variantOf: target };
+}
+
+/** Distance from p to the segment a-b. */
+function segmentDistance(p, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
+  const u = l2 > 0 ? clamp(((p.x - a.x) * dx + (p.y - a.y) * dy) / l2, 0, 1) : 0;
+  return Math.hypot(p.x - a.x - u * dx, p.y - a.y - u * dy);
+}
+
 const clampIn = (p, edge) => clampToPitch(p, edge);
 const round = (p, D) => ({ x: Math.round(p.x * D.pRound) / D.pRound, y: Math.round(p.y * D.pRound) / D.pRound });
 const rt = (t, D) => Math.round(t * D.tRound) / D.tRound;
@@ -439,7 +672,7 @@ const rt = (t, D) => Math.round(t * D.tRound) / D.tRound;
  * where they stand when it arrives (their in-flight spot, refined twice as sequence.js does); the freeze follows.
  * @returns {{ timeline, params, frame, start, passerId, tArrive, receive, draft }|string}  a string says why there is no scene
  */
-function leadIn(rng, role, formations, D, { receive, passerFrom }) {
+function leadIn(rng, role, formations, D, { receive, passerFrom, short = 0 }) {
   const me = playerId('us', role);
   const fam = ROLE_INFO[role].family;
   const cands = passerFrom.players.filter((p) => p.team === 'us' && p.id !== me && (p.role !== 'GK' || (receive.x < 30 && (fam === 'CB' || fam === 'FB'))));
@@ -466,14 +699,14 @@ function leadIn(rng, role, formations, D, { receive, passerFrom }) {
   const params = rng.chance(D.noPressChance) ? { autoPress: false } : {};
   const tPass = rt(hold, D);
   const passSpeed = (d) => D.passSpeed[0] + (D.passSpeed[1] - D.passSpeed[0]) * clamp((d - 6) / 24, 0, 1);
-  const make = (B, tArrive, freezeAt) => ({
+  const make = (B, tArrive, freezeAt, overrides = []) => ({
     kind: 'pass', moment: 'in_possession', learner: { role }, params,
     timeline: {
       duration: freezeAt ?? tArrive, freezeAt: freezeAt ?? tArrive,
       ball: [{ t: 0, ...round(A0, D), ...(carry ? { event: 'carry' } : {}) }, { t: tPass, ...round(A, D), event: 'pass' }, ...(B ? [{ t: tArrive, ...round(B, D) }] : [])],
       possession: [{ t: 0, team: 'us' }],
       carrier: [{ t: 0, id: passer.id }, { t: tPass, id: null }, ...(B ? [{ t: tArrive, id: me }] : [])],
-      players: { auto: true, overrides: [] },
+      players: { auto: true, overrides },
       tags: [],
     },
   });
@@ -485,20 +718,36 @@ function leadIn(rng, role, formations, D, { receive, passerFrom }) {
     tArrive = rt(tPass + dist(A, B) / passSpeed(dist(A, B)), D);
     B = clampIn(free(make(B, tArrive), tArrive - 1e-3), D.edge);
   }
+  let overrides = [];
+  if (short > 0) {
+    // Coming short: `short` metres from that spot toward the passer and our goal, run to while the ball travels (the
+    // learner's override ends where the pass arrives, so they are on the ball there at the freeze).
+    const u = norm({ x: norm({ x: A.x - B.x, y: A.y - B.y }).x - 1, y: norm({ x: A.x - B.x, y: A.y - B.y }).y });
+    B = clampIn({ x: B.x + u.x * short, y: B.y + u.y * short }, D.edge);
+    tArrive = rt(tPass + dist(A, B) / passSpeed(dist(A, B)), D);
+    const from = frameAt(make(null, tPass), 0, { formations, learnerId: null }).players.find((p) => p.id === me);
+    if (dist(from, B) / tArrive > D.maxMoveSpeed) return 'too far to come short';
+    overrides = [{ id: me, keys: [{ t: 0, ...round(from, D) }, { t: tArrive, ...round(B, D) }] }];
+  }
   const d = dist(A, B);
   if (d < D.passLength[0] - 2 || d > D.passLength[1] + 4) return `pass length ${d.toFixed(0)} m`;
   tArrive = rt(tPass + d / passSpeed(d), D);
+  if (overrides.length) overrides[0].keys[1].t = tArrive;
   const freezeAt = rt(tArrive + rng.range(D.freezeAfter[0], D.freezeAfter[1]), D);
-  const draft = make(B, tArrive, freezeAt);
+  const draft = make(B, tArrive, freezeAt, overrides);
   const frame = frameAt(draft, freezeAt, { formations, learnerId: null });
   if (frame.carrierId !== me) return 'learner not on the ball';
-  const start = frameAt(draft, 0, { formations, learnerId: null }).players;
-  return { timeline: draft.timeline, params, frame, start, passerId: passer.id, tArrive, receive: round(B, D), draft };
+  // Where everyone starts (t = 0): only the templates and varyScene need it, so it is worked out when first asked for.
+  let start = null;
+  return {
+    timeline: draft.timeline, params, frame, passerId: passer.id, tArrive, receive: round(B, D), draft, short,
+    get start() { return (start ??= frameAt(draft, 0, { formations, learnerId: null }).players); },
+  };
 }
 
-/** The scene again with player overrides added (templates): the freeze frame recomputed. */
+/** The scene again with player overrides added (templates, varyScene): the freeze frame recomputed. */
 function rebuild(scene, overrides, formations) {
-  const timeline = { ...scene.timeline, players: { auto: true, overrides } };
+  const timeline = { ...scene.timeline, players: { auto: true, overrides: [...(scene.timeline.players?.overrides ?? []), ...overrides] } };
   const draft = { ...scene.draft, timeline };
   const frame = frameAt(draft, timeline.freezeAt, { formations, learnerId: null });
   return { ...scene, timeline, draft, frame };
@@ -517,7 +766,7 @@ function lessonText(id, catalogue) {
   };
 }
 
-function writeDrill({ seed, role, rating, built, primary, taught, asked, want, direction, attempt, template, catalogue, D }) {
+function writeDrill({ seed, role, rating, built, primary, taught, asked, want, direction, attempt, template, avoid = [], catalogue, D }) {
   const me = playerId('us', role);
   const principles = [primary, ...taught.filter((p) => p !== primary)];
   const text = lessonText(primary, catalogue);
@@ -527,7 +776,7 @@ function writeDrill({ seed, role, rating, built, primary, taught, asked, want, d
   const margin = b.score - (others[0]?.score ?? 0);
   const difficulty = Math.round(100 * (clamp((20 - margin) / 20, -1, 1) * 0.5 + (b.kind === 'space' ? 0.5 : 0) + (b.colour === 'amber' ? 0.5 : 0))) / 100; // [D]
   return {
-    id: `pass-${role.toLowerCase()}-${slug(seed)}${asked.length ? `-${asked.join('-').toLowerCase()}` : ''}${direction === 'auto' ? '' : `-${direction}`}`,
+    id: `pass-${role.toLowerCase()}-${slug(seed)}${asked.length ? `-${asked.join('-').toLowerCase()}` : ''}${direction === 'auto' ? '' : `-${direction}`}${avoid.length ? `-x-${avoid.join('-').toLowerCase()}` : ''}${attempt ? `-a${attempt}` : ''}`,
     kind: 'pass',
     title: text.name,
     titleKid: text.kidName,
@@ -551,7 +800,9 @@ function writeDrill({ seed, role, rating, built, primary, taught, asked, want, d
     params: built.params,
     source: {
       kind: 'generated', generator: 'fotbol passdrill v1', seed: String(seed), role, principles: [...asked], direction: want, attempt,
-      template: template ?? null, license: 'MIT', author: 'fotbol',
+      template: template ?? null, ...(built.variantOf ? { variantOf: built.variantOf } : {}), ...(built.short ? { short: Math.round(built.short * 10) / 10 } : {}),
+      ...(avoid.length ? { avoid: [...avoid] } : {}),
+      license: 'MIT', author: 'fotbol',
     },
   };
 }

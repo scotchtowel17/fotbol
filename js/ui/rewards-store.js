@@ -5,6 +5,10 @@
 //   award(app, { type: 'rep', scenarioId, role, score })              → gained (saved, then celebrated)
 //     a rep's stars follow its score (rewards.js starsForScore); Player mode may also pass the `stars` it showed,
 //     Coach mode also passes its grade (used only when there is no score). XP comes from stars and improvement only.
+//     Only Player mode earns: in Coach mode (app.settings.mode 'coach') award() does nothing and returns empty gains,
+//     since Coach mode is for coaches and parents and shares the player's store (its Elo skills still update).
+//     A sticker card ({ type: 'mastery' }) is given or upgraded only when the idea's recent plays in the history
+//     average 2 stars or more (rewards.js stickerReady): the callers send the Elo's mastery as before.
 //   award(app, event, { celebrate: false })                           → gained, shown later by the caller
 //   loadRewards(app), saveRewards(app, state), refreshRewards(app)    (refresh after an import or a reset)
 //   daysThisWeek(app)                                                 → days played this week, 0-7 (R35: only fills up)
@@ -13,7 +17,8 @@
 // Everything that touches the store or the document goes through `app` or a guarded global, so the pure
 // helpers (todayLocal, mergeGains, cleanGains, kitVars, youLabel, totalStars) run under node --test.
 
-import { normalizeRewards, applyEvent, paletteById, baseScenarioId, rankFor, weekDaysPlayed, BADGES_BY_ID, KIT_PALETTES } from '../rewards.js';
+import { normalizeRewards, applyEvent, paletteById, baseScenarioId, rankFor, weekDaysPlayed, stickerReady, BADGES_BY_ID, KIT_PALETTES } from '../rewards.js';
+import { loadHistory } from './session.js';
 
 export const REWARDS_KEY = 'rewards';
 /** Window event fired whenever the stored rewards change (detail: { state }). */
@@ -73,6 +78,7 @@ function emit(state) {
  * app.celebrate.show(). `celebrate: false` also holds back the change notice (the header's level pill) until the
  * caller shows the gains and calls refreshRewards(): a drill reveals a rep's rewards with beat 2, never before.
  * A failure here must never break a drill: it logs and returns empty gains.
+ * Nothing is earned in Coach mode (see the file comment), and a sticker card waits for rewards.js stickerReady.
  * @param {object} app
  * @param {object} event  see js/rewards.js applyEvent (a rep: { type: 'rep', scenarioId, role, score, stars?, grade? })
  * @param {{ celebrate?: boolean, grade?: string|null, host?: Element|null, card?: boolean, now?: Date }} [opts]
@@ -80,7 +86,9 @@ function emit(state) {
  * @returns {object} gained (plus `firstTry` on a rep: the first attempt ever at that drill)
  */
 export function award(app, event, { celebrate = true, grade = null, host = null, card = true, now = new Date() } = {}) {
+  if (!earnsRewards(app)) return emptyGains();
   try {
+    if (event?.type === 'mastery' && !stickerReady(loadHistory(app?.store), event.principleId)) return emptyGains();
     const before = loadRewards(app);
     const { state, gained } = applyEvent(before, event, { day: todayLocal(now) });
     if (event?.type === 'rep') gained.firstTry = !before.best[baseScenarioId(event.scenarioId)];
@@ -92,6 +100,9 @@ export function award(app, event, { celebrate = true, grade = null, host = null,
     return emptyGains();
   }
 }
+
+/** Whether this app earns rewards: Player mode does; Coach mode (settings.mode 'coach') never does. */
+export const earnsRewards = (app) => app?.settings?.mode !== 'coach';
 
 // ---------------------------------------------------------------- gains (pure)
 

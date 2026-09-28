@@ -21,7 +21,7 @@ import { ROLE_INFO, FAMILY_LABEL, FAMILIES, playerId, parsePlayerId } from '../.
 import { MID_Y, clampToPitch } from '../../engine/pitch.js';
 import { dist } from '../../engine/geometry.js';
 import { orientationFor } from '../session.js';
-import { award } from '../rewards-store.js';
+import { award, earnsRewards } from '../rewards-store.js';
 
 export const LEARN_DEFAULTS = Object.freeze({
   tapRadius: 4, // [D] metres: a tap this close to a player picks them (forgiving on touch)
@@ -590,8 +590,10 @@ function mountTutorial(root, app) {
     save();
   }
 
-  /** Rewards (ARCHITECTURE §5.13): once per completion (the Graduate badge, and its XP only the first time ever). */
+  /** Rewards (ARCHITECTURE §5.13): once per completion (the Graduate badge, and its XP only the first time ever); in
+   *  Player mode only (Coach mode earns nothing, so no celebration shows). */
   function rewardCompletion() {
+    if (!earnsRewards(app)) return;
     award(app, { type: 'tutorial-complete' });
   }
 

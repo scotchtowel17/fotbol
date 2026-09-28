@@ -9,21 +9,24 @@
 //
 // "Why?" opens a small sheet: the idea's name and one-sentence summary, up to 2 more reasons and what you did right,
 // 60 words at most (whyModel). Everything is tap-paced, never on a timer (R16). Stars, never grades (R18).
-// Confetti and a cheer only for the set's first 3-star rep, and only while the set's big-celebration budget lasts
-// (js/ui/celebrate.js createBurstBudget; one reveal per set, so pass reveal.budget on to Full time).
+// Confetti and a cheer only when the caller says the rep may celebrate (`celebrate: true`: a first try that counts,
+// never a practice retry or the worked example), for the set's first such 3-star rep, and only while the set's
+// big-celebration budget lasts (js/ui/celebrate.js createBurstBudget; one reveal per set, so pass reveal.budget on to
+// Full time). A rep that may not celebrate never uses the set's one burst up (burstFor).
 //
 //   const reveal = createPlayerReveal(container, { app });
-//   reveal.show({ stars, word, line, why: { title, summary, reasons, praise }, onNext, onRetry?, onReplay?, replayLabel? });
+//   reveal.show({ stars, word, line, why: { title, summary, reasons, praise }, onNext, onRetry?, onReplay?, replayLabel?,
+//                 celebrate? /* default false */ });
 //   reveal.clear(); reveal.destroy();
 //
 // Extras beyond the contract (all optional): show() also takes `note` (a second short line, e.g. the once-a-set
-// "Hard one. Pros miss it too."), `nextLabel` and `celebrate` (false: never a burst for this one); the instance has
-// setBusy(bool) (buttons off while a replay runs) and `budget` (the set's big-celebration allowance).
+// "Hard one. Pros miss it too.") and `nextLabel`; the instance has setBusy(bool) (buttons off while a replay runs;
+// the button that had focus gets it back after) and `budget` (the set's big-celebration allowance).
 //
 // Nothing touches the DOM at import time (tests/copy.test.js imports STRINGS in Node).
 
 import { el, button, svg } from '../components.js';
-import { createBurstBudget, confettiBurst, playerStarPlan, reducedMotion } from '../celebrate.js';
+import { createBurstBudget, confettiBurst, playerMilestone, playerStarPlan, reducedMotion } from '../celebrate.js';
 import { STRINGS as SHARED, starWord } from './strings.js';
 
 export const REVEAL_DEFAULTS = Object.freeze({
@@ -86,6 +89,15 @@ export function revealWordCount({ word, line, note, retry = false, replay = fals
   return [word, line, note, ...labels].reduce((a, s) => a + words(s), 0);
 }
 
+/**
+ * Does this reveal get the set's big celebration, confetti and a cheer (pure)? Only when the caller says the rep may
+ * celebrate (`celebrate === true`: a counted first try, never practice or the worked example), with 3 stars, and only
+ * the first time in the set (`celebrated`: an earlier rep had it). The set's budget (createBurstBudget) has the last say.
+ */
+export function burstFor({ stars = 0, celebrate = false, celebrated = false } = {}) {
+  return celebrate === true && playerMilestone({ stars: Number(stars) || 0, firstThreeOfSet: !celebrated }) === 'three-stars';
+}
+
 const STAR_PATH = 'M12 2.8l2.75 5.9 6.45.7-4.8 4.4 1.33 6.35L12 16.9l-5.73 3.25L7.6 13.8 2.8 9.4l6.45-.7z';
 
 /** The star row: three stars, `n` lit, each lit one popping at its moment (playerStarPlan). */
@@ -112,18 +124,21 @@ export function createPlayerReveal(container, { app, budget } = {}) {
   const timers = new Set();
   const later = (fn, ms) => { const t = setTimeout(() => { timers.delete(t); fn(); }, ms); timers.add(t); return t; };
   const stopTimers = () => { for (const t of timers) clearTimeout(t); timers.clear(); };
-  let threeShown = false; // the set's first 3-star rep has been celebrated (or passed) already
+  let threeShown = false; // a rep that may celebrate has had its first 3 stars already (burst or no budget left)
   let buttons = [];
   let whyBtn = null;
   let current = null;
+  let busyFocus = null; // the button that had focus when setBusy(true) turned the buttons off
 
   function say(msg) {
     live.textContent = '';
     later(() => { live.textContent = msg; }, 40);
   }
 
-  function show({ stars = 0, word, line = '', why = null, onNext, onRetry = null, onReplay = null, replayLabel, note = '', nextLabel, celebrate = true } = {}) {
+  function show({ stars = 0, word, line = '', why = null, onNext, onRetry = null, onReplay = null, replayLabel, note = '', nextLabel, celebrate = false } = {}) {
     stopTimers();
+    busyFocus = null;
+    root.classList.remove('is-busy');
     const n = Math.max(0, Math.min(3, Math.round(Number(stars)) || 0));
     const w = text(word) || starWord(n);
     const animate = !reducedMotion(app);
@@ -146,10 +161,11 @@ export function createPlayerReveal(container, { app, budget } = {}) {
     root.dataset.state = 'card';
     // One tick per star as it pops (the sound follows the mute setting; the stars say the same thing on screen).
     for (const s of playerStarPlan(n)) later(() => app?.sound?.play?.('star', { index: s.index }), s.at);
-    // The set's first 3 stars: a burst and a cheer, if the set still has its one big celebration.
-    if (n === 3 && !threeShown) {
+    // The set's first 3 stars on a rep that may celebrate: a burst and a cheer, if the set still has its one big
+    // celebration. Practice and the worked example never use it up.
+    if (burstFor({ stars: n, celebrate, celebrated: threeShown })) {
       threeShown = true;
-      if (celebrate && allowance.take()) {
+      if (allowance.take()) {
         later(() => app?.sound?.play?.('cheer'), P.cheerAtMs);
         later(() => confettiBurst(app, { anchor: stars$ }), 60);
       }
@@ -188,12 +204,27 @@ export function createPlayerReveal(container, { app, budget } = {}) {
     whyBtn?.focus({ preventScroll: true });
   }
 
-  /** Buttons off (e.g. while "See what happens" plays), then back on. */
+  /**
+   * Buttons off (e.g. while "See what happens" plays), then back on. A button loses keyboard focus when it is turned
+   * off, so the one that had it (the one just pressed) gets it back when they come on again, unless focus has moved
+   * on to something else meanwhile.
+   */
   function setBusy(on) {
+    const doc = root.ownerDocument;
+    if (on) {
+      const active = doc?.activeElement;
+      busyFocus = active && buttons.includes(active) ? active : busyFocus;
+    }
     for (const b of buttons) {
       if (on) b.setAttribute('disabled', ''); else b.removeAttribute('disabled');
     }
     root.classList.toggle('is-busy', !!on);
+    if (on) return;
+    const back = busyFocus;
+    busyFocus = null;
+    const active = doc?.activeElement;
+    const lost = !active || active === doc.body || active === doc.documentElement || root.contains(active);
+    if (back?.isConnected && lost && active !== back) back.focus({ preventScroll: true });
   }
 
   function clear() {
@@ -203,6 +234,8 @@ export function createPlayerReveal(container, { app, budget } = {}) {
     buttons = [];
     whyBtn = null;
     current = null;
+    busyFocus = null;
+    root.classList.remove('is-busy');
     root.dataset.state = 'empty';
   }
 

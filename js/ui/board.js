@@ -20,7 +20,11 @@
 //
 // Player mode (docs/KID_REDESIGN.md §8.1) opts into a few extras; Coach mode never calls them, so it looks
 // and behaves as before:
-//   createBoard(el, { labels: 'number' })   unique shirt numbers on the tokens (ROLE_INFO num), plain names for screen readers
+//   createBoard(el, { labels: 'number', youNumber })
+//                                           unique shirt numbers on the tokens (ROLE_INFO num; YOUR kit number on YOU and,
+//                                           in exchange, YOUR position's number on the teammate who had it: shirtNumberOf),
+//                                           plain names for screen readers; pitch labels at least playerLabelPx (16 px)
+//                                           tall and YOUR name tag's text at least playerTagPx (14 px)
 //   board.setSpotlight(ids | null)          everything but YOU, the ball and these tokens dimmed to 40 %
 //   board.enableTargets({ ids, onTap, onPreview }) / disableTargets()
 //                                           big (≥ 44 px) tap targets on tokens: first tap previews, a second tap confirms
@@ -28,8 +32,11 @@
 //                                           under reduced motion)
 //   board.setAid({ kind: 'glow', target } | { kind: 'heat', level } | null)
 //                                           a warm/cold ring on YOU (glow: brighter and warmer as YOU nears `target`)
-//   enableDrag({ ..., tapToMove: id, onArm })  a tap on the pitch moves that token there (tap-YOU-then-a-spot still works)
-// Every draggable token is at least minHitPx (44 CSS px) wide to hit, however small it is drawn (R10).
+//   enableDrag({ ..., tapToMove: id, onArm })  a tap on the pitch moves that token there (tap-YOU-then-a-spot still works:
+//                                           only a tap on the drawn token picks it up, tapAction); markers: a line's label
+//                                           can sit at `labelAt`
+// Every draggable token is at least minHitPx (44 CSS px) wide to hit (a press there picks it up to drag), however
+// small it is drawn (R10).
 
 import {
   LENGTH, WIDTH, HALF_X, MID_Y, GOAL_DEPTH, PENALTY_AREA, GOAL_AREA, PENALTY_SPOT_DIST,
@@ -53,6 +60,10 @@ export const BOARD_DEFAULTS = Object.freeze({
   maxTokenScale: 1.8, // [D] ...but never more than this many times life size (bigger tokens would hide the team's shape)
   minLabelPx: 11, // [D] CSS px: pitch and marker labels (1.5 m text at life size) grow to stay this tall...
   maxLabelScale: 2, // [D] ...up to this many times life size
+  playerLabelPx: 16, // [S] R6 (body text 16 px or more): Player mode (labels: 'number') keeps pitch labels this tall...
+  playerMaxLabelScale: 3.6, // [D] ...up to this many times life size (a phone showing the whole pitch: about 3 px per metre)
+  playerTagPx: 14, // [D] Player mode: the text of YOUR name tag at least this tall (the tag grows round it)...
+  maxTagScale: 3, // [D] ...up to this many times the size the token alone would draw it
   ballRadius: 0.8, // [D] metres (drawn larger than life so it can be seen and grabbed; grows with the tokens)
   grabRadius: 4, // [D] metres: pressing this close to a draggable token picks it up (forgiving on touch; never less than the drawn token)
   dragSlopPx: 6, // [D] CSS px of movement before a press becomes a drag; less is a tap
@@ -110,6 +121,20 @@ export function tokenScale(pxPerM, P = BOARD_DEFAULTS) {
 export function labelScale(pxPerM, P = BOARD_DEFAULTS) {
   if (!(pxPerM > 0)) return 1;
   const k = Math.min(P.maxLabelScale, Math.max(1, P.minLabelPx / (1.5 * pxPerM)));
+  return Math.round(k * 100) / 100;
+}
+
+/** Player mode's label sizes (pitch and marker labels at least playerLabelPx tall): BOARD_DEFAULTS with those minimums. */
+export const playerLabelParams = (P = BOARD_DEFAULTS) => ({ ...P, minLabelPx: P.playerLabelPx, maxLabelScale: P.playerMaxLabelScale });
+
+/**
+ * How much bigger YOUR name tag is drawn than the token alone would draw it (its text is 1.15 m tall at life size, on
+ * a token drawn `tokenK` times life size): 1 in Coach mode; in Player mode enough for playerTagPx, capped at maxTagScale.
+ * Rounded to 0.01.
+ */
+export function tagScale(pxPerM, tokenK = 1, { player = false } = {}, P = BOARD_DEFAULTS) {
+  if (!player || !(pxPerM > 0)) return 1;
+  const k = Math.min(P.maxTagScale, Math.max(1, P.playerTagPx / (1.15 * (tokenK || 1) * pxPerM)));
   return Math.round(k * 100) / 100;
 }
 
@@ -203,23 +228,67 @@ export function tokenName(id, learnerId) {
 export const SHIRT_NUMBERS = Object.freeze(Object.fromEntries(Object.entries(ROLE_INFO).map(([role, info]) => [role, info.num])));
 
 /**
- * The text on a token: its role code ('role', Coach mode: LCB, 6, 9...) or its shirt number ('number', Player mode:
- * GK 1, RB 2, LB 3, LCB 4, RCB 5, DM 6, RW 7, LCM 8, ST 9, RCM 10, LW 11). The ball has none.
+ * A player's shirt number in Player mode (pure): the position's number (§5), except that YOU wear your own kit number
+ * (`youNumber`, chosen in "Make it yours") and the teammate whose position has that number wears yours in exchange,
+ * so no two players on a team ever share a number (pick 7 as a left back: YOU are 7, our right winger 3). Their team
+ * keeps its numbers. The ball has none (null).
+ * @param {string} id  a player id ('us-RW')
+ * @param {{ learnerId?: string|null, youNumber?: number|null }} [opts]
+ * @returns {number|null}
  */
-export function tokenLabel(id, mode = 'role') {
+export function shirtNumberOf(id, { learnerId = null, youNumber = null } = {}) {
+  if (id === BALL_ID || typeof id !== 'string' || !id.includes('-')) return null;
+  const { team, role } = parsePlayerId(id);
+  const own = SHIRT_NUMBERS[role] ?? null;
+  if (!Number.isInteger(youNumber) || typeof learnerId !== 'string' || !learnerId.includes('-')) return own;
+  if (id === learnerId) return youNumber;
+  const me = parsePlayerId(learnerId);
+  return team === me.team && own === youNumber ? SHIRT_NUMBERS[me.role] ?? null : own;
+}
+
+/**
+ * The text on a token: its role code ('role', Coach mode: LCB, 6, 9...) or its shirt number ('number', Player mode:
+ * GK 1, RB 2, LB 3, LCB 4, RCB 5, DM 6, RW 7, LCM 8, ST 9, RCM 10, LW 11; with YOUR kit number swapped in, see
+ * shirtNumberOf). The ball has none.
+ * @param {{ learnerId?: string|null, youNumber?: number|null }} [you]  number mode: whose kit number to swap in
+ */
+export function tokenLabel(id, mode = 'role', you = {}) {
   if (id === BALL_ID || typeof id !== 'string') return '';
   const { role } = parsePlayerId(id);
-  if (mode === 'number') return SHIRT_NUMBERS[role] === undefined ? '' : String(SHIRT_NUMBERS[role]);
+  if (mode === 'number') { const n = shirtNumberOf(id, you ?? {}); return n === null ? '' : String(n); }
   return ROLE_INFO[role]?.short ?? role;
 }
 
-/** Player mode's accessible name for a token: no role codes, just "You", "Teammate, number 4", "Opponent, number 9". */
-export function simpleTokenName(id, learnerId) {
+/** Player mode's accessible name for a token: no role codes, just "You", "Teammate, number 4", "Opponent, number 9"
+ *  (the number on the shirt: shirtNumberOf, with YOUR kit number swapped in when `youNumber` is given). */
+export function simpleTokenName(id, learnerId, youNumber = null) {
   if (id === BALL_ID) return 'Ball';
   if (id === learnerId) return 'You';
-  const { team, role } = parsePlayerId(id);
-  const n = SHIRT_NUMBERS[role];
-  return `${team === 'us' ? 'Teammate' : 'Opponent'}${n === undefined ? '' : `, number ${n}`}`;
+  const { team } = parsePlayerId(id);
+  const n = shirtNumberOf(id, { learnerId, youNumber });
+  return `${team === 'us' ? 'Teammate' : 'Opponent'}${n === null ? '' : `, number ${n}`}`;
+}
+
+/**
+ * What a tap (a press and release without a drag) does on a board with draggable tokens (pure).
+ *   Nothing armed: a tap that picked up a token (`pressed`, within the forgiving grab area) arms it for tap-then-tap.
+ *     With tap-to-move on (Player mode), only a tap on the drawn token itself arms it; a tap anywhere else, its name
+ *     tag and the grab area around it included, moves the token there (a tap just above YOU is a step forward,
+ *     never a pick-up that Lock it would then lock at the start).
+ *   A token armed: a tap on it disarms it, a tap on another draggable token arms that one, a tap anywhere else (however
+ *     close) moves the armed token there.
+ * @param {{ armed?: string|null, pressed?: string|null, tapToMove?: string|null, onBody?: (id: string) => boolean }} m
+ *   onBody(id): is the tap on that token's drawn body?
+ * @returns {{ kind: 'arm'|'disarm'|'move'|'none', id?: string }}
+ */
+export function tapAction({ armed = null, pressed = null, tapToMove = null, onBody = () => false } = {}) {
+  if (!armed) {
+    if (pressed && (!tapToMove || onBody(pressed))) return { kind: 'arm', id: pressed };
+    return tapToMove ? { kind: 'move', id: tapToMove } : { kind: 'none' };
+  }
+  if (onBody(armed)) return { kind: 'disarm', id: armed };
+  if (pressed && pressed !== armed && onBody(pressed)) return { kind: 'arm', id: pressed };
+  return { kind: 'move', id: armed };
 }
 
 /** Player mode's plain-words position (no metres, no lanes): "in our half, on the left", "near their goal, in the middle". */
@@ -403,6 +472,9 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
   let pxm = 0; // CSS px per metre as drawn
   let scale = 1; // tokens (and the ghost, and rings bound to tokens) are drawn this much bigger than life
   let lscale = 1; // pitch and marker labels likewise (CSS --board-label-k)
+  let tagK = 1; // YOUR name tag, this much bigger again than the token draws it (Player mode: tagScale)
+  const player = defaultLabels === 'number'; // Player mode's sizes: labels and YOUR tag big enough to read on a phone
+  const LP = player ? playerLabelParams(P) : P;
   let ghostAt = null;
   let you = youTag(youLabel); // { text, width } of the learner's tag
   let opts = { learnerId: null, highlight: [], labels: defaultLabels, dimOthers: false };
@@ -423,9 +495,10 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
   let handRun = null; // the running worked-example hand: { finish() }
 
   /** Accessible name and plain position of a token, in the board's wording (number mode: no codes, no metres). */
-  const nameOf = (id) => (labelMode === 'number' ? simpleTokenName(id, opts.learnerId) : tokenName(id, opts.learnerId));
+  const nameOf = (id) => (labelMode === 'number' ? simpleTokenName(id, opts.learnerId, youNum) : tokenName(id, opts.learnerId));
   const spotText = (p) => (labelMode === 'number' ? describeSpotSimple(p) : describeSpot(p));
-  const labelOf = (id) => (labelMode === 'number' && id === opts.learnerId && youNum !== null ? String(youNum) : tokenLabel(id, labelMode));
+  // Number mode: YOUR kit number on YOU, and the teammate who had it wears YOUR position's number (shirtNumberOf).
+  const labelOf = (id) => tokenLabel(id, labelMode, { learnerId: opts.learnerId, youNumber: youNum });
   const codeClass = (s) => (s.length > 2 ? 'token-code token-code--long' : s.length < 2 ? 'token-code token-code--one' : 'token-code');
 
   // ---- tokens
@@ -435,6 +508,14 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     rect.setAttribute('x', f3(-you.width / 2));
     rect.setAttribute('width', f3(you.width));
     text.textContent = you.text;
+  }
+
+  /** Where the tag sits (in the token's units): above the token, drawn tagK times its life size (Player mode). */
+  const tagCentre = () => -(P.tokenRadius + 1.15 + 1.05 * tagK);
+  const tagTransform = () => `translate(0 ${f3(tagCentre())})${tagK === 1 ? '' : ` scale(${tagK})`}`;
+  function placeYouTag(tag) {
+    const tx = tagTransform();
+    if (tag.getAttribute('transform') !== tx) tag.setAttribute('transform', tx);
   }
 
   function setYouLabel(label) {
@@ -470,7 +551,7 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
       t.code = svgEl(doc, 'text', { class: codeClass(text), 'text-anchor': 'middle', dy: '0.36em' }, g);
       t.code.textContent = text;
       t.label = text;
-      const tag = svgEl(doc, 'g', { class: 'token-you', transform: `translate(0 ${f3(-(R + 2.2))})` }, g);
+      const tag = svgEl(doc, 'g', { class: 'token-you', transform: tagTransform() }, g);
       svgEl(doc, 'rect', { y: -1.05, height: 2.1, rx: 1.05 }, tag);
       svgEl(doc, 'text', { 'text-anchor': 'middle', dy: '0.36em' }, tag);
       drawYouTag(tag);
@@ -795,7 +876,8 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
         const b = m.type === 'line-x' ? { x: m.x, y: WIDTH } : m.b;
         if (!a || !b) return;
         svgEl(doc, 'line', { class: cls(m.dashed === false ? 'mk-segment' : 'mk-segment mk-dashed'), x1: f3(a.x), y1: f3(a.y), x2: f3(b.x), y2: f3(b.y) }, markersW);
-        if (m.label) drawLabel({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, m.label, tone);
+        // Extra (optional): labelAt puts the label there (a world point) instead of the middle of the line.
+        if (m.label) drawLabel(isVec(m.labelAt) ? m.labelAt : { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, m.label, tone, 0, extra, { clear: m.clear === 'you' });
         return;
       }
       case 'ring':
@@ -813,18 +895,80 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
       }
       case 'label':
         // Extra (optional): lift raises the text by that many metres, or by a drawn token ('token': clears a
-        // token or the best-spot ring at that point, whatever the board's token scale).
-        if (m.at && m.text) drawLabel(m.at, m.text, tone, m.lift === 'token' ? (P.tokenRadius + 0.6) * scale : Number.isFinite(m.lift) ? m.lift : 0, extra);
+        // token or the best-spot ring at that point, whatever the board's token scale); below: true writes it under
+        // the point instead; clear: 'you' (Player mode) moves it off YOU and YOUR name tag: the side asked for, else
+        // the other side, else right or left of the point, whichever covers neither (and stays in view).
+        if (m.at && m.text) {
+          const lift = m.lift === 'token' ? (P.tokenRadius + 0.6) * scale : Number.isFinite(m.lift) ? m.lift : 0;
+          drawLabel(m.at, m.text, tone, lift, extra, { below: m.below === true, clear: m.clear === 'you' });
+        }
         return;
       default:
     }
   }
 
-  function drawLabel(at, text, tone, lift = 0, extra = '') {
+  function drawLabel(at, text, tone, lift = 0, extra = '', { below = false, clear = false } = {}) {
     const v = project(at, orient);
-    const t = svgEl(doc, 'text', { class: `mk-label tone-${tone}${extra}`, x: f3(v.x), y: f3(v.y - lift - 0.8), 'text-anchor': 'middle' }, markerLabels);
+    const t = svgEl(doc, 'text', { class: `mk-label tone-${tone}${extra}`, 'text-anchor': 'middle' }, markerLabels);
     t.textContent = String(text);
-    keepInView(t, v.x);
+    // Where the text goes around the point: its baseline above it, under it by the lift and the text's cap height
+    // (1.5 m tall text), or level with it (the middle of the text) to its right or left. Above or below, it is centred
+    // on the point, or ('away') starts at the point and runs away from YOU.
+    const youV = clear ? youView() : null;
+    const away = youV && youV.x > v.x ? 'end' : 'start'; // YOU to the right: the text ends at the point, running left
+    const place = (where) => {
+      const [spot, shift] = where.split('-');
+      const side = spot === 'right' || spot === 'left';
+      const x = spot === 'right' ? v.x + lift + 0.6 : spot === 'left' ? v.x - lift - 0.6 : shift ? v.x + (away === 'end' ? 1 : -1) * 0.6 * lift : v.x;
+      const y = spot === 'below' ? v.y + lift + 0.5 + 1.1 * lscale : side ? v.y + 0.55 * lscale : v.y - lift - 0.8;
+      t.setAttribute('x', f3(x));
+      t.setAttribute('y', f3(y));
+      t.setAttribute('text-anchor', spot === 'right' ? 'start' : spot === 'left' ? 'end' : shift ? away : 'middle');
+      if (!side && !shift) keepInView(t, x);
+    };
+    const order = below ? ['below', 'below-away', 'above', 'above-away', 'right', 'left'] : ['above', 'above-away', 'below', 'below-away', 'right', 'left'];
+    const avoid = clear ? youBoxes() : [];
+    if (!avoid.length) { place(order[0]); return; }
+    let best = order[0], cost = Infinity;
+    for (const where of order) {
+      place(where);
+      const c = coverCost(boxOf(t), avoid);
+      if (c === null) { best = order[0]; break; } // not rendered (a hidden board): the side asked for
+      if (c < cost) { cost = c; best = where; }
+      if (c === 0) break;
+    }
+    place(best);
+  }
+
+  /** Where YOU are drawn, in view units (null: no learner on the board). */
+  function youView() {
+    const t = opts.learnerId ? tokens.get(opts.learnerId) : null;
+    return t?.pos && t.g.getAttribute('display') !== 'none' ? project(t.pos, orient) : null;
+  }
+
+  /** YOUR token and name tag as boxes in view units (what a label written with clear: 'you' must not cover). */
+  function youBoxes() {
+    const v = youView();
+    if (!v) return [];
+    const r = (P.tokenRadius + 0.75) * scale;
+    const cy = v.y + tagCentre() * scale, hw = (you.width / 2) * tagK * scale, hh = 1.05 * tagK * scale;
+    return [{ x0: v.x - r, x1: v.x + r, y0: v.y - r, y1: v.y + r }, { x0: v.x - hw, x1: v.x + hw, y0: cy - hh, y1: cy + hh }];
+  }
+
+  /** A drawn text's box in view units, or null when it is not rendered. */
+  function boxOf(node) {
+    let b = null;
+    try { b = node.getBBox?.() ?? null; } catch { b = null; }
+    return b && b.width > 0 ? { x0: b.x, x1: b.x + b.width, y0: b.y, y1: b.y + b.height } : null;
+  }
+
+  /** How much a label box covers the boxes to avoid, plus how much of it falls outside the view (area, view units²). */
+  function coverCost(box, avoid) {
+    if (!box) return null;
+    const over = (a, b) => Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) * Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
+    const area = (box.x1 - box.x0) * (box.y1 - box.y0);
+    const outside = vb ? area - over(box, { x0: vb.x, x1: vb.x + vb.width, y0: vb.y, y1: vb.y + vb.height }) : 0;
+    return avoid.reduce((a, b) => a + over(box, b), 0) + outside;
   }
 
   /** The label of an arrow that runs up or down the screen: just past its tail, lined up with the arrow and
@@ -904,7 +1048,7 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     targets.els.clear();
     if (!targets.enabled) return;
     for (const id of targets.ids) {
-      const label = targets.labelFor?.(id) || (labelMode === 'number' ? simpleTokenName(id, opts.learnerId) : tokenName(id, opts.learnerId));
+      const label = targets.labelFor?.(id) || nameOf(id);
       const g = svgEl(doc, 'g', { class: 'board-target', 'data-id': id, role: 'button', tabindex: '0', 'aria-label': label, 'aria-pressed': 'false' }, targetLayer);
       svgEl(doc, 'circle', { class: 'target-hit' }, g);
       svgEl(doc, 'circle', { class: 'target-ring' }, g);
@@ -1081,14 +1225,16 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     const nextVb = focusViewBox(next, box, focus, P);
     const px = pxPerMetre(box, nextVb);
     const k = tokenScale(px, P);
-    const kl = labelScale(px, P);
+    const kl = labelScale(px, LP);
+    const kt = tagScale(px, k, { player }, P);
     const vbChanged = !vb || ['x', 'y', 'width', 'height'].some((key) => vb[key] !== nextVb[key]);
     pxm = px;
-    if (!force && !turned && !vbChanged && k === scale && kl === lscale) return;
+    if (!force && !turned && !vbChanged && k === scale && kl === lscale && kt === tagK) return;
     orient = next;
     vb = nextVb;
     scale = k;
     lscale = kl;
+    tagK = kt;
     svg.setAttribute('viewBox', `${vb.x} ${vb.y} ${vb.width} ${vb.height}`);
     const wt = worldTransform(orient);
     if (wt) world.setAttribute('transform', wt); else world.removeAttribute('transform');
@@ -1096,7 +1242,12 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     root.style.setProperty('--board-label-k', String(kl));
     // Re-project (and re-scale) without animating tokens across the pitch.
     root.classList.add('no-anim');
-    for (const t of tokens.values()) { syncHit(t); if (t.pos) { t.tx = ''; placeToken(t, t.pos); } }
+    for (const t of tokens.values()) {
+      syncHit(t);
+      const tag = t.g.querySelector('.token-you');
+      if (tag) placeYouTag(tag);
+      if (t.pos) { t.tx = ''; placeToken(t, t.pos); }
+    }
     placeTargets();
     if (ghostAt) {
       ghostEl.style.transition = 'none';
@@ -1147,7 +1298,8 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
       if (d <= bd) { bd = d; best = id; }
     }
     if (!best && drag.tapToMove) {
-      // Player mode: the learner's YOU tag is part of the learner (it is what a child aims for).
+      // Player mode: a DRAG from the learner's YOU tag drags YOU (the tag moves with the token); a TAP on it is a
+      // destination like any other spot (tapAction).
       const t = opts.learnerId && drag.ids.has(opts.learnerId) ? tokens.get(opts.learnerId) : null;
       if (t && t.g.getAttribute('display') !== 'none' && onYouTag(t, w)) best = t.id;
     }
@@ -1162,20 +1314,12 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     return Math.hypot(t.pos.x - w.x, t.pos.y - w.y) <= r;
   }
 
-  /** With tap-to-move on: is a tap at `w` a tap ON token `id` (its drawn body, and at least minHitPx across)? */
-  function hitsToken(id, w) {
-    const t = tokens.get(id);
-    if (!t?.pos || !Number.isFinite(w?.x)) return false;
-    const drawn = (id === BALL_ID ? P.ballRadius + 0.7 : P.tokenRadius + 0.5) * scale;
-    return Math.hypot(t.pos.x - w.x, t.pos.y - w.y) <= hitRadius(pxm, drawn, P) || onYouTag(t, w);
-  }
-
-  /** Is `w` on the learner's YOU tag (the pill over the token)? It is part of YOU: pressing it picks YOU up. */
+  /** Is `w` on the learner's YOU tag (the pill over the token, drawn tagK times its size)? */
   function onYouTag(t, w) {
     if (!t?.pos || t.id !== opts.learnerId || !Number.isFinite(w?.x)) return false;
     const v = project(t.pos, orient), q = project(w, orient);
-    const cy = v.y - (P.tokenRadius + 2.2) * scale; // the tag's centre, straight up the screen from the token
-    return Math.abs(q.x - v.x) <= (you.width / 2 + 0.4) * scale && Math.abs(q.y - cy) <= 1.6 * scale;
+    const cy = v.y + tagCentre() * scale; // the tag's centre, straight up the screen from the token
+    return Math.abs(q.x - v.x) <= (you.width / 2 + 0.4) * tagK * scale && Math.abs(q.y - cy) <= (1.05 + 0.55) * tagK * scale;
   }
 
   function moveTo(id, p, final) {
@@ -1285,26 +1429,21 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
       return;
     }
     if (e.type === 'pointercancel' || Math.hypot(e.clientX - a.x0, e.clientY - a.y0) >= P.dragSlopPx) return;
-    // A tap. With nothing armed, a tap on or near a draggable token arms it. With a token armed, a tap on it
-    // disarms it, a tap on another draggable token arms that one, and a tap anywhere else (however close) moves
-    // the armed token there. Decided by distance, so a short move works on touch screens too.
+    // A tap (tapAction): with nothing armed, a tap that picked up a token arms it (with tap-to-move, only a tap on the
+    // drawn token; anywhere else moves it there). With a token armed, a tap on it disarms it, a tap on another draggable
+    // token arms that one, and a tap anywhere else (however close) moves the armed token there. Decided by distance,
+    // so a short move works on touch screens too.
     const w = toWorld(e.clientX, e.clientY);
-    if (!armed) {
-      // Tap-to-move (Player mode): a tap on the token arms it as before; a tap anywhere else moves it straight there.
-      const direct = drag.tapToMove && drag.ids.has(drag.tapToMove) ? drag.tapToMove : null;
-      if (a.id && (!direct || hitsToken(a.id, w))) { setArmed(a.id); return; }
-      if (direct) {
-        const p = clampToPitch(w);
-        if (Number.isFinite(p.x)) moveTo(direct, p, true);
-      }
-      return;
-    }
-    if (onToken(armed, w) || (drag.tapToMove && onYouTag(tokens.get(armed), w))) { setArmed(null); return; }
-    if (a.id && a.id !== armed && onToken(a.id, w)) { setArmed(a.id); return; }
+    const act = tapAction({
+      armed, pressed: a.id, tapToMove: drag.tapToMove && drag.ids.has(drag.tapToMove) ? drag.tapToMove : null,
+      onBody: (id) => onToken(id, w),
+    });
+    if (act.kind === 'arm') { setArmed(act.id); return; }
+    if (act.kind === 'disarm') { setArmed(null); return; }
+    if (act.kind !== 'move') return;
     const p = clampToPitch(w);
-    const id = armed;
-    setArmed(null);
-    if (Number.isFinite(p.x)) moveTo(id, p, true);
+    if (armed) setArmed(null);
+    if (Number.isFinite(p.x)) moveTo(act.id, p, true);
   }
 
   function onKeyDown(e) {

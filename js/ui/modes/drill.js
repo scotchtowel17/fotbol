@@ -14,7 +14,9 @@
 //   replay → the continuation with you where you stood and the ghost, so you see what happens
 // Each rep updates Elo (score / 100 as partial credit), the history and the streaks (js/ui/session.js), and
 // earns rewards (XP, stars, badges, sticker cards: js/ui/rewards-store.js), shown with beat 2 and summed up
-// on the summary (the reward functions below lockIn; the visuals are js/ui/celebrate.js).
+// on the summary (the reward functions below lockIn; the visuals are js/ui/celebrate.js). Only Player mode
+// earns (a Coach route opened from it): in Coach mode nothing is earned, so no reward row, rewards card,
+// reward sound or burst shows (rewards-store.js earnsRewards).
 // Scenarios are played in your role: a scenario authored on the other side is mirrored left↔right.
 // Leave mid-session and come back (same practice, same role, same tab): "Carry on (rep N of 6)" picks the
 // session up again. On a phone held upright the pitch is cropped to the length the rep's play needs.
@@ -33,7 +35,7 @@ import { createFormation } from '../../engine/formation.js';
 import { ROLE_INFO, mirrorRole } from '../../engine/roles.js';
 import { dist } from '../../engine/geometry.js';
 import { cardTier, starsForScore } from '../../rewards.js';
-import { award, loadRewards, refreshRewards, mergeGains, cleanGains, emptyGains } from '../rewards-store.js';
+import { award, loadRewards, refreshRewards, mergeGains, cleanGains, emptyGains, earnsRewards } from '../rewards-store.js';
 import { sessionCard } from '../celebrate.js';
 import * as S from '../session.js';
 
@@ -675,9 +677,9 @@ export async function mount(root, app, params = []) {
   }
 
   /** Beat 2's reward row (stars, XP, badges, stickers) under the grade: celebrated once, redrawn quietly after.
-   *  The header's level pill catches up now too (the award at lock-in held it back). */
+   *  The header's level pill catches up now too (the award at lock-in held it back). None in Coach mode. */
   function rewardSlot(fresh) {
-    if (!rep?.gained) return null;
+    if (!rep?.gained || !earnsRewards(app)) return null;
     const slot = el('div', { class: 'dr-reward' });
     queueMicrotask(() => {
       app.celebrate?.show(rep.gained, { grade: rep.judged?.judgement.result.grade ?? null, host: slot, quiet: !fresh });
@@ -686,15 +688,18 @@ export async function mount(root, app, params = []) {
     return slot;
   }
 
-  /** The session bonus: its sounds, burst and level-up now (the summary card shows the XP). */
+  /** The session bonus: its sounds, burst and level-up now (the summary card shows the XP). None in Coach mode. */
   function rewardSession(grade) {
+    if (!earnsRewards(app)) return;
     // The session's stars come from the scores (rewards.js starsForScore), like each rep's.
     const gained = award(app, { type: 'session', scores: session.reps.map((r) => r.score), grades: session.reps.map((r) => r.grade) }, { grade, card: false });
     session.gained = mergeGains(session.gained, gained);
   }
 
-  /** The summary's rewards card: XP this session, the stars won, the level bar, the badges and stickers. */
+  /** The summary's rewards card: XP this session, the stars won, the level bar, the badges and stickers. Coach mode
+   *  earns nothing, so it shows no card (never "+0 XP"). */
   function sessionRewards() {
+    if (!earnsRewards(app)) return null;
     const stars = session.reps.reduce((a, r) => a + starsForScore(r.score), 0); // as each rep's award counted them
     return sessionCard({ gained: session.gained, stars, maxStars: session.reps.length * 3, state: loadRewards(app) }, { wording: wording(), principles });
   }

@@ -3,11 +3,12 @@
 // 'generated', answer mode 'engine'), kept only when it passes the drill-quality gates. They top up the
 // Player-mode sets where authored drills run out (KID_REDESIGN §3, §6.2).
 // Contract: docs/ARCHITECTURE.md §5.15. The gates are npm run check's (scripts/check-scenarios.mjs, §5.3), plus a
-// rule of a principle asked for weighted at least minRuleWeight and met at the answer.
+// rule of a principle asked for weighted at least minRuleWeight and met at the answer, and the player the question
+// names on the ball at the freeze (never a loose ball). canGenerateSpot says up front which ideas a position never gets.
 // PURE and deterministic: a seeded PRNG (sequence.js createRng), no Math.random, no clock.
 
 import { clamp, dist } from './geometry.js';
-import { LENGTH, clampToPitch } from './pitch.js';
+import { LENGTH, WIDTH, clampToPitch } from './pitch.js';
 import { LEARNABLE_ROLES, ROLE_INFO, playerId, parsePlayerId } from './roles.js';
 import { teamTargets } from './formation.js';
 import { autoFrame } from './scene.js';
@@ -20,7 +21,8 @@ import { RULES } from './rules/index.js';
 import { createRng } from './sequence.js';
 
 export const SPOT_DEFAULTS = Object.freeze({
-  maxAttempts: 30, // [D] seeds tried (the seed asked for, then the next ones) before generateSpotDrill gives up (null)
+  maxAttempts: 30, // [D] tries (the seed asked for, then '<seed>#1', '#2', ...) before generateSpotDrill gives up (null)
+  fastFail: true, // ideas this position never gets a drill on (canGenerateSpot) are not tried (false: try them anyway)
   minGhostScore: 90, // [S] = CHECK_DEFAULTS.minGhostScore (RESEARCH 9.5: the best spot scores S; tested equal)
   minMove: 5, // [D] = CHECK_DEFAULTS.minMove: the answer at least this far from the start spot
   maxStartScore: 70, // [D] = CHECK_DEFAULTS.maxStartScore: standing still scores below this
@@ -37,7 +39,13 @@ export const SPOT_DEFAULTS = Object.freeze({
   //                  so what comes after never changes the frozen picture)
   afterTime: 1.5, // [D] s of play after that ("See what happens"): the player on the ball runs on with it
   afterSpeed: Object.freeze([3, 5]), // [D] m/s
-  lead: 4, // [D] m: a pass is aimed at most this far from the event's end spot (where the receiver will be)
+  receiveReach: 10, // [D] m: the receiver is at most this far from the event's end spot when the pass gets there (it is aimed at them)
+  carrierGap: 1.5, // [D] m: at the freeze the player on the ball (the one the question names) is this close to it...
+  carrierSpeed: 2, // [D] m/s: ...and no longer running faster than this (over the last carrierLook s): not a loose ball
+  carrierLook: 0.2, // [D] s
+  longLateral: 25, // [D] m across: a pass this long sideways is "a long pass to the other side" (PA6's switch, in words)
+  wideFrom: 10, // [D] m: the ball this close to a sideline is "out wide"
+  closeReach: 10, // [D] m: the ball this close to the learner's start is "close to you"
   stillRadius: 2, // [D] m: the "stood still" misconception around the start spot
   edge: 3, // [D] m: the ball stays this far inside the lines
   tRound: 1e3, // times rounded to 1 ms...
@@ -80,39 +88,120 @@ const nameIn = (table, id) => {
 };
 const cap = (s) => s[0].toUpperCase() + s.slice(1);
 
-/** The learner-facing words of a generated drill, by who has the ball and what happened. */
+/** Where the ball is, in words (x on our frame): near our goal, in the middle, near their goal. */
+const AREA_KID = Object.freeze({ own: 'near our goal', middle: 'in the middle', theirs: 'near their goal' });
+const AREA_STD = Object.freeze({ own: 'in our third', middle: 'in midfield', theirs: 'in the final third' });
+const areaOf = (x) => (x < 35 ? 'own' : x < 70 ? 'middle' : 'theirs');
+
+/**
+ * The learner-facing words of a generated drill: a brief by what happened (who passed or ran with the ball, or a long
+ * pass to the other side), and a question from one of several templates (SPOT_WORDS.templates), picked by the event
+ * (a pass, a run with the ball, a long pass across, the ball out wide or close to you), where the ball is and who has
+ * it. The template's id is the drill's `template`, so a set builder can keep a set from asking the same question twice.
+ * Kid wording: at most 12 words, plain football words, no side (drills are mirrored), no codes (tests/copy.test.js).
+ */
 export const SPOT_WORDS = Object.freeze({
   brief: Object.freeze({
     'them-pass': 'They pass the ball. Watch how your job changes.',
     'them-carry': 'They run with the ball. Watch how your job changes.',
+    'them-long': 'They play a long pass across. Watch how your job changes.',
     'us-pass': 'We pass the ball. Watch how your job changes.',
     'us-carry': 'Your teammate runs with the ball. Watch how your job changes.',
+    'us-long': 'We play a long pass across. Watch how your job changes.',
   }),
   briefKid: Object.freeze({
     'them-pass': 'They pass the ball. Watch where it goes.',
     'them-carry': 'They run with the ball. Watch closely.',
+    'them-long': 'They play a long pass to the other side. Watch it.',
     'us-pass': 'We pass the ball. Watch where it goes.',
     'us-carry': 'Your teammate runs with the ball. Watch closely.',
+    'us-long': 'We play a long pass to the other side. Watch it.',
   }),
-  question: (holder) => `${cap(nameIn(STD_POSITION, holder))} has the ball. Where should you be now?`,
-  questionKid: (holder) => `${cap(nameIn(KID_POSITION, holder))} has the ball. Where do you go?`,
+  /** Question templates: id → { when, kid(v), standard(v) }; v = { holder, holderStd, area, areaStd } (names lower case). */
+  templates: Object.freeze({
+    'has-ball': Object.freeze({
+      when: 'any event',
+      kid: (v) => `${cap(v.holder)} has the ball. Where do you go?`,
+      standard: (v) => `${cap(v.holderStd)} has the ball. Where should you be now?`,
+    }),
+    'has-ball-area': Object.freeze({
+      when: 'any event',
+      kid: (v) => `${cap(v.holder)} has the ball ${v.area}. Where do you go?`,
+      standard: (v) => `${cap(v.holderStd)} has the ball ${v.areaStd}. Where should you be now?`,
+    }),
+    'goes-to': Object.freeze({
+      when: 'a pass',
+      kid: (v) => `The ball goes to ${v.holder}. Where do you go now?`,
+      standard: (v) => `The ball goes to ${v.holderStd}. Where should you be now?`,
+    }),
+    runs: Object.freeze({
+      when: 'a run with the ball',
+      kid: (v) => `${cap(v.holder)} runs with the ball. Where do you go?`,
+      standard: (v) => `${cap(v.holderStd)} runs with the ball. Where should you be now?`,
+    }),
+    'long-pass': Object.freeze({
+      when: 'a long pass across (longLateral)',
+      kid: (v) => `A long pass finds ${v.holder}. Where do you go?`,
+      standard: (v) => `A long pass across finds ${v.holderStd}. Where should you be now?`,
+    }),
+    wide: Object.freeze({
+      when: 'the ball ends out wide (wideFrom the sideline)',
+      kid: (v) => `${cap(v.holder)} has the ball out wide. Where do you go?`,
+      standard: (v) => `${cap(v.holderStd)} has the ball out wide. Where should you be now?`,
+    }),
+    close: Object.freeze({
+      when: 'the ball ends close to you (closeReach of your start)',
+      kid: (v) => `${cap(v.holder)} has the ball close to you. Where do you go?`,
+      standard: (v) => `${cap(v.holderStd)} has the ball close to you. Where should you be now?`,
+    }),
+  }),
+  question: (holder, id = 'has-ball', x = 50) => SPOT_WORDS.templates[id].standard(wordVars(holder, x)),
+  questionKid: (holder, id = 'has-ball', x = 50) => SPOT_WORDS.templates[id].kid(wordVars(holder, x)),
   stillText: 'You stayed where you started, but the ball moved, so your spot moved too.',
   stillTextKid: 'The ball moved, so you need to move too.',
 });
+
+function wordVars(holder, x) {
+  return { holder: nameIn(KID_POSITION, holder), holderStd: nameIn(STD_POSITION, holder), area: AREA_KID[areaOf(x)], areaStd: AREA_STD[areaOf(x)] };
+}
+
+/**
+ * Every question and brief a generated drill can ask, in one wording, with every holder name and area filled in (for
+ * the copy checks: tests/spotdrill.test.js holds them to the Player-mode rules).
+ * @returns {{ key: string, text: string }[]}
+ */
+export function allSpotTexts(wording = 'kid') {
+  const out = [];
+  const std = wording === 'standard';
+  for (const [k, text] of Object.entries(std ? SPOT_WORDS.brief : SPOT_WORDS.briefKid)) out.push({ key: `brief:${k}`, text });
+  for (const [id, tpl] of Object.entries(SPOT_WORDS.templates)) {
+    for (const team of ['us', 'them']) {
+      for (const fam of ['CB', 'FB', 'DM', 'CM', 'W', 'ST']) {
+        const role = Object.keys(ROLE_INFO).find((r) => ROLE_INFO[r].family === fam);
+        for (const x of [20, 50, 90]) out.push({ key: `question:${id}`, text: tpl[std ? 'standard' : 'kid'](wordVars(`${team}-${role}`, x)) });
+      }
+    }
+  }
+  out.push({ key: 'still', text: std ? SPOT_WORDS.stillText : SPOT_WORDS.stillTextKid });
+  const seen = new Set();
+  return out.filter((e) => !seen.has(e.text) && seen.add(e.text));
+}
 
 // ---------------------------------------------------------------- checking
 
 /**
  * Judge a spot drill as npm run check does (ARCHITECTURE §5.3 "Judging a drill"): the free frame at the freeze,
  * the learner's base, the ghost round it, and standing still at the start; plus the rules of the principles asked
- * for (or the scenario's) at the answer.
+ * for (or the scenario's) at the answer, and the player on the ball at the freeze on it and standing (the question
+ * names them: "Their defender has the ball"), never a loose ball.
  * @param {object} scenario
- * @param {{ formations, principles?: object, want?: string[], params?: object }} opts
- *   principles: the catalogue for validation; want: principle ids whose rules count (default: scenario.principles)
+ * @param {{ formations, principles?: object, want?: string[], params?: object, quick?: boolean }} opts
+ *   principles: the catalogue for validation; want: principle ids whose rules count (default: scenario.principles);
+ *   quick: stop at the gates that need no ghost when one fails (ghost, start and startScore are then null)
  * @returns {{ errors: string[] } | { errors: [], t, frame, base, ctx, ghost, start, moved, startScore, taught: {principle, rule, weight, s, sStart}[], problems: string[] }}
  *   taught: the rules of `want` weighted at least minRuleWeight and met (s >= minRuleScore) at the answer, most improved first
  */
-export function checkSpotDrill(scenario, { formations, principles, want, params } = {}) {
+export function checkSpotDrill(scenario, { formations, principles, want, params, quick = false } = {}) {
   const S = { ...SPOT_DEFAULTS, ...params };
   const errors = validateScenario(scenario, { principles });
   if (errors.length) return { errors };
@@ -122,12 +211,23 @@ export function checkSpotDrill(scenario, { formations, principles, want, params 
   const frame = frameAt(s, t, { formations });
   const base = learnerBaseAt(s, t, { formations });
   const ctx = buildContext(frame, { learnerId: me, base });
+  const wanted = new Set(want ?? s.principles);
+  // The gates that need no ghost first (quick: a generator's failed try stops here, before the costly ghost).
+  const problems = [];
+  const moment = frame.possession === 'us' ? 'in_possession' : 'out_of_possession';
+  if (moment !== s.moment) problems.push(`the moment is ${s.moment} but ${frame.possession} has the ball at the freeze`);
+  if (ctx.duty === 'first-attacker') problems.push('the learner is on the ball');
+  const onBall = carrierOnBall(s, t, frame, { formations }, S);
+  if (onBall) problems.push(onBall);
+  const heavy = RULES.some((r) => r.principles.some((p) => wanted.has(p)) && r.weight(ctx) >= S.minRuleWeight);
+  if (!heavy) problems.push(`no rule of ${[...wanted].join(', ')} weighs ${S.minRuleWeight}+ here`);
+  problems.push(...speedProblems(s, S));
+  if (quick && problems.length) return { errors: [], t, frame, base, ctx, ghost: null, start: null, moved: 0, startScore: null, taught: [], problems };
   const tol = toleranceFor(s.learner.role, s.answer.tol);
   const ghost = computeGhost(ctx, { base, tol });
   const start = s.learner.start ?? (() => { const p = frameAt(s, 0, { formations }).players.find((q) => q.id === me); return { x: p.x, y: p.y }; })();
   const atStart = evaluate(ctx, start, { center: base, tol });
   const moved = dist(ghost.spot, start);
-  const wanted = new Set(want ?? s.principles);
   const taught = [];
   for (const r of ghost.result.rules) {
     const hit = r.principles.filter((p) => wanted.has(p));
@@ -136,17 +236,28 @@ export function checkSpotDrill(scenario, { formations, principles, want, params 
     for (const p of hit) taught.push({ principle: p, rule: r.id, weight: r.weight, s: r.s, sStart });
   }
   taught.sort((a, b) => b.weight * (b.s - b.sStart) - a.weight * (a.s - a.sStart));
-  const problems = [];
   if (ghost.score < S.minGhostScore) problems.push(`the best spot only scores ${ghost.score} (< ${S.minGhostScore})`);
   if (moved < S.minMove) problems.push(`the answer is only ${moved.toFixed(1)} m from the start (< ${S.minMove} m)`);
   if (atStart.score >= S.maxStartScore) problems.push(`standing still scores ${atStart.score} (>= ${S.maxStartScore})`);
   for (const m of s.misconceptions) if (inRegion(ghost.spot, m.region)) problems.push(`the answer is inside misconception "${m.id}"`);
-  if (!taught.length) problems.push(`no rule of ${[...wanted].join(', ')} weighs ${S.minRuleWeight}+ and is met at the answer`);
-  const moment = frame.possession === 'us' ? 'in_possession' : 'out_of_possession';
-  if (moment !== s.moment) problems.push(`the moment is ${s.moment} but ${frame.possession} has the ball at the freeze`);
-  if (ctx.duty === 'first-attacker') problems.push('the learner is on the ball');
-  problems.push(...speedProblems(s, S));
+  if (heavy && !taught.length) problems.push(`no rule of ${[...wanted].join(', ')} weighs ${S.minRuleWeight}+ and is met at the answer`);
   return { errors: [], t, frame, base, ctx, ghost, start, moved, startScore: atStart.score, taught, problems };
+}
+
+/**
+ * The player on the ball at the freeze (the one the question names) must be on it and standing: within carrierGap of
+ * the ball and moving no faster than carrierSpeed over the last carrierLook seconds. A string says what is wrong.
+ */
+function carrierOnBall(s, t, frame, opts, S) {
+  const id = frame.carrierId;
+  if (!id) return 'nobody has the ball at the freeze';
+  const p = frame.players.find((q) => q.id === id);
+  const gap = dist(p, frame.ball);
+  if (gap > S.carrierGap) return `${id} is ${gap.toFixed(1)} m from the ball at the freeze (> ${S.carrierGap} m)`;
+  const q = frameAt(s, Math.max(0, t - S.carrierLook), opts).players.find((x) => x.id === id);
+  const v = dist(p, q) / S.carrierLook;
+  if (v > S.carrierSpeed) return `${id} is still running (${v.toFixed(1)} m/s) at the freeze (> ${S.carrierSpeed} m/s)`;
+  return null;
 }
 
 /** Circle, rect or polygon (even-odd), as scripts/check-scenarios.mjs judges misconception regions. */
@@ -182,29 +293,33 @@ const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(
 
 /**
  * Generate a "Find your spot" drill for a learner role: deterministic for (seed, role, principles). Tries the
- * seed asked for, then the next ones (numbers: seed + k; strings: '<seed>#k'), up to maxAttempts; keeps the first
- * drill that passes the gates of checkSpotDrill with one of `principles` (any principle with a rule when none is
- * asked) taught at the answer.
+ * seed asked for, then its own stream ('<seed>#1', '<seed>#2', ...), up to maxAttempts; keeps the first drill that
+ * passes the gates of checkSpotDrill with one of `principles` (any principle with a rule when none is asked) taught
+ * at the answer. An idea canGenerateSpot rules out for the position is not tried (fastFail).
  * @param {{ seed?: number|string, role: string, principles?: string[], formations: {us:object, them?:object},
- *           catalogue?: object, params?: object, trace?: object[] }} opts
+ *           catalogue?: object, params?: object, trace?: object[], avoidTemplates?: string[] }} opts
  *   catalogue: data/principles.json (any form validateScenario accepts) for validation, titles and the takeaway;
- *   params: SPOT_DEFAULTS overrides; trace: collects { attempt, seed, reason } for each rejected try (yield reports)
+ *   params: SPOT_DEFAULTS overrides; trace: collects { attempt, seed, reason } for each rejected try (yield reports);
+ *   avoidTemplates: question template ids (SPOT_WORDS.templates) already in the set: the drill is the same, and its
+ *   question is another template that fits when there is one (its id is the drill's `template`)
  * @returns {object|null} an authored-format scenario (ARCHITECTURE §5.15), or null
  */
-export function generateSpotDrill({ seed = 1, role, principles = [], formations, catalogue, params, trace } = {}) {
+export function generateSpotDrill({ seed = 1, role, principles = [], formations, catalogue, params, trace, avoidTemplates = [] } = {}) {
   if (!formations?.us) throw new TypeError('generateSpotDrill: formations.us is required');
   if (!LEARNABLE_ROLES.includes(role)) throw new TypeError(`generateSpotDrill: role ${role} is not a learnable role`);
   const S = { ...SPOT_DEFAULTS, ...params };
-  const asked = principles.length ? principles.filter((p) => SPOT[p]) : Object.keys(SPOT);
-  if (!asked.length) return null; // none of the principles asked has a rule: the engine cannot key such a drill
+  const asked = (principles.length ? principles.filter((p) => SPOT[p]) : Object.keys(SPOT))
+    // Ideas this position never gets a drill on (canGenerateSpot) are left out at once, unless asked to try (fastFail false).
+    .filter((p) => !S.fastFail || canGenerateSpot(role, [p]));
+  if (!asked.length) return null; // no idea asked has a rule that judges this position: the engine cannot key such a drill
   for (let attempt = 0; attempt < S.maxAttempts; attempt++) {
-    const s = typeof seed === 'number' && Number.isFinite(seed) ? seed + attempt : attempt ? `${seed}#${attempt}` : seed;
+    const s = attempt ? `${seed}#${attempt}` : seed; // each seed its own stream (seed + k made seeds 1 and 2 share drills)
     const rng = createRng(`spot|${role}|${s}`);
     const focus = asked[rng.int(0, asked.length - 1)];
     const draft = writeEvent(rng, role, focus, formations, S);
     if (typeof draft === 'string') { trace?.push({ attempt, seed: s, reason: draft }); continue; }
-    const scenario = finish(draft, { seed, used: s, attempt, role, asked, principles, catalogue, S, formations });
-    const r = checkSpotDrill(scenario, { formations, principles: catalogue, want: asked, params: S });
+    const scenario = finish(draft, { seed, used: s, attempt, role, asked, principles, catalogue, S, formations, avoidTemplates });
+    const r = checkSpotDrill(scenario, { formations, principles: catalogue, want: asked, params: S, quick: true });
     if (r.errors?.length || r.problems.length) { trace?.push({ attempt, seed: s, reason: (r.errors?.length ? r.errors : r.problems)[0] }); continue; }
     return primaryFirst(scenario, r.taught, catalogue);
   }
@@ -281,10 +396,11 @@ function writeEvent(rng, role, focus, formations, S) {
     return after(rng, { ...base, team, kind: 'carry', holder, timeline }, tEnd, S, rt, rp);
   }
 
-  // A pass: to the player nearest the end spot, from a teammate passLength away.
-  const receiver = atB.players.filter(eligible).reduce((q, p) => (!q || dist(p, B) < dist(q, B) ? p : q), null);
-  if (!receiver) return 'nobody to receive';
-  const cands = atB.players.filter((p) => eligible(p) && p.id !== receiver.id);
+  // A pass: from a teammate passLength from the end spot, to the player who is nearest it WHILE THE BALL TRAVELS (the
+  // shape is still reacting to where the ball was), aimed where they are when it arrives: so the receiver meets it
+  // and is on the ball at the freeze, not still running to it (a pass aimed at the end spot of a player who was 10 m
+  // away left "their defender has the ball" with the ball 3-15 m from him in 4 drills in 10).
+  const cands = atB.players.filter(eligible);
   const weights = cands.map((p) => {
     const d = dist(p, B);
     return d < S.passLength[0] || d > S.passLength[1] ? 0 : Math.exp(-(((d - 20) / 9) ** 2));
@@ -294,34 +410,37 @@ function writeEvent(rng, role, focus, formations, S) {
   const passer = cands[i];
   const A = clampToPitch({ x: passer.x + rng.range(-1, 1), y: passer.y + rng.range(-1, 1) }, S.edge);
   const speedFor = (d) => clamp(S.passSpeed[0] + (S.passSpeed[1] - S.passSpeed[0]) * clamp((d - 8) / 27, 0, 1), S.passSpeed[0], S.passSpeed[1]);
-  const draft = (target, tArr) => ({
+  const draft = (target, tArr, receiverId) => ({
     ...base,
     timeline: {
       duration: tArr, freezeAt: tArr,
       ball: [{ t: 0, ...rp(A) }, { t: hold, ...rp(A), event: 'pass' }, { t: tArr, ...rp(target) }],
       possession: [{ t: 0, team }],
-      carrier: [{ t: 0, id: passer.id }, { t: hold, id: null }, { t: tArr, id: receiver.id }],
+      carrier: [{ t: 0, id: passer.id }, { t: hold, id: null }, { t: tArr, id: receiverId }],
       players: { auto: true, overrides: [] },
       tags: [],
     },
   });
-  // Aim where the receiver is when the ball arrives (two refinements, as sequence.js does), within `lead` of the end
-  // spot: further away and the receiver runs onto it.
+  // In flight nobody has the ball, so the frame just before it arrives does not depend on who will receive it.
   let target = B;
   let tArr = rt(hold + dist(A, target) / speedFor(dist(A, target)));
+  const inFlight = (tgt, t) => frameAt(draft(tgt, t, passer.id), t - 1e-3, { formations }).players;
+  const receiver = inFlight(target, tArr).filter((p) => eligible(p) && p.id !== passer.id).reduce((q, p) => (!q || dist(p, B) < dist(q, B) ? p : q), null);
+  if (!receiver) return 'nobody to receive';
+  // Aim where the receiver is when the ball arrives (two refinements, as sequence.js does); they must be within
+  // receiveReach of the end spot then (the gates judge whether the idea still holds there).
   for (let k = 0; k < 2; k++) {
-    const f = frameAt(draft(target, tArr), tArr - 1e-3, { formations });
-    const q = f.players.find((p) => p.id === receiver.id);
-    const g = dist(q, B), k2 = g > S.lead ? S.lead / g : 1;
-    target = clampToPitch({ x: B.x + (q.x - B.x) * k2, y: B.y + (q.y - B.y) * k2 }, S.edge);
+    const q = inFlight(target, tArr).find((p) => p.id === receiver.id);
+    if (dist(q, B) > S.receiveReach) return 'nobody near the end spot when the ball gets there';
+    target = clampToPitch(q, S.edge);
     tArr = rt(hold + dist(A, target) / speedFor(dist(A, target)));
   }
   const d = dist(A, target);
   if (d < S.passLength[0] - 2 || d > S.passLength[1] + 3) return `pass length ${d.toFixed(0)} m`;
-  const { timeline } = draft(target, tArr);
+  const { timeline } = draft(target, tArr, receiver.id);
   delete timeline.duration;
   delete timeline.freezeAt;
-  return after(rng, { ...base, team, kind: 'pass', holder: receiver.id, timeline }, tArr, S, rt, rp);
+  return after(rng, { ...base, team, kind: 'pass', holder: receiver.id, from: passer.id, timeline }, tArr, S, rt, rp);
 }
 
 /** The freeze (freezeAfter the ball arrives) and afterTime of play once afterDelay has passed: the holder runs on with it. */
@@ -368,13 +487,24 @@ function endOffset(rng, focus, role, team) {
 }
 
 /** The scenario from the event: id, words, the learner's start (their automatic spot before the event), the stood-still misconception. */
-function finish(ev, { seed, used, attempt, role, asked, principles, catalogue, S, formations }) {
-  const key = `${ev.team}-${ev.kind}`;
+function finish(ev, { seed, used, attempt, role, asked, principles, catalogue, S, formations, avoidTemplates = [] }) {
   const me = playerId('us', role);
   const draft = { ...ev, id: 'draft', title: 'draft', timeline: ev.timeline };
   const p0 = frameAt(draft, 0, { formations }).players.find((p) => p.id === me);
   const start = { x: Math.round(p0.x * 10) / 10, y: Math.round(p0.y * 10) / 10 };
   const ballAtFreeze = ev.timeline.ball.findLast((k) => k.t <= ev.timeline.freezeAt) ?? ev.timeline.ball[0];
+  // The words: the event (a long pass across is its own), and a question template that fits it, where the ball is and
+  // who has it; one the caller wants to avoid only if nothing else fits. Picked on their own seeded stream.
+  const from = ev.timeline.ball[0];
+  const long = ev.kind === 'pass' && Math.abs(ballAtFreeze.y - from.y) >= S.longLateral;
+  const key = `${ev.team}-${long ? 'long' : ev.kind}`;
+  const fits = ['has-ball', 'has-ball-area', ev.kind === 'pass' ? 'goes-to' : 'runs'];
+  if (long) fits.push('long-pass');
+  if (Math.min(ballAtFreeze.y, WIDTH - ballAtFreeze.y) <= S.wideFrom) fits.push('wide');
+  if (dist(ballAtFreeze, start) <= S.closeReach) fits.push('close');
+  const fresh = fits.filter((id) => !avoidTemplates.includes(id));
+  const pool = fresh.length ? fresh : fits;
+  const template = pool[createRng(`spot-words|${role}|${used}`).int(0, pool.length - 1)];
   const x = ev.team === 'us' ? ballAtFreeze.x : LENGTH - ballAtFreeze.x; // up the pitch for the team on the ball
   const phase = ev.team === 'us' ? (x < 35 ? 'build_up' : x < 70 ? 'progression' : 'final_third') : (x < 35 ? 'high_press' : x < 70 ? 'mid_block' : 'low_block');
   const wanted = principles.length ? asked : [ev.principles[0]];
@@ -383,8 +513,9 @@ function finish(ev, { seed, used, attempt, role, asked, principles, catalogue, S
     title: 'Generated drill',
     brief: SPOT_WORDS.brief[key],
     briefKid: SPOT_WORDS.briefKid[key],
-    question: SPOT_WORDS.question(ev.holder),
-    questionKid: SPOT_WORDS.questionKid(ev.holder),
+    question: SPOT_WORDS.question(ev.holder, template, ballAtFreeze.x),
+    questionKid: SPOT_WORDS.questionKid(ev.holder, template, ballAtFreeze.x),
+    template,
     module: 'generated',
     moment: ev.moment,
     phase,
@@ -398,6 +529,52 @@ function finish(ev, { seed, used, attempt, role, asked, principles, catalogue, S
     source: { kind: 'generated', generator: 'fotbol spotdrill v1', seed: String(used), requestedSeed: String(seed), attempt, license: 'MIT', author: 'fotbol' },
     notes: `Generated by js/engine/spotdrill.js (${ev.kind} by ${ev.team === 'us' ? 'us' : 'them'}); kept because it passed the drill-quality gates.`,
   };
+}
+
+/**
+ * [M] Measured yield of generateSpotDrill: the share of calls that give a drill on one principle, per role family (8
+ * seeds each, both sides; fastFail off). The zeros held on 24 more seeds each: the principle's rule never weighs 2+ for
+ * the position (width is the wingers', pin the #9's, screen the #6's, between the lines the #8s', tuck and the line the
+ * back four's, offside the forwards' and #8s', crosses not the back four's or the #6's; spacing weighs 1), or the
+ * event never sets it up (a full-back as the cover behind a pressing teammate).
+ * Re-measure after changing a rule or the generator: tests/spotdrill.test.js spot-checks the zeros.
+ */
+export const SPOT_YIELD = Object.freeze({
+  F4: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 1, W: 1, ST: 1 }),
+  U4: Object.freeze({ CB: 1, FB: 1, DM: 0, CM: 0, W: 0, ST: 0 }),
+  D5: Object.freeze({ CB: 1, FB: 1, DM: 0.63, CM: 1, W: 0, ST: 0 }),
+  D1: Object.freeze({ CB: 1, FB: 1, DM: 1, CM: 1, W: 1, ST: 1 }),
+  D2: Object.freeze({ CB: 1, FB: 1, DM: 1, CM: 1, W: 1, ST: 1 }),
+  D3: Object.freeze({ CB: 0.88, FB: 0, DM: 1, CM: 1, W: 0.13, ST: 0.88 }),
+  D4: Object.freeze({ CB: 1, FB: 1, DM: 0, CM: 0, W: 0, ST: 0 }),
+  U5: Object.freeze({ CB: 1, FB: 1, DM: 0, CM: 0, W: 0, ST: 0 }),
+  U1: Object.freeze({ CB: 1, FB: 1, DM: 1, CM: 1, W: 1, ST: 1 }),
+  U2: Object.freeze({ CB: 1, FB: 1, DM: 1, CM: 1, W: 1, ST: 1 }),
+  R3: Object.freeze({ CB: 0, FB: 0, DM: 1, CM: 0, W: 0, ST: 0 }),
+  B1: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0, W: 1, ST: 0 }),
+  B2: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0, W: 0, ST: 1 }),
+  B3: Object.freeze({ CB: 1, FB: 1, DM: 1, CM: 0.88, W: 0.75, ST: 1 }),
+  B4: Object.freeze({ CB: 1, FB: 1, DM: 0.63, CM: 0.75, W: 0.63, ST: 0.88 }),
+  B5: Object.freeze({ CB: 0.88, FB: 1, DM: 0.5, CM: 1, W: 1, ST: 0.88 }),
+  P2: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0.75, W: 0, ST: 0 }),
+  F8: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0, W: 0, ST: 0 }),
+  P10: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 1, W: 1, ST: 1 }),
+});
+
+/**
+ * Whether generateSpotDrill can make a drill on any of `principles` for this position (a role such as 'LB' or a family
+ * such as 'FB'): true with none asked (any idea with a rule), else when one has a rule and SPOT_YIELD measured at least
+ * `min` of calls giving a drill. A cheap check for a set builder: a call it says no to comes back null at once
+ * (fastFail), and one it says yes to may still fail for a seed.
+ * @param {string} roleOrFamily
+ * @param {string|string[]} principles
+ * @param {{ min?: number }} [opts]
+ */
+export function canGenerateSpot(roleOrFamily, principles = [], { min = 0.01 } = {}) {
+  const fam = ROLE_INFO[roleOrFamily]?.family ?? roleOrFamily;
+  const list = typeof principles === 'string' ? [principles] : principles ?? [];
+  if (!list.length) return true;
+  return list.some((p) => SPOT[p] && (SPOT_YIELD[p]?.[fam] ?? 1) >= min);
 }
 
 /** The ids of the rule-backed principles (a copy), and how each can be generated: { rules, moments: ['us'|'them'] }. */
