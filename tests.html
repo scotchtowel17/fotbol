@@ -69,6 +69,12 @@
     // Runs every test file with the browser half of tests/harness.js, which reports each
     // result as a 'fotbol-test' event. Files run one at a time; after each import we wait
     // until results stop arriving so async tests are credited to the right file.
+    // A file's tests all start as it is imported; one that then waits longer than SETTLE_MS
+    // for a result (animation frames, timers) must hold the file's import until its tests are
+    // done (a top-level await at its end, as tests/board.test.js does), or it runs on into the
+    // next files, their work holds up its frames, and a timing bound can fail. Each result is
+    // credited to the file whose import it started in (its `ms` says when), and a file whose
+    // tests ran on into the next files is named under the results.
     import { TEST_FILES } from './tests/manifest.js';
 
     const SETTLE_MS = 150; // idle time that ends a file
@@ -80,10 +86,19 @@
     let resultCount = 0;
     const files = new Map(); // name → { section, list, pass, fail }
     const totals = { pass: 0, fail: 0, t0: performance.now() };
+    const imports = []; // { file, t0 }: when each file's import began, in order
+    const ranOn = new Set(); // files with a test still running once the next file had begun
 
     addEventListener('fotbol-test', (e) => {
       resultCount++;
-      record(currentFile ?? '(unknown file)', e.detail);
+      // The file the test started in: the last import begun before it started (the harness's ms is its run time so far;
+      // a millisecond of slack for a coarse clock: a file's tests start well after its import begins, and every file's
+      // well before the next one's, SETTLE_MS at least).
+      const started = performance.now() - (Number(e.detail?.ms) || 0);
+      let file = currentFile;
+      for (let i = imports.length - 1; i >= 0; i--) if (imports[i].t0 <= started + 1) { file = imports[i].file; break; }
+      if (file && currentFile && file !== currentFile) ranOn.add(file);
+      record(file ?? '(unknown file)', e.detail);
     });
 
     function section(name) {
@@ -165,6 +180,7 @@
       const missing = [];
       for (const file of all) {
         currentFile = file;
+        imports.push({ file, t0: performance.now() });
         try {
           await import(`./tests/${file}`);
         } catch (err) {
@@ -179,6 +195,7 @@
       const notes = [];
       if (missing.length) notes.push(`Listed in tests/manifest.js but not found: ${missing.join(', ')}.`);
       if (unlisted.length) notes.push(`Found but not listed in tests/manifest.js (static hosts will skip them): ${unlisted.join(', ')}.`);
+      if (ranOn.size) notes.push(`Tests in ${[...ranOn].join(', ')} ran on while the next files ran (their timings are not to be trusted): hold the file's import until its tests are done (see tests.html).`);
       $('missing').hidden = !notes.length;
       $('missing').textContent = notes.join(' ');
       paintSummary(true);

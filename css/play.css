@@ -143,10 +143,16 @@
   }
 }
 
-/* The role card over the pitch ("You're the left back"); a changed position gets the learner's colour round it. */
+/* The role card over the pitch ("You're the left back"); a changed position gets the learner's colour round it. It sits
+   where it covers nobody, once the camera has landed (play.js cardSpot sets data-at: the top or bottom of the pitch,
+   the middle, else "free": a band between the players, --pl-card-top from the stage's top; with nothing clear in the
+   middle of the screen, data-side slides it to the left or right edge at the width it was measured at, --pl-card-w);
+   --pl-card-gap is play.js PLAY_DEFAULTS.cardGapPx (as css/pass.css's card). */
 .pl-card {
   position: absolute; left: 50%; top: 50%; z-index: 3;
-  transform: translate(-50%, -50%);
+  --pl-card-x: -50%;
+  --pl-card-y: -50%;
+  transform: translate(var(--pl-card-x), var(--pl-card-y));
   max-width: calc(100% - 32px);
   padding: 18px 26px; border-radius: 16px; text-align: center;
   background: var(--pl-card-bg); color: var(--pl-card-ink);
@@ -155,10 +161,28 @@
   animation: pl-pop 0.28s cubic-bezier(0.2, 0.8, 0.3, 1.2) both;
 }
 .pl-card[hidden] { display: none; }
+.pl-card[data-at="top"] { top: var(--pl-card-gap, 12px); --pl-card-y: 0%; }
+.pl-card[data-at="bottom"] { top: auto; bottom: var(--pl-card-gap, 12px); --pl-card-y: 0%; }
+.pl-card[data-at="free"] { top: var(--pl-card-top, 12px); --pl-card-y: 0%; }
+.pl-card[data-side="left"] { left: var(--pl-card-gap, 12px); width: var(--pl-card-w, auto); --pl-card-x: 0%; }
+.pl-card[data-side="right"] { left: auto; right: var(--pl-card-gap, 12px); width: var(--pl-card-w, auto); --pl-card-x: 0%; }
 .pl-card.is-changed { box-shadow: 0 0 0 4px var(--learner), 0 10px 30px rgb(0 0 0 / 0.35); }
 .pl-card-text { margin: 0; font-size: clamp(1.5rem, 5.5vw, 2.1rem); font-weight: 850; line-height: 1.15; letter-spacing: -0.01em; }
+/* The stage under it ("Small game: 3 v 2"), a pill; the first rep of a bigger stage ("Now 6 v 5!") in the ball's yellow. */
+.pl-card-stage {
+  display: inline-block; margin: 10px 0 0; padding: 3px 12px; border-radius: 999px; white-space: nowrap;
+  font-size: clamp(1.05rem, 4vw, 1.25rem); font-weight: 800; line-height: 1.3;
+  background: rgb(255 255 255 / 0.14); color: var(--pl-card-ink);
+}
+.pl-card-stage[hidden] { display: none; }
+.pl-card.is-bigger .pl-card-stage { background: var(--ball-halo, #ffdd00); color: #14170f; font-size: clamp(1.25rem, 5vw, 1.55rem); }
 .pl.is-role-change .token.is-learner .token-glow { animation-duration: 0.9s; }
-@keyframes pl-pop { from { opacity: 0; transform: translate(-50%, -50%) scale(0.85); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+@keyframes pl-pop { from { opacity: 0; transform: translate(var(--pl-card-x, -50%), var(--pl-card-y, -50%)) scale(0.85); } to { opacity: 1; transform: translate(var(--pl-card-x, -50%), var(--pl-card-y, -50%)) scale(1); } }
+
+/* "Best spot" on the reveal (play.js bestSpotMarks): by the ring, or a short callout with a solid leader line from the
+   ring when nowhere by it is clear of YOU, YOUR tag and the ball. The words keep the board's size (bestSpotPlace
+   measures them at css/app.css .mk-label's 1.5 x --board-label-k). */
+.pl-view .mk-segment.pl-best-line { stroke-width: 0.3; stroke-dasharray: none; opacity: 0.95; }
 
 /* ------------------------------------------------------------------ the reveal (js/ui/player/reveal.js) */
 
@@ -264,6 +288,7 @@
   color: inherit; font-weight: 750; text-decoration: underline; text-underline-offset: 3px;
 }
 .ft-best { margin: 0; text-align: center; font-size: 1.125rem; font-weight: 750; line-height: 1.4; }
+.ft-next { margin: 0; text-align: center; font-size: 1.0625rem; font-weight: 750; line-height: 1.4; }
 .ft-break { margin: 0; padding: 12px 14px; border-radius: 12px; text-align: center; background: var(--accent-soft); font-weight: 700; line-height: 1.4; }
 .ft-actions { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 4px; }
 .ft-actions .btn { min-height: 56px; font-size: 1.1rem; }

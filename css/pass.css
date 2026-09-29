@@ -21,7 +21,7 @@
 .ps-view { min-height: 0; }
 .ps {
   display: grid;
-  grid-template-columns: minmax(0, 1fr); /* never wider than the screen: the reveal's zoom widens the board, not the page */
+  grid-template-columns: minmax(0, 1fr); /* never wider than the screen */
   grid-template-rows: auto minmax(0, 1fr) auto;
   grid-template-areas: "bar" "stage" "dock";
   height: calc(100vh - var(--header-h, 0px));
@@ -36,9 +36,6 @@
 }
 .ps-stage { grid-area: stage; position: relative; min-width: 0; min-height: 0; display: flex; padding: 4px 8px 6px; overflow: clip; }
 .ps-board { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; }
-/* A phone's reveal zooms onto the play (pass.js revealZoom): the board is drawn wider than the stage and slid sideways
-   (inline width and margin-left); the stage clips the rest. */
-.ps-board[data-zoom] { flex: none; }
 .ps-board > .board { flex: 1; }
 .ps-dock {
   grid-area: dock;
@@ -100,7 +97,26 @@
 }
 .ps-card[hidden], .ps-banner[hidden] { display: none; }
 .ps-card { background: var(--ps-card-bg); color: var(--ps-card-ink); padding: 18px 26px; cursor: pointer; animation: ps-pop 0.28s cubic-bezier(0.2, 0.8, 0.3, 1.2) both; }
+/* The card sits at the top or bottom of the pitch, off YOU, the ball and the teammates to pass to (pass.js cardSpot
+   sets data-at; the middle only when all of them are clear there, as play.js's role card; else "free": a band between
+   them that is, --ps-card-top from the stage's top); --ps-card-gap is PASS_DEFAULTS.cardGapPx. With nothing clear in
+   the middle of the screen, data-side slides it to the left or right edge at the width it was measured at, centred
+   (--ps-card-w: left: 50% gives a centred card half the stage to fill, an edge nearly all of it). */
+.ps-card { --ps-card-x: -50%; --ps-card-y: -50%; transform: translate(var(--ps-card-x), var(--ps-card-y)); }
+/* It goes straight to its place, never slides there: under reduced motion css/app.css gives every property of every
+   element a 0.01 ms transition, and pass.js measures the card at its last place before moving it, so for one frame it
+   was drawn there (over YOU, once over ten figures of the full match) before it jumped. */
+.ps-card { transition: none; }
+.ps-card[data-at="top"] { top: var(--ps-card-gap, 12px); --ps-card-y: 0%; }
+.ps-card[data-at="bottom"] { top: auto; bottom: var(--ps-card-gap, 12px); --ps-card-y: 0%; }
+.ps-card[data-at="free"] { top: var(--ps-card-top, 12px); --ps-card-y: 0%; }
+.ps-card[data-side="left"] { left: var(--ps-card-gap, 12px); width: var(--ps-card-w, auto); --ps-card-x: 0%; }
+.ps-card[data-side="right"] { left: auto; right: var(--ps-card-gap, 12px); width: var(--ps-card-w, auto); --ps-card-x: 0%; }
 .ps-card-text { margin: 0; font-size: clamp(1.5rem, 5.5vw, 2.1rem); font-weight: 850; line-height: 1.15; letter-spacing: -0.01em; }
+/* The game's size over the card's line ("Small game: 3 v 2"; the first time the set grows, "Now 6 v 5!" in the hot colour). */
+.ps-card-stage { margin: 0 0 6px; font-size: 1.125rem; font-weight: 800; line-height: 1.25; color: var(--ps-card-ink); opacity: 0.86; white-space: nowrap; }
+.ps-card-stage[hidden] { display: none; }
+.ps-card.is-bigger .ps-card-stage { opacity: 1; color: var(--pm-hot, #ffb81c); font-size: 1.3rem; }
 .ps-banner {
   top: 14px; transform: translateX(-50%); /* a broadcast strip at the top edge: it covers as little play as it can */
   display: inline-flex; align-items: center; gap: 12px; white-space: nowrap;
@@ -111,7 +127,7 @@
 .ps-banner[data-tone="warn"] { background: var(--ps-warn-bg); color: var(--ps-warn-ink); border-color: var(--ps-warn-ink); }
 .ps-banner[data-tone="bad"] { background: var(--ps-bad-bg); color: var(--ps-bad-ink); border-color: var(--ps-bad-ink); }
 .ps-banner-shape { font-size: 1.1em; line-height: 1; }
-@keyframes ps-pop { from { opacity: 0; transform: translate(-50%, -50%) scale(0.85); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+@keyframes ps-pop { from { opacity: 0; transform: translate(var(--ps-card-x, -50%), var(--ps-card-y, -50%)) scale(0.85); } to { opacity: 1; transform: translate(var(--ps-card-x, -50%), var(--ps-card-y, -50%)) scale(1); } }
 @keyframes ps-drop { from { opacity: 0; transform: translate(-50%, -10px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
 /* ---- pitch markers (board.js setMarkers with ps-* classes). Option labels: Best, your pick and two others (pass.js
@@ -128,6 +144,11 @@
 /* The preview: a white dotted line from the ball to the teammate you picked. */
 .ps-view .mk-segment.ps-preview { --mk: #ffffff; stroke-width: 0.6; stroke-dasharray: 0.01 1.2; stroke-linecap: round; animation: ps-march 0.8s linear infinite; }
 @keyframes ps-march { to { stroke-dashoffset: -1.21; } }
+/* A labelled teammate's base, ringed in the label's colour and line (with figures: pass.js revealMarkers), so each
+   label is tied to its player however crowded the picture. Under the figure, hugging the base. */
+.ps-view .mk-ring.ps-owner { stroke-width: 0.42; }
+.ps-view .mk-ring.ps-owner.ps-line--dashed { stroke-dasharray: 1.1 0.7; }
+.ps-view .mk-ring.ps-owner.ps-line--dotted { stroke-dasharray: 0.01 0.85; stroke-width: 0.55; stroke-linecap: round; }
 /* The defender in the way: a coral dashed ring; after "Cut out!" it flashes. */
 .ps-view .mk-ring.ps-blocker { stroke-width: 0.45; stroke-dasharray: 0.9 0.55; }
 .ps-view .mk-ring.ps-flash { stroke-width: 0.7; animation: ps-flash 0.45s ease-in-out 4 alternate; }

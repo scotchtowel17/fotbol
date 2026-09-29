@@ -1,7 +1,7 @@
 import { test, assert, isNode } from './harness.js';
 import {
   drawFigure, figureSpec, figureLook, runDelay, isKeeperId, numberFontSize, limbPath, setFacing,
-  FIGURE, FIGURE_DEFAULTS, SKIN_TONES, HAIR_COLOURS, HAIR_STYLES,
+  FIGURE, FIGURE_BOXES, FIGURE_DEFAULTS, SKIN_TONES, HAIR_COLOURS, HAIR_STYLES,
 } from '../js/ui/figures.js';
 
 // The 22 player ids the board draws (js/engine/roles.js ROLES, both teams).
@@ -211,4 +211,55 @@ test('figures: drawFigure builds the spec into an SVG parent; setFacing turns th
   assert.equal(g.querySelector('.fig-num').getAttribute('transform'), null);
   setFacing(g, 1);
   assert.equal(g.querySelector('.fig-body').getAttribute('transform'), null);
+});
+
+test('figures: FIGURE.shoulders is the width across the drawn shoulders (between the shoulder joints and the sleeves\' ends)', () => {
+  const spec = figureSpec({ number: 4 });
+  const shirt = byClass(spec, 'fig-shirt')[0].attrs.d;
+  const xs = [...shirt.matchAll(/(-?[\d.]+)\s+(-?[\d.]+)/g)].map((m) => Math.abs(+m[1]));
+  const sleeves = Math.max(...xs); // the shirt's widest point: the sleeves' ends
+  assert.ok(sleeves > 0.6 && sleeves < FIGURE.halfWidth, `sleeves at ±${sleeves}`);
+  // The standing arms start at the shoulder joints, just inside the sleeves.
+  const arms = byClass(spec, 'fig-arms')[0].attrs.d;
+  const armXs = [...arms.matchAll(/(-?[\d.]+)\s+(-?[\d.]+)/g)].map((m) => Math.abs(+m[1]));
+  const joints = Math.min(...armXs.filter((x) => x > 0.3));
+  assert.ok(FIGURE.shoulders >= 2 * joints - 0.1 && FIGURE.shoulders <= 2 * sleeves, `${FIGURE.shoulders} across: joints ±${joints}, sleeves ±${sleeves}`);
+});
+
+test('figures: FIGURE_BOXES hold the parts drawn (head and hair, the two-digit number, the torso and arms, the legs and boots), facing either way', () => {
+  const B = FIGURE_BOXES;
+  const within = (box, x, y, what) => assert.ok(x >= box.x0 - 1e-9 && x <= box.x1 + 1e-9 && y >= box.y0 - 1e-9 && y <= box.y1 + 1e-9, `${what}: ${x}, ${y} in ${JSON.stringify(box)}`);
+  // The points a path passes through (absolute M, L, Q and A commands: an arc's radii and flags are not points).
+  const pairs = (d) => {
+    const out = [], tok = d.match(/[A-Za-z]|-?\d*\.?\d+/g);
+    let cmd = 'M', nums = [];
+    const flush = () => { const n = cmd === 'A' ? nums.slice(-2) : nums; for (let i = 0; i + 1 < n.length; i += 2) out.push([n[i], n[i + 1]]); nums = []; };
+    for (const t of tok) { if (/[A-Za-z]/.test(t)) { flush(); cmd = t; } else nums.push(+t); }
+    flush();
+    return out;
+  };
+  for (const facing of [1, -1]) {
+    const spec = figureSpec({ number: 88, facing });
+    const stand = byClass(spec, 'fig-pose-stand')[0];
+    // (the body is mirrored for facing -1: every x the other way round)
+    const at = (d, box, what) => { for (const [x, y] of pairs(d)) within(box, facing * x, y, what); };
+    for (const cls of ['fig-shirt', 'fig-shorts', 'fig-collar']) at(byClass(spec, cls)[0].attrs.d, B.torso, cls);
+    at(byClass(stand, 'fig-arms')[0].attrs.d, B.torso, 'arms');
+    for (const cls of ['fig-legs', 'fig-socks', 'fig-boots']) at(byClass(stand, cls)[0].attrs.d, B.legs, cls);
+    // The head and every hair style but a ponytail's tail (behind the head): the head's circle grown by the hair.
+    const { x, y, r } = FIGURE.head;
+    for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) within(B.head, facing * (x + dx * (r + 0.1)), y + dy * (r + (dy < 0 ? 0.16 : 0)), 'head and hair');
+    for (const style of HAIR_STYLES) {
+      const d = byClass(figureSpec({ hairStyle: style, facing }), 'fig-hair')[0].attrs.d;
+      for (const [px, py] of pairs(d)) if (style !== 'ponytail' || px > x - 0.3) within(B.head, facing * px, py, `${style} hair`);
+    }
+  }
+  // Two heavy digits (at most 0.66 em wide and 0.72 em tall each) and one: inside the number's box.
+  for (const text of ['7', '88']) {
+    const fs = numberFontSize(text), w = [...text].length * 0.66 * fs, h = 0.72 * fs;
+    within(B.number, -w / 2, FIGURE.numberY - h / 2, text);
+    within(B.number, w / 2, FIGURE.numberY + h / 2, text);
+  }
+  // Head and number do not overlap (the board sums them as what says who a player is).
+  assert.ok(B.head.y1 <= B.number.y0, 'the head over the number');
 });

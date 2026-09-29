@@ -5,8 +5,13 @@
 // another position, the recall rep from another node and on other ideas, the catalogue's names on generated reps, and 3
 // forward bests of 5 in every pass set whose ideas allow them (docs/KID_REDESIGN.md §3, §6.1, §6.2; research/passing.md
 // §6.4; the play-test), and a set begun again (a reload, Play again) dealt fresh, with at most 2 reps of the last one
-// where the content runs out. The engine's thin cells lean on authored drills, teammates in the group (2 at most) and
+// where the content runs out; and the first Road set after the onboarding set deals none of its drills (road.js
+// startSet remembers the onboarding set as the last set). The engine's thin cells lean on authored drills, teammates in the group (2 at most) and
 // the chapter's other ideas (road.js header). Each group's slowest set is reported (generator calls and time).
+// Stages (docs/PROGRESSIVE_FIELD.md §2): every rep carries its slot's planned stage (road.js stagePlan: the 0-star plan
+// for a node's first set, the 3-star plan for the set begun again here), every node builds at least one rep that plays
+// as a small or a bigger game for every group, and how often each planned stage is played as planned is reported per
+// group (the rest play bigger: cast.js bestStage's fallback when a stage cannot teach the rep).
 import { test, assert, loadJSON, isNode } from './harness.js';
 import * as R from '../js/ui/player/road.js';
 import { createFormation } from '../js/engine/formation.js';
@@ -56,6 +61,11 @@ const generators = { spot: memo('spot', generateSpotDrill), pass: memo('pass', g
 
 const isForward = (d) => d?.rating?.best?.direction === 'forward' || !!d?.rating?.best?.tags?.some((t) => t.tag === 'switch');
 const baseId = (r) => String(r.scenario?.id ?? r.drill?.id).replace(/-m$/, '');
+/** An app with an in-memory store and the road (the profile a set builder given the app reads and saves). */
+const memoryApp = (initial = {}) => {
+  const mem = new Map(Object.entries(initial).map(([k, v]) => [k, JSON.stringify(v)]));
+  return { data: { road }, store: { get: (k, f) => (mem.has(k) ? JSON.parse(mem.get(k)) : f), set: (k, v) => { mem.set(k, JSON.stringify(v)); return true; } } };
+};
 
 export async function sweep(group, t) {
   // Chapter 1's first node played once, so every later spot set has its recall rep.
@@ -64,6 +74,18 @@ export async function sweep(group, t) {
   const warnings = [];
   let slowest = null;
   const spares = [];
+  const tallies = { first: R.stageTally([]), again: R.stageTally([]) };
+  const fellBack = [];
+  const addTally = (into, reps, where) => {
+    const played = reps.map((r) => R.stagedRep(r, r.stage, { formations })?.stage);
+    assert.ok(played.every((st) => R.STAGES.includes(st)), `${where}: every rep was staged by the set builder (${played})`);
+    const t = R.stageTally(reps.map((r, i) => ({ stage: r.stage, played: played[i] })));
+    for (const st of R.STAGES) { into[st].wanted += t[st].wanted; into[st].played += t[st].played; }
+    const missed = reps.map((r, i) => (played[i] !== r.stage ? `${r.stage[0]}→${played[i][0]}` : null)).filter(Boolean);
+    if (missed.length) fellBack.push(`${node0(where)} ${missed.join(' ')}`);
+    return played;
+  };
+  const node0 = (where) => where.split(' ').at(-1);
   console.warn = (...a) => warnings.push(a.join(' '));
   try {
     for (const node of R.roadNodes(road)) {
@@ -73,6 +95,10 @@ export async function sweep(group, t) {
       const cost = { node: node.id, calls: calls.spot + calls.pass - before.n, empty: calls.empty - before.empty, ms: Math.round(performance.now() - before.t) };
       if (!slowest || cost.calls > slowest.calls) slowest = cost;
       assert.equal(reps.length, 5, `${where}: ${reps.length} reps`);
+      // Stages: the slot's planned stage on every rep; a small or bigger game for every node and group.
+      assert.deepEqual(reps.map((r) => r.stage), R.stagePlan(R.nodeStars(profile, node.id)), `${where}: the stage plan`);
+      const played = addTally(tallies.first, reps, where);
+      assert.ok(played.some((st) => st === 'small' || st === 'medium'), `${where}: no rep plays as a small or bigger game (${played})`);
       assert.equal(new Set(reps.map(baseId)).size, 5, `${where}: a drill twice (${reps.map(baseId)})`);
       assert.ok(reps.every((r) => !r.twin && !r.repeat), `${where}: a mirrored twin or a repeat`);
       const pics = reps.map(R.repPicture);
@@ -138,15 +164,44 @@ export async function sweep(group, t) {
       }
       // The set begun again (a reload in the middle, or Play again): road.js counted the first as started, so the next
       // one is dealt fresh; only where your position's content runs out does a drill of the last set come back.
-      const again = { ...profile, road: { ...profile.road, [node.id]: { ...(profile.road[node.id] ?? { stars: 0, plays: 0 }), starts: R.nodeAttempt(profile, node.id) + 1 } }, last: { nodeId: node.id, ids: reps.map(baseId) } };
+      // (Played to 3 stars since: the 3-star plan, a bigger game and then the full match.)
+      const again = { ...profile, road: { ...profile.road, [node.id]: { ...(profile.road[node.id] ?? { stars: 0, plays: 0 }), stars: 3, starts: R.nodeAttempt(profile, node.id) + 1 } }, last: { nodeId: node.id, ids: reps.map(baseId) } };
       const next = await R.buildSet(node, { road, profile: again, index, load, seed: 1, formations, catalogue, generators });
+      assert.deepEqual(next.map((r) => r.stage), R.stagePlan(3), `${where}: the 3-star plan`);
+      addTally(tallies.again, next, `${where} (3 stars)`);
       const same = next.map(baseId).filter((id) => reps.map(baseId).includes(id));
       assert.ok(same.length <= 2, `${where}: a set begun again deals ${same.length} of the same reps (${same})`);
       assert.ok(next.length === 5 && next.every((r) => !r.twin && !r.repeat), `${where}: the next set is full`);
     }
+    // The onboarding set (all small) and the quick "Who's open?" set (the 1-star plan) are staged the same way.
+    const app = memoryApp({ [R.PROFILE_KEY]: R.pickGroup(null, group, road) });
+    const first = await R.buildFirstSet({ road, profile: R.loadProfile(app), index, load, seed: 1, formations, catalogue, generators, app });
+    assert.deepEqual(first.map((r) => r.stage), ['small', 'small', 'small'], `${group} first set`);
+    const firstPlayed = addTally(tallies.first, first, `${group} first`);
+    assert.ok(firstPlayed.filter((st) => st === 'small').length >= 2, `${group}: the first set plays ${firstPlayed}`);
+    // The first Road set after it (the next node's, a minute after the tutorial) deals none of the tutorial's drills
+    // (play-test: a defender's and a striker's dealt 2 of 3 again, the worked example among them); a full set still.
+    const onboarded = R.loadProfile(app);
+    const firstNode = R.nextNode(road, onboarded);
+    const after = await R.buildSet(firstNode, { road, profile: onboarded, index, load, seed: 1, formations, catalogue, generators });
+    const repeated = after.map(baseId).filter((id) => first.map(baseId).includes(id));
+    assert.deepEqual(repeated, [], `${group}: ${firstNode.id}'s first set deals the tutorial's drills again`);
+    assert.ok(after.length === 5 && after.every((r) => !r.twin && !r.repeat), `${group}: ${firstNode.id}'s first set is full`);
+    const quick = await R.buildQuickPassSet({ road, profile, seed: 1, formations, catalogue, generators });
+    assert.deepEqual(quick.map((r) => r.stage), R.stagePlan(R.QUICK_STARS), `${group} quick set`);
+    const quickPlayed = addTally(tallies.again, quick, `${group} quick`);
+    assert.ok(quickPlayed.some((st) => st === 'small' || st === 'medium'), `${group}: the quick set plays ${quickPlayed}`);
   } finally { console.warn = warn; }
   t?.diagnostic?.(`${group}: the slowest set is ${slowest.node}: ${slowest.calls} generator calls (${slowest.empty} empty), ${slowest.ms} ms`);
   if (spares.length) t?.diagnostic?.(`${group}: more than ${R.ROAD_DEFAULTS.maxBorrowed} reps in another position, nothing else left in yours: ${spares.join(', ')}`);
+  const rate = (x) => `${x.played}/${x.wanted}`;
+  const { first: f, again: a } = tallies;
+  t?.diagnostic?.(`${group}: played as planned: 0-star plan and first set small ${rate(f.small)}, bigger ${rate(f.medium)}; 3-star plan and quick set small ${rate(a.small)}, bigger ${rate(a.medium)}, full ${rate(a.full)}`);
+  if (fellBack.length) t?.diagnostic?.(`${group}: played bigger than planned (wanted→played): ${fellBack.join('; ')}`);
+  // Most small slots are played small (the set builder prefers reps that can be: road.js stagePick), the bigger game nearly always.
+  assert.ok(f.small.played >= 0.75 * f.small.wanted, `${group}: only ${rate(f.small)} small slots played small`);
+  assert.ok(f.medium.played + a.medium.played >= 0.9 * (f.medium.wanted + a.medium.wanted), `${group}: bigger-game slots`);
+  assert.ok(a.small.played >= 0.5 * a.small.wanted, `${group}: the quick set's small slots (${rate(a.small)})`);
   assert.deepEqual(warnings, [], `${group}: no warnings`);
   assert.deepEqual([...new Set(calls.known)], [], `${group}: generator calls the engine knows will fail`);
   // The generators got the catalogue on every call, so generated reps carry data/principles.json's words.

@@ -12,7 +12,9 @@
 //                                    players (both teams kept in the game), capped by the stage
 //   reduceFrame(frame, ids)          the frame with only the cast; castLabel(ids) "3 v 2"; clipIdsOf(item) who has the ball;
 //                                    keepIdsOf(item, frame) who the drill scripts or names
-//   stageSpotDrill / stagePassDrill  a rep at a stage, or null when the gate fails even after growing the cast
+//   stageSpotDrill / stagePassDrill  a rep at a stage, or null when the gate fails even after growing the cast; a pass
+//                                    rep's smaller games take the most compact cast that passes (castExtent: the camera
+//                                    zooms in on it, so the figures are big)
 //   bestStage(item, wanted, opts)    the wanted stage, else the next bigger one that passes (the full match always does)
 //   stagesOf(item, opts)             every stage at once (npm run check's report)
 //
@@ -31,6 +33,7 @@ import { EXPLAIN_DEFAULTS } from './explain.js';
 import { RULES, RULES_BY_ID } from './rules/index.js';
 import { rateOptions, gradePass, PASS_DEFAULTS } from './passing.js';
 import { passDrillFrame, passDrillRating, passLessons } from './passdrill.js';
+import { optionsByReceiver, passTargets, PASS_TARGET_DEFAULTS } from './passtargets.js';
 
 /** The stages, smallest first: a small game (3-6 players), a bigger game (6-12), the full match (all 22). */
 export const STAGES = Object.freeze(['small', 'medium', 'full']);
@@ -59,9 +62,18 @@ export const CAST_DEFAULTS = Object.freeze({
   maxOptions: 5, // [D]
   passMargin: 8, // [D] = PASSDRILL_DEFAULTS.margin: the best is "clearly ahead" of every other receiver by this (tested equal)
   passMediumFrom: 8, // [D] a pass rep's bigger game starts growing at this many players (5 v 3), so it is bigger than the small one
-  farPass: 45, // [S] = js/ui/player/pass.js PASS_DEFAULTS.farPass (play-test): a teammate further than this (m) from the ball is no
+  farPass: PASS_TARGET_DEFAULTS.farPass, // [S] = passtargets.js (and pass.js PASS_DEFAULTS.farPass; play-test): a teammate further than this (m) from the ball is no
   //              target unless the pass is really on; the keeper neither (tested equal)
   passNoRise: 2, // [D] pass reps: a receiver the full game grades below 3 stars (at most this many) never earns 3 at a stage
+  // A pass rep's smaller games prefer a compact cast: a camera fits the cast on both axes, and on a phone held upright a
+  // cast spread across the pitch (a decoy at each touchline) drew its figures no bigger than the full match's
+  // (the whole-pitch 5 px/m and 40 px figures; they grow only past about 9 px/m, board.js figureScale).
+  passBox: Object.freeze({ along: 36, across: 22 }), // [D] m: the box a compact cast fits (its players and the ball at the
+  //   freeze, along x the pitch's length, across y): about a phone held upright's board (359 x 570 CSS px, less the camera's
+  //   pads and headroom) at 13 px/m, where figures stand about 55 px tall; castExtent's `over` is how far a cast spills over it
+  passBoxSlack: 0.05, // [D] casts whose spill over passBox is within this are as compact as each other (the plain order's then)
+  passSearch: 40, // [D] the small game's compact search judges at most this many casts (the most compact first)
+  passCompact: true, // [D] false: a pass rep's smaller game is the relevance order's first cast that passes, as before (reports, tests)
   praiseDepth: 3, // [D] spot reps: the praise at the answer is the full game's, this deep: the line (1) and the Why? sheet's two more
   //                 (js/ui/player/play.js pickLine and whyFor: the rules met at explain's praiseAt, the drill's own ideas first)
 });
@@ -366,36 +378,15 @@ function presserOf(frame, pressured, { learnerId, base } = {}) {
   return on ? near?.id ?? null : null;
 }
 
-/** One option per teammate, as a tap plays it (js/ui/player/pass.js optionsByReceiver): the better of feet and space. */
-function receiversOf(options = [], carrierId = null) {
-  const map = new Map();
-  const better = (a, b) => (a.score !== b.score ? a.score > b.score : a.kind === 'feet' && b.kind !== 'feet');
-  for (const o of options ?? []) {
-    const r = o?.targetId;
-    if (!r || r === carrierId || !r.startsWith('us-')) continue;
-    const had = map.get(r);
-    if (!had || better(o, had)) map.set(r, o);
-  }
-  return map;
-}
-
-/** A pass that is really on (pass.js genuinelyOn): the best, or a good one that is not just the too-safe option. */
-const genuinelyOn = (o) => o?.label === 'best' || (o?.label === 'good' && !(o.tags ?? []).some((t) => t?.tag === 'too-safe'));
+/** One option per teammate, as a tap plays it (passtargets.js optionsByReceiver: the better of feet and space). */
+const receiversOf = (options = [], carrierId = null) => optionsByReceiver(options, carrierId);
 
 /**
- * The receivers a kid can tap (pass.js passTargets): every receiver less anyone further than farPass from the ball and
- * the keeper, unless that pass is really on. @returns {Map<string, object>} receiver id → the option a tap plays
+ * The receivers a kid can tap (passtargets.js passTargets, as pass.js offers them): every receiver less anyone further
+ * than farPass from the ball and the keeper, unless that pass is really on. @returns {Map<string, object>} receiver id →
+ * the option a tap plays
  */
-function targetsOf(byReceiver, frame, P) {
-  const out = new Map();
-  for (const [rid, o] of byReceiver) {
-    const at = frame.players.find((p) => p.id === rid);
-    const far = !!(frame.ball && at) && dist(frame.ball, at) > P.farPass;
-    if ((far || rid === 'us-GK') && !genuinelyOn(o)) continue;
-    out.set(rid, o);
-  }
-  return out;
-}
+const targetsOf = (byReceiver, frame, P) => passTargets(byReceiver, frame, frame?.carrierId ?? null, P);
 
 /**
  * The relevance order of a stage's cast, as four lists: `must` (always in: the learner, everyone on the ball in the clip,
@@ -424,7 +415,9 @@ function castOrder(frame, opts, P) {
   const me = byId.get(learnerId);
   const base = opts.base ?? me ?? frame.ball;
   const start = opts.start ?? me ?? base;
-  let target, setters = new Set(), learnerAt = null;
+  let target, setters = new Set(), learnerAt = null, lead = 0;
+  const units = []; // pass reps: each receiver a tap can pick (not the best) with the defenders on his pass (compactSearch)
+  let bestUnit = [];
 
   if (rating) {
     // A pass rep, receiver by receiver, each with the defenders who block or press any pass to them (without them a
@@ -438,9 +431,18 @@ function castOrder(frame, opts, P) {
     const byReceiver = new Map();
     for (const o of options) if (o.targetId && o.targetId !== learnerId) (byReceiver.get(o.targetId) ?? byReceiver.set(o.targetId, []).get(o.targetId)).push(o);
     const taps = targetsOf(receiversOf(options, learnerId), frame, P);
-    const receiver = (id) => { addCore(id); for (const o of byReceiver.get(id) ?? []) { addCore(o.blocker?.id); addCore(o.presserId); } };
-    const guards = (id) => { for (const o of byReceiver.get(id) ?? []) { addCore(o.blocker?.id); addCore(o.presserId); } };
-    if (best) receiver(best.targetId);
+    const defendersOf = (id) => (byReceiver.get(id) ?? []).flatMap((o) => [o.blocker?.id, o.presserId]).filter((x) => typeof x === 'string' && byId.has(x));
+    const receiver = (id) => {
+      if (byId.has(id) && id !== best?.targetId && !units.some((u) => u[0] === id)) units.push([...new Set([id, ...defendersOf(id)])]);
+      addCore(id);
+      for (const d of defendersOf(id)) addCore(d);
+    };
+    const guards = (id) => { for (const d of defendersOf(id)) addCore(d); };
+    if (best) {
+      receiver(best.targetId);
+      bestUnit = [...new Set([best.targetId, ...defendersOf(best.targetId)])].filter((id) => byId.has(id));
+    }
+    lead = core.length; // the best receiver and the defenders on his pass: compactOrder keeps them first
     for (const id of must) guards(id);
     addCore(frame.players.filter((p) => p.team === 'them').sort(closer(frame.ball, target))[0]?.id);
     const rest = [...byReceiver.keys()].filter((id) => id !== best?.targetId && taps.has(id));
@@ -505,7 +507,7 @@ function castOrder(frame, opts, P) {
   const reach = (p) => Math.min(dist(p, target), dist(p, frame.ball), dist(p, start));
   const fill = frame.players.filter((p) => !inAny.has(p.id)).map((p, i) => ({ id: p.id, d: reach(p), b: dist(p, frame.ball), i }))
     .sort((a, b) => a.d - b.d || a.b - b.b || a.i - b.i).map((e) => e.id);
-  return { byId, must, lines, core, fill, learnerId, learnerAt, start: opts.start ?? null };
+  return { byId, must, lines, core, fill, learnerId, learnerAt, start: opts.start ?? null, lead, units, bestUnit };
 }
 
 /**
@@ -955,13 +957,149 @@ function passGate(prep, ids) {
   return out;
 }
 
-/** The staged result of a prepared pass rep, or null. */
+// ---- a compact cast (a pass rep's smaller games: the camera fits the cast, so the figures are big)
+
+/** The drawn extent of some points (metres, along x and across y) and how far it spills over `box`. */
+function extentOf(points, box) {
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const p of points) {
+    if (!Number.isFinite(p?.x) || !Number.isFinite(p?.y)) continue;
+    if (p.x < x0) x0 = p.x;
+    if (p.x > x1) x1 = p.x;
+    if (p.y < y0) y0 = p.y;
+    if (p.y > y1) y1 = p.y;
+  }
+  if (!(x1 >= x0)) return { along: 0, across: 0, over: 0 };
+  const along = x1 - x0, across = y1 - y0;
+  return { along, across, over: Math.max(across / box.across, along / box.along) };
+}
+
+/**
+ * How big a cast is drawn at the freeze: the players `ids` in `frame` and the ball (what "Who's open?"'s choice frames,
+ * pass.js chooseCamera), along the pitch (x) and across it (y), in metres, and how far that spills over `box`:
+ * over = max(across / box.across, along / box.along), 1 or less when it fits. The camera fits the cast on both axes, so
+ * the smaller `over`, the closer it zooms in and the bigger the figures (a phone held upright: CAST_DEFAULTS.passBox).
+ * @param {import('./types.js').Frame} frame
+ * @param {Iterable<string>} ids
+ * @param {{ along: number, across: number }} [box]
+ * @returns {{ along: number, across: number, over: number }}
+ */
+export function castExtent(frame, ids, box = CAST_DEFAULTS.passBox) {
+  const keep = ids instanceof Set ? ids : new Set(ids);
+  return extentOf([...(frame?.players ?? []).filter((p) => keep.has(p.id)), frame?.ball], box);
+}
+
+/**
+ * The compact order of a pass rep's cast: the must, the line setters and the best receiver with the defenders on his
+ * pass first, as castOrder has them; then everyone else by how far each alone would spread those past passBox (not at
+ * all first), ties in castOrder's order (the most relevant of the players who fit first: the tempting decoy nearby, not
+ * the one at the far touchline).
+ */
+function compactOrder(frame, order, P) {
+  const pos = (id) => order.byId.get(id);
+  const anchor = [...order.must, ...order.lines, ...order.core.slice(0, order.lead)].map(pos);
+  anchor.push(frame.ball);
+  const base = extentOf(anchor, P.passBox).over;
+  const rank = (ids) => ids.map((id, i) => ({ id, i, s: Math.max(0, extentOf([...anchor, pos(id)], P.passBox).over - base) }))
+    .sort((a, b) => a.s - b.s || a.i - b.i).map((e) => e.id);
+  return { ...order, core: [...order.core.slice(0, order.lead), ...rank(order.core.slice(order.lead))], fill: rank(order.fill) };
+}
+
+/** The cast with the offside-line setters it needs (pickCast's rule: the nearest pair that judges everyone in it as the full game does). */
+function withLineSetters(frame, ids, order, P) {
+  const need = linesNeeded(frame, ids, order.byId, order, P);
+  if (!need.size) return ids;
+  const extra = [];
+  for (const team of need) {
+    const options = setterOptions(frame, team, order.learnerId, P);
+    extra.push(...(options.find((pair) => !linesNeeded(frame, [...new Set([...ids, ...pair])], order.byId, order, P).has(team)) ?? options.at(-1)));
+  }
+  const out = [...new Set([...ids, ...extra])];
+  const still = linesNeeded(frame, out, order.byId, order, P);
+  return still.size ? [...new Set([...out, ...[...still].flatMap((team) => lineSetters(frame, team, order.learnerId, P))])] : out;
+}
+
+/**
+ * The small game's compact search (pass reps): the must, the line setters and the best receiver with the defenders on
+ * his pass, plus any of the other receivers a tap can pick (each with the defenders on his pass) and of the defenders
+ * nearest the ball (as many as the stage holds): every such cast within the stage with the learner and 3-5 teammates and
+ * an opponent (the offside setters added as pickCast adds them), judged most compact first (castExtent, in steps of
+ * passBoxSlack), then teams within maxGap, fewer players, the more relevant (castOrder's order). The first that passes
+ * the gate and teaches the drill's lesson wins, else the first that passes; at most passSearch casts are judged. A
+ * teammate it adds is one the kid can pick in it (never a decoy nobody can take).
+ * @returns {{ ids: string[], g: object } | null}
+ */
+function compactSearch(prep, order, stage, cap, P, gate, trace) {
+  const { frame } = prep;
+  const fixed = [...new Set([...order.must, ...order.lines, ...order.bestUnit])];
+  if (fixed.length > cap.max) return null;
+  const inFixed = new Set(fixed);
+  const aim = prep.best?.point ?? frame.ball;
+  const near = frame.players.filter((p) => p.team === 'them' && !inFixed.has(p.id)).sort(closer(frame.ball, aim)).slice(0, cap.max).map((p) => [p.id]);
+  const units = [...order.units.map((u) => u.filter((id) => !inFixed.has(id))).filter((u) => u.length), ...near];
+  const relevance = new Map([...order.must, ...order.lines, ...order.core, ...order.fill].map((id, i) => [id, i]));
+  const byRelevance = (a, b) => (relevance.get(a) ?? Infinity) - (relevance.get(b) ?? Infinity);
+  const teamOf = (id) => order.byId.get(id)?.team;
+  const casts = [], tried = new Set(), seen = new Set();
+  const consider = (base, rel) => {
+    const was = [...base].sort().join(',');
+    if (tried.has(was)) return;
+    tried.add(was);
+    const ids = withLineSetters(frame, base, order, P).sort(byRelevance);
+    const key = [...ids].sort().join(',');
+    if (seen.has(key)) return;
+    seen.add(key);
+    const ours = ids.filter((id) => teamOf(id) === 'us').length, theirs = ids.filter((id) => teamOf(id) === 'them').length;
+    if (ids.length < cap.min || ids.length > cap.max || ours < 1 + P.minOptions || ours > 1 + P.maxOptions || theirs < 1) return;
+    const step = Math.floor(castExtent(frame, ids, P.passBox).over / P.passBoxSlack + 1e-9);
+    casts.push({ ids, key, step, lopsided: Math.abs(ours - theirs) > P.maxGap ? 1 : 0, rel });
+  };
+  const walk = (from, ids, rel) => {
+    for (let j = from; j < units.length; j++) {
+      const next = [...new Set([...ids, ...units[j]])];
+      if (next.length === ids.length || next.length > cap.max) continue; // adds nobody (reached the other way), or too many
+      consider(next, rel + j);
+      walk(j + 1, next, rel + j);
+    }
+  };
+  consider(fixed, 0);
+  walk(0, fixed, 0);
+  casts.sort((a, b) => a.step - b.step || a.lopsided - b.lopsided || a.ids.length - b.ids.length || a.rel - b.rel || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  let fallback = null;
+  for (const c of casts.slice(0, P.passSearch)) {
+    const g = gate(c.ids);
+    trace?.push({ stage, size: c.ids.length, ids: c.ids, failed: g.failed });
+    if (!g.ok || !c.ids.every((id) => inFixed.has(id) || teamOf(id) !== 'us' || g.targets.includes(id))) continue;
+    if (g.lesson !== false) return { ids: c.ids, g };
+    fallback ??= { ids: c.ids, g };
+  }
+  return fallback;
+}
+
+/**
+ * The cast a pass rep's smaller game plays, from the ones found (the plain relevance order's, the compact order's and the
+ * compact search's, in that order): those that teach the drill's lesson when any does, then the most compact (castExtent
+ * over passBox), the earlier one within passBoxSlack of it.
+ */
+function mostCompact(found, frame, P) {
+  const list = found.filter(Boolean).map((r) => ({ ...r, over: castExtent(frame, r.ids, P.passBox).over }));
+  const pool = list.some((r) => r.g.lesson !== false) ? list.filter((r) => r.g.lesson !== false) : list;
+  const least = Math.min(...pool.map((r) => r.over));
+  return pool.find((r) => r.over <= least + P.passBoxSlack) ?? null;
+}
+
+/**
+ * The staged result of a prepared pass rep, or null. A smaller game takes, among the casts that pass the gate (the
+ * plain relevance order's first, the compact order's first and, in the small game, the compact search's), the one that
+ * teaches the drill's lesson and is drawn most compact (mostCompact): the camera fits the cast, so on a phone a cast
+ * across the whole pitch drew its figures no bigger than the full match's. Every cast is judged once (`tries`).
+ */
 function stagePass(prep, stage, trace) {
   const { P, drill, t, learnerId, clipIds } = prep;
   const shared = { kind: 'pass', t, learnerId, clipIds, keep: [...prep.keep.ids], fullBest: prep.best.id };
   if (stage === 'full') {
     const ids = prep.frame.players.map((p) => p.id);
-    const gates = { ok: true, best: prep.best.id, fullBest: prep.best.id, choice: null, margin: null, options: prep.fullTargets.size, targets: [...prep.fullTargets.keys()], lesson: prep.lesson ? true : null, tries: 0, failed: [] };
+    const gates = { ok: true, best: prep.best.id, fullBest: prep.best.id, choice: null, margin: null, options: prep.fullTargets.size, targets: [...prep.fullTargets.keys()], lesson: prep.lesson ? true : null, tries: 0, failed: [], extent: castExtent(prep.frame, ids, P.passBox) };
     return { stage, cast: { ids, ...castLabel(ids, 'full') }, rating: prep.rating, answer: { best: drill.answer?.best ?? prep.rating.best.id, accept: drill.answer?.accept ?? [] }, gates, frame: prep.frame, ...shared };
   }
   const cap = capOf(stage, P);
@@ -969,10 +1107,20 @@ function stagePass(prep, stage, trace) {
   const order = castOrder(prep.frame, { learnerId, stage, clipIds, keep: prep.keep.ids, rating: prep.rating }, P);
   if (overflows(order, stage, cap, trace)) return null;
   const from = stage === 'medium' ? Math.max(minOf(stage, cap, P), Math.min(cap.max, P.passMediumFrom)) : cap.min;
-  const found = grow(prep.frame, order, stage, cap, teamsOf(prep.rating, cap, P), P, (ids) => passGate(prep, ids), trace, new Set(), { from, prefer: (g) => g.lesson !== false });
+  // Every cast is judged once, whichever way it was reached (and traced once).
+  const judged = new Map(), traced = new Set();
+  const keyOf = (ids) => [...ids].sort().join(',');
+  const gate = (ids) => { const k = keyOf(ids); if (!judged.has(k)) judged.set(k, passGate(prep, ids)); return judged.get(k); };
+  const log = trace && { push: (e) => { const k = keyOf(e.ids ?? []); if (!traced.has(k)) { traced.add(k); trace.push(e); } } };
+  const limits = teamsOf(prep.rating, cap, P);
+  const teaches = (g) => g.lesson !== false;
+  const plain = grow(prep.frame, order, stage, cap, limits, P, gate, log, new Set(), { from, prefer: teaches });
+  const compact = P.passCompact ? grow(prep.frame, compactOrder(prep.frame, order, P), stage, cap, limits, P, gate, log, new Set(), { from, prefer: teaches }) : null;
+  const search = P.passCompact && stage === 'small' ? compactSearch(prep, order, stage, cap, P, gate, log) : null;
+  const found = mostCompact([plain, compact, search], prep.frame, P);
   if (!found) return null;
-  const { ids, g, tries } = found;
-  const gates = { ok: true, best: g.best, fullBest: g.fullBest, choice: g.choice, margin: g.margin, options: g.options, targets: g.targets, lesson: g.lesson, tries, failed: [] };
+  const { ids, g } = found;
+  const gates = { ok: true, best: g.best, fullBest: g.fullBest, choice: g.choice, margin: g.margin, options: g.options, targets: g.targets, lesson: g.lesson, tries: judged.size, failed: [], extent: castExtent(prep.frame, ids, P.passBox) };
   return { stage, cast: { ids, ...castLabel(ids, stage) }, rating: g.rating, answer: { best: g.rating.best.id, accept: acceptIn(drill, g.rating, ids) }, gates, frame: g.frame, ...shared };
 }
 

@@ -16,8 +16,24 @@
 export const FIGURE = Object.freeze({
   height: 2.4, // [S] PROGRESSIVE_FIELD §4: about 2.4 token radii tall (top of the hair; curly hair a touch more)
   halfWidth: 0.82, // [D] the widest pose (arms out), either side of the feet: the box a tap on the figure counts in
+  shoulders: 1.2, // [D] across the shoulders, standing: between the shoulder joints (±0.52) and the sleeves' ends (±0.7); the board keeps
+  //                the base disc about this wide (board.js baseScale), so a zoomed-in figure never stands on a plate
   numberY: -1.36, // [D] the shirt number's centre: the middle of the shirt (it runs from -1.84 to -0.9), where it is widest
   head: Object.freeze({ x: 0.03, y: -2.08, r: 0.31 }), // [D] slightly big, not cartoon big (about a quarter of the height)
+});
+
+/**
+ * A standing figure's parts as boxes round its feet, in base radii (either way it faces: the widest of the two), for
+ * the board's close-quarters sums (board.js figureOcclusion, declutter, carrySpot, tagPlacement). What says who a
+ * player is: the head (with any hair style) and the shirt number (two digits); what hides whatever is behind it: the
+ * head, the torso (shirt, sleeves, arms and shorts) and the legs (socks and boots). tests/figures.test.js holds them
+ * round the shapes drawn.
+ */
+export const FIGURE_BOXES = Object.freeze({
+  head: Object.freeze({ x0: -0.45, x1: 0.45, y0: -2.55, y1: -1.7 }), // (a ponytail's tail reaches past it, behind the head)
+  number: Object.freeze({ x0: -0.47, x1: 0.47, y0: -1.64, y1: -1.08 }),
+  torso: Object.freeze({ x0: -0.72, x1: 0.72, y0: -1.86, y1: -0.62 }),
+  legs: Object.freeze({ x0: -0.46, x1: 0.46, y0: -0.74, y1: 0.02 }),
 });
 
 /** Skin tones, light to deep (an inclusive range; the order is only for tests). */

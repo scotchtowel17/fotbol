@@ -56,7 +56,7 @@ export const DRAFT_KEY = 'author:draft';
 /** Phase names used so far (free text in the format; offered as suggestions). */
 export { PHASES }; // js/engine/scenario.js (validated there)
 
-const EXPORT_ORDER = ['id', 'title', 'brief', 'briefKid', 'question', 'questionKid', 'takeaway', 'module', 'moment', 'phase', 'principles', 'learner', 'timeline', 'answer', 'misconceptions', 'difficulty', 'params', 'source', 'notes', 'mirrorOf'];
+const EXPORT_ORDER = ['id', 'title', 'brief', 'briefKid', 'question', 'questionKid', 'takeaway', 'module', 'moment', 'phase', 'principles', 'learner', 'timeline', 'answer', 'misconceptions', 'stages', 'difficulty', 'params', 'source', 'notes', 'mirrorOf'];
 const TIMELINE_ORDER = ['duration', 'freezeAt', 'ball', 'possession', 'carrier', 'players', 'tags'];
 const ALL_PLAYERS = Object.freeze(['us', 'them'].flatMap((team) => ROLES.map((r) => playerId(team, r))));
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);

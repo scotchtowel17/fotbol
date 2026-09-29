@@ -480,6 +480,23 @@ test('road: the onboarding set is 3 easy reps for your group', async () => {
   assert.equal(def[0].scenario.learner.role, 'LB', 'your own position first');
 });
 
+test('road: the onboarding set plays small without costing you your position (easy drills in it that can be small first)', async () => {
+  // A stand-in stager as cast.js measures the authored drills: a left back's easiest ones (m1-03, m3-02) need a bigger
+  // game, and passing them over once gave a defender's first set all in the left centre-back's shoes.
+  const noSmall = new Set(['m1-03-d4-lb', 'm3-02-u4-rb', 'm1-04-d5-rcb', 'm1-10-u8-lcb', 'm1-12-u8-rb', 'm3-06-u5-lcb', 'm3-10-u3-lcb']);
+  const stager = (rep) => ({ small: !noSmall.has(String(rep.scenario.id).replace(/-m$/, '')), medium: true });
+  const def = await R.buildFirstSet({ road, profile: R.pickGroup(null, 'DEF'), index, load, seed: 1, generators: null, stager });
+  assert.deepEqual(def.map((r) => r.scenario.learner.role), ['LB', 'LB', 'LB'], `all in your position (${ids(def)})`);
+  assert.ok(def.every((r) => !noSmall.has(r.scenario.id.replace(/-m$/, ''))), `all can be played small (${ids(def)})`);
+  assert.ok(def.every((r) => r.stage === 'small'));
+  const easy = new Map(index.map((e) => [e.id, e.difficulty ?? 0]));
+  assert.ok(def.every((r) => easy.get(r.scenario.id.replace(/-m$/, '')) <= 0), 'still easy ones (difficulty 0 or less)');
+  // Nothing in your position can be played small: your group's easy ones that can, before a bigger game.
+  const all = (rep) => ({ small: rep.scenario.learner.role !== 'LB', medium: true });
+  const other = await R.buildFirstSet({ road, profile: R.pickGroup(null, 'DEF'), index, load, seed: 1, generators: null, stager: all });
+  assert.ok(other.every((r) => r.scenario.learner.role !== 'LB'), `the group's small ones (${ids(other)})`);
+});
+
 test('road: the seeded helpers are stable', () => {
   assert.equal(R.hash32('fotbol'), R.hash32('fotbol'));
   assert.notEqual(R.hash32('a'), R.hash32('b'));
@@ -519,6 +536,49 @@ test('road: a set counts when it begins: a reload or a quit in the middle deals 
   assert.equal(R.startSet(app, R.FIRST_SET, a), -1, 'the onboarding set is not a Road node');
   assert.equal(R.startSet(app, 'nope', a), -1);
   assert.equal(R.startSet(app, 'goal-side', a), 0, 'a node\'s first set is attempt 0');
+});
+
+test('road: the onboarding set becomes the last set, so the first Road sets after it do not deal the tutorial again', async () => {
+  // Play-test: a defender's and a striker's first Road set dealt 2 of the onboarding set's 3 drills straight back
+  // (the worked example, whose answer the kid had just been shown, scored for real), and the next node's recall rep
+  // was the tutorial's drill once more.
+  for (const group of R.GROUPS) {
+    const app = fakeApp({ [R.PROFILE_KEY]: R.pickGroup(null, group, road) });
+    const first = await R.buildFirstSet({ road, profile: R.loadProfile(app), index, load, seed: 1, generators: { spot: spotStub() }, app });
+    const tutorial = first.map((r) => r.scenario.id.replace(/-m$/, ''));
+    const p = R.loadProfile(app);
+    assert.deepEqual(p.last, { nodeId: R.FIRST_SET, ids: tutorial }, `${group}: the onboarding set is the last set`);
+    assert.deepEqual(p.road, {}, `${group}: and nothing is counted on the Road`);
+    const node = R.nextNode(road, p);
+    const set = await R.buildSet(node, { road, profile: p, index, load, seed: 1, generators: { spot: spotStub() }, app });
+    const again = set.map((r) => String(r.scenario?.id ?? r.drill?.id).replace(/-m$/, '')).filter((id) => tutorial.includes(id));
+    assert.deepEqual(again, [], `${group}: ${node.id}'s first set deals the tutorial's drills again`);
+    assert.equal(set.length, 5, `${group}: still a full set`);
+    // The onboarding set's drills stay in the last set through that set, and leave it with the next.
+    const kept = R.loadProfile(app).last;
+    assert.equal(kept.nodeId, node.id);
+    assert.ok(tutorial.every((id) => kept.ids.includes(id)), `${group}: carried through the first Road set (${kept.ids})`);
+    assert.ok(kept.ids.length <= R.ROAD_DEFAULTS.lastIds);
+    R.startSet(app, node.id, set);
+    assert.ok(!tutorial.some((id) => R.loadProfile(app).last.ids.includes(id)), `${group}: only for one set`);
+  }
+  // A defender's close-down: the left back's own drills on its ideas are the tutorial's two, and a set with nothing
+  // else of the left back's left takes the chapter's other ideas before them.
+  const app = fakeApp({ [R.PROFILE_KEY]: R.pickGroup(null, 'DEF', road) });
+  const first = await R.buildFirstSet({ road, profile: R.loadProfile(app), index, load, seed: 1, generators: null, app });
+  const tutorial = first.map((r) => r.scenario.id.replace(/-m$/, ''));
+  const set = await R.buildSet('close-down', { road, profile: R.loadProfile(app), index, load, seed: 1, generators: null });
+  assert.equal(set.length, 5);
+  assert.deepEqual(set.map((r) => r.scenario.id.replace(/-m$/, '')).filter((id) => tutorial.includes(id)), [], `no generator: ${ids(set)}`);
+  // After a Road set the usual rule holds: the last set's drills come back only when nothing else is left.
+  const plain = await R.buildSet('close-down', { road, profile: { ...R.loadProfile(app), last: { nodeId: 'back-up', ids: tutorial } }, index, load, seed: 1, generators: null });
+  assert.equal(plain.length, 5);
+  // The first set with no app: nothing saved (the sweeps, the tests).
+  const bare = fakeApp({ [R.PROFILE_KEY]: R.pickGroup(null, 'MID', road) });
+  await R.buildFirstSet({ road, profile: R.loadProfile(bare), index, load, seed: 1, generators: null });
+  assert.equal(R.loadProfile(bare).last, null);
+  assert.equal(R.startSet(bare, R.FIRST_SET, []), -1, 'an empty onboarding set: nothing to remember');
+  assert.equal(R.loadProfile(bare).last, null);
 });
 
 test('road: the recall rep comes from another node you have played, never on this node\'s ideas, never a rep of your last set', async () => {
@@ -613,4 +673,124 @@ test('road: the onboarding set leans on your group\'s lead chapter (attacking id
   const def = [];
   await R.buildFirstSet({ road, profile: R.pickGroup(null, 'DEF'), index: [], load, seed: 1, generators: { spot: spotStub(def) } });
   assert.ok(def.every((c) => c.principles.every((p) => ['D1', 'D2', 'D3', 'D4', 'D5', 'T3', 'U8'].includes(p))), 'a defender\'s are about defending');
+});
+
+// ---------------------------------------------------------------- stages: a small game → a bigger game → the full match
+
+test('road: stagePlan builds each set up from the node\'s stars (PROGRESSIVE_FIELD §2); the first set is all small', () => {
+  assert.deepEqual(R.stagePlan(0), ['small', 'small', 'small', 'medium', 'medium']);
+  assert.deepEqual(R.stagePlan(1), ['small', 'small', 'medium', 'medium', 'full']);
+  assert.deepEqual(R.stagePlan(2), ['small', 'medium', 'medium', 'full', 'full']);
+  assert.deepEqual(R.stagePlan(3), ['medium', 'full', 'full', 'full', 'full']);
+  assert.deepEqual(R.stagePlan(0, { first: true, count: 3 }), ['small', 'small', 'small'], '#/play/first');
+  assert.deepEqual(R.stagePlan(R.QUICK_STARS), R.stagePlan(1), "the quick 'Who's open?' set: the 1-star plan");
+  // Out of range, or not a number: clamped (none reads as 0 stars).
+  assert.deepEqual(R.stagePlan(7), R.stagePlan(3));
+  assert.deepEqual(R.stagePlan(-2), R.stagePlan(0));
+  assert.deepEqual(R.stagePlan(null), R.stagePlan(0));
+  assert.deepEqual(R.stagePlan('x'), R.stagePlan(0));
+  // Another length takes the plan's steps in proportion, so it still builds up.
+  assert.deepEqual(R.stagePlan(0, { count: 3 }), ['small', 'small', 'medium']);
+  assert.deepEqual(R.stagePlan(3, { count: 3 }), ['medium', 'full', 'full']);
+  assert.deepEqual(R.stagePlan(1, { count: 10 }), ['small', 'small', 'small', 'small', 'medium', 'medium', 'medium', 'medium', 'full', 'full']);
+  assert.deepEqual(R.stagePlan(2, { count: 0 }), []);
+  for (let s = 0; s <= 3; s++) {
+    const p = R.stagePlan(s, { count: 8 });
+    assert.ok(p.every((x, i) => i === 0 || R.STAGES.indexOf(x) >= R.STAGES.indexOf(p[i - 1])), `${s} stars: it only grows`);
+  }
+  assert.deepEqual([...R.STAGES], ['small', 'medium', 'full']);
+});
+
+test('road: a rep plays its planned stage, else the next bigger one it can (as cast.js bestStage)', () => {
+  assert.equal(R.stageFor({ small: true, medium: true }, 'small'), 'small');
+  assert.equal(R.stageFor({ small: false, medium: true }, 'small'), 'medium');
+  assert.equal(R.stageFor({ small: false, medium: false }, 'small'), 'full');
+  assert.equal(R.stageFor({ small: true, medium: false }, 'medium'), 'full', 'never smaller than planned');
+  assert.equal(R.stageFor(null, 'small'), 'small', 'unknown: as planned');
+  assert.equal(R.stageFor({ small: false }, 'full'), 'full');
+  assert.equal(R.stageFor({}, 'huge'), 'full');
+  assert.equal(R.stagePromotion({ small: false, medium: false }, 'small'), 2);
+  assert.equal(R.stagePromotion({ small: false, medium: true }, 'medium'), 0);
+  assert.equal(R.stagePromotion(null, 'x'), 0);
+  const t = R.stageTally([{ stage: 'small', played: 'small' }, { stage: 'small', played: 'medium' }, { stage: 'medium', played: 'medium' }, { stage: 'full' }]);
+  assert.deepEqual(t, { small: { wanted: 2, played: 1 }, medium: { wanted: 1, played: 1 }, full: { wanted: 1, played: 1 } });
+});
+
+test('road: assignStages plays the most reps at their planned stage, builds up, and keeps the built order when nothing is gained', () => {
+  const S = { small: true, medium: true }, M = { small: false, medium: true }, F = { small: false, medium: false };
+  const plan0 = R.stagePlan(0);
+  // Nothing known (or everything fits): the order is kept (the recall rep stays first).
+  assert.deepEqual(R.assignStages([null, null, null, null, null], plan0), [0, 1, 2, 3, 4]);
+  assert.deepEqual(R.assignStages([S, S, S, S, S], plan0), [0, 1, 2, 3, 4]);
+  // Two reps that cannot be played small move to the bigger-game slots; the small ones come forward in order.
+  assert.deepEqual(R.assignStages([M, S, M, S, S], plan0), [1, 3, 4, 0, 2]);
+  // A rep that can only be played in the full match goes last, never first: the set builds up.
+  const order = R.assignStages([F, S, S, M, M], plan0);
+  assert.deepEqual(order, [1, 2, 3, 4, 0]);
+  const played = order.map((i, j) => R.stageFor([F, S, S, M, M][i], plan0[j]));
+  assert.deepEqual(played, ['small', 'small', 'medium', 'medium', 'full']);
+  // The 3-star plan needs one bigger game: a rep that can play it goes first.
+  assert.deepEqual(R.assignStages([F, F, M, F, F], R.stagePlan(3)), [2, 0, 1, 3, 4]);
+  // A long set: slot by slot, the first rep left that needs the fewest steps up.
+  const long = R.assignStages([M, M, S, S, S, S, M, M, S, S], R.stagePlan(0, { count: 10 }));
+  assert.deepEqual([...long].sort((a, b) => a - b), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  assert.deepEqual(long.slice(0, 6), [2, 3, 4, 5, 8, 9], 'the small reps first');
+  assert.deepEqual(R.assignStages([], []), []);
+});
+
+test('road: buildSet tags every rep with its slot\'s stage and puts the reps that can be played small in the small slots', async () => {
+  // A stand-in stager: generated reps from even seeds can be played small, odd ones only in the bigger game.
+  const small = (rep) => Number(String(rep.scenario?.id ?? rep.drill?.id).split('-').at(-1)) % 2 === 0;
+  const stager = (rep) => ({ small: small(rep), medium: true });
+  const profile = R.pickGroup(null, 'MID');
+  const reps = await R.buildSet('free-player', { road, profile, index, load, seed: 4, generators: { pass: passStub(), forwardable: () => true }, stager });
+  assert.deepEqual(reps.map((r) => r.stage), R.stagePlan(0));
+  assert.ok(reps.slice(0, 3).every(small), `the small slots hold reps that can be played small (${ids(reps)})`);
+  // Played at 3 stars: the 3-star plan.
+  const later = await R.buildSet('free-player', { road, profile: withStars('MID', { 'free-player': 3 }), index, load, seed: 4, generators: { pass: passStub(), forwardable: () => true }, stager });
+  assert.deepEqual(later.map((r) => r.stage), R.stagePlan(3));
+  // The quick set: the 1-star plan; the onboarding set: all small.
+  const quick = await R.buildQuickPassSet({ road, profile, seed: 2, generators: { pass: passStub(), forwardable: () => true }, stager });
+  assert.deepEqual(quick.map((r) => r.stage), R.stagePlan(1));
+  const first = await R.buildFirstSet({ road, profile, index, load, seed: 1, generators: null, stager: null });
+  assert.deepEqual(first.map((r) => r.stage), ['small', 'small', 'small']);
+  // No stager and no formations: the stages are still tagged, the order is the builder's.
+  const plain = await R.buildSet('back-up', { road, profile: withStars('DEF', { 'close-down': 1 }), index, load, seed: 3, generators: null });
+  assert.deepEqual(plain.map((r) => r.stage), R.stagePlan(0));
+  assert.equal(plain[0].recall, true, 'the recall rep stays first');
+});
+
+test('road: while a set is short of reps that can be played small, the builder looks at a few more drills (and no more)', async () => {
+  // Only seeds divisible by 5 give a drill that can be played small: the builder asks for more seeds, within its budget.
+  const calls = [];
+  const gen = passStub(calls);
+  const stager = (rep) => ({ small: Number(String(rep.drill.id).split('-').at(-1)) % 5 === 0, medium: true });
+  const plain = [];
+  await R.buildSet('free-player', { road, profile: R.pickGroup(null, 'MID'), index, load, seed: 4, generators: { pass: passStub(plain), forwardable: () => true } });
+  await R.buildSet('free-player', { road, profile: R.pickGroup(null, 'MID'), index, load, seed: 4, generators: { pass: gen, forwardable: () => true }, stager });
+  assert.ok(calls.length > plain.length, `more drills looked at (${calls.length} calls, ${plain.length} without the plan)`);
+  assert.ok(calls.length <= plain.length + R.ROAD_DEFAULTS.stageBudget, `at most stageBudget more (${calls.length})`);
+  // Everything already fits: not one call more.
+  const fits = [];
+  await R.buildSet('free-player', { road, profile: R.pickGroup(null, 'MID'), index, load, seed: 4, generators: { pass: passStub(fits), forwardable: () => true }, stager: () => ({ small: true, medium: true }) });
+  assert.equal(fits.length, plain.length);
+});
+
+test('road: with the real engine, buildSet stages each rep once and the screens reuse it (stagedRep)', async () => {
+  const [{ createFormation }, cast] = await Promise.all([import('../js/engine/formation.js'), import('../js/engine/cast.js')]);
+  const F = createFormation(await loadJSON('data/formations/helios-433.json'));
+  const formations = { us: F, them: F };
+  const reps = await R.buildSet('back-up', { road, profile: withStars('DEF', { 'close-down': 1 }), index, load, seed: 3, formations, catalogue: principlesFile, generators: null });
+  assert.deepEqual([...R.STAGES], [...cast.STAGES], 'road.js keeps cast.js stages');
+  for (const r of reps) {
+    const staged = R.stagedRep(r, r.stage, { formations });
+    assert.ok(staged && R.STAGES.indexOf(staged.stage) >= R.STAGES.indexOf(r.stage), `${r.scenario.id}: staged at ${r.stage} or bigger`);
+    const fresh = cast.bestStage(r, r.stage, { formations, principles: principlesFile });
+    assert.equal(staged.stage, fresh.stage, `${r.scenario.id}: as bestStage stages it`);
+    assert.deepEqual(staged.cast.ids, fresh.cast.ids);
+    assert.equal(staged.wanted, r.stage);
+  }
+  assert.ok(reps.slice(0, 3).some((r) => R.stagedRep(r, r.stage, { formations }).stage === 'small'), 'a small game among the first reps');
+  assert.equal(R.stagedRep(reps[0], 'small', { formations: { us: F } }), null, 'other formations: not reused');
+  assert.equal(R.stagedRep({ kind: 'spot', scenario: {} }, 'small'), null, 'never staged: null');
 });

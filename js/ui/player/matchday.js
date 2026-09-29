@@ -16,6 +16,8 @@
 // Match day opens when the Road's `matchday.unlockAfter` node (chapter 1's Big Match) has a star (road.js
 // isMatchdayUnlocked; '?dev' in the address skips the lock).
 //
+// The pitch is the full match with tabletop figures and the easy-to-see ball (docs/PROGRESSIVE_FIELD.md §2, §4).
+//
 // Pure helpers (heatFor, bestHotStreak, hardestMoment) are exported for tests; nothing touches the DOM at import time.
 
 import { el, button, icon, svg, linkButton, announce } from '../components.js';
@@ -199,7 +201,8 @@ export async function mount(root, app) {
   els.results = el('div', { class: 'md-results', hidden: true });
   root.replaceChildren(els.stage, els.results);
   const kitNumber = loadRewards(app)?.kit?.number ?? null;
-  const board = app.createBoard(els.board, { orientation: 'auto', labels: 'number', youNumber: Number.isInteger(kitNumber) ? kitNumber : null });
+  // Figures and the easy-to-see ball on the full field (docs/PROGRESSIVE_FIELD.md §2: Match day is the full match).
+  const board = app.createBoard(els.board, { orientation: 'auto', labels: 'number', youNumber: Number.isInteger(kitNumber) ? kitNumber : null, figures: true });
   board.setOverlays({ thirds: false, lanes: false, zone14: false, offsideLine: null, backLine: null });
   const budget = createBurstBudget();
 

@@ -26,14 +26,13 @@
 // checkScenario() is pure (Node and the browser): the file system is only touched in main().
 
 import { createFormation } from '../js/engine/formation.js';
-import { validateScenario, normalizeScenario, mirrorScenario, learnerId as learnerIdOf } from '../js/engine/scenario.js';
+import { validateScenario, normalizeScenario, mirrorScenario, stagesErrors, learnerId as learnerIdOf } from '../js/engine/scenario.js';
 import { frameAt, learnerBaseAt } from '../js/engine/timeline.js';
 import { buildContext } from '../js/engine/context.js';
 import { computeGhost } from '../js/engine/ghost.js';
 import { evaluate, toleranceFor } from '../js/engine/score.js';
 import { dist } from '../js/engine/geometry.js';
 import { stagesOf } from '../js/engine/cast.js';
-import { ROLES } from '../js/engine/roles.js';
 import { renderAscii } from './lib/ascii.mjs';
 
 export const CHECK_DEFAULTS = Object.freeze({
@@ -112,27 +111,15 @@ export function checkScenario(raw, { principles, formations }) {
   return { errors: [], scenario: s, t, frame, base, ctx, ghost, engineGhost, start, moved, startScore, ideal, misconceptions, problems };
 }
 
-/** The ids a scenario may name in `"stages": { "keep": [...] }`: one of ours or theirs, by role (us-LB, them-ST). */
-const PLAYER_ID = new RegExp(`^(us|them)-(${ROLES.join('|')})$`);
-
 /**
  * The problems with a scenario's optional `"stages"` block (docs/PROGRESSIVE_FIELD.md §3, js/engine/cast.js keepIdsOf):
  * an object with `note`, a non-empty string (why the drill has no small or medium stage, or hides a player its words
- * name), and `keep`, an array of player ids the cast always shows (mirrored with the drill).
+ * name), and `keep`, an array of player ids the cast always shows (mirrored with the drill). One definition:
+ * js/engine/scenario.js stagesErrors, which validateScenario reports too (so #/author catches the same problems).
  * @returns {string[]}
  */
 export function stagesProblems(raw) {
-  const st = raw?.stages;
-  if (st === undefined) return [];
-  if (!st || typeof st !== 'object' || Array.isArray(st)) return ['"stages" must be an object: { "note": "...", "keep": ["us-LB", ...] }'];
-  const out = [];
-  for (const k of Object.keys(st)) if (!['note', 'keep'].includes(k)) out.push(`"stages.${k}" is not a stages field (note, keep)`);
-  if ('note' in st && !(typeof st.note === 'string' && st.note.trim())) out.push('"stages.note" must be a non-empty string');
-  if ('keep' in st) {
-    if (!Array.isArray(st.keep)) out.push('"stages.keep" must be an array of player ids');
-    else for (const id of st.keep) if (typeof id !== 'string' || !PLAYER_ID.test(id)) out.push(`"stages.keep" has ${JSON.stringify(id)}, not a player id (us-LB, them-ST ...)`);
-  }
-  return out;
+  return stagesErrors(raw?.stages);
 }
 
 /**

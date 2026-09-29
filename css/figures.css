@@ -1,4 +1,4 @@
-/* fotbol: tabletop player figures (js/ui/figures.js) and their ball (js/ui/board.js), docs/PROGRESSIVE_FIELD.md §4.
+/* fotbol: tabletop player figures (js/ui/figures.js) and the ball (js/ui/board.js, every board), docs/PROGRESSIVE_FIELD.md §4.
    A figure's kit is custom properties (--fig-shirt, --fig-edge, --fig-ink, --fig-shorts, --fig-socks): on the board
    they come from the team (ours: the kid's kit palette, --kit-us*, live; theirs: the dark kit, --kit-them*), so the
    lightness difference between the teams is kept (colour-blind safe); elsewhere a caller may set them (inline style).
@@ -56,7 +56,7 @@
 @keyframes fig-run-a { 0% { visibility: visible; } 50% { visibility: hidden; } }
 @keyframes fig-run-b { 0% { visibility: hidden; } 50% { visibility: visible; } }
 
-/* ------------------------------------------------------------------ the ball (figures only: Coach mode's discs keep theirs) */
+/* ------------------------------------------------------------------ the ball (every board: Coach mode's discs too) */
 
 .ball-shadow { fill: rgb(0 0 0 / 0.34); }
 /* The halo pulses in size only: at full strength all the time, so it never drops below 3:1 against the grass. */
@@ -67,11 +67,33 @@
 .ball-halo-rim { fill: none; stroke: var(--ball-halo-rim); stroke-width: 0.44; }
 .ball-halo-ring { fill: rgb(255 221 0 / 0.2); stroke: var(--ball-halo); stroke-width: 0.26; }
 @keyframes ball-halo { 50% { transform: scale(1.16); } }
-.board.has-figures .token-ball .ball-body { stroke-width: 0.22; }
-.board.has-figures .token-ball .token-ring { stroke-width: 0.3; }
+.board .token-ball .ball-body { stroke-width: 0.22; }
+.board .token-ball .token-ring { stroke-width: 0.3; }
+/* By the best-spot ring (board.js syncGhostBall: the ring is the answer; a yellow ring its size beside it read as the
+   ring itself): while the full halo would reach the ring it shrinks to a thin, still ring hugging the ball (board.js
+   ballByGhostHalo: --ball-halo-tight is its share of the full one), so the ball is haloed, never hidden, and the halo
+   never reads as the ring. */
+.token-ball.is-by-ghost .ball-halo { animation: none; transform: scale(var(--ball-halo-tight, 0.77)); }
 .ball-trail { pointer-events: none; }
 .ball-trail-stop--tail { stop-color: #ffffff; stop-opacity: 0; }
 .ball-trail-stop--head { stop-color: #ffffff; stop-opacity: 0.7; }
+
+/* ------------------------------------------------------------------ YOUR tag (board.js syncTag, tagPlacement)
+   Wherever it covers least round YOUR head (over other players' heads and numbers, the ball, the best-spot ring, a
+   label): it slides there (a translate in the tag's own units, so it zooms with the tag); at once while the layout
+   changes and under reduced motion. In a crowd it takes a smaller form: a compact "YOU" chevron (.is-compact; its "YOU"
+   13 px or more, board.js tagCompactPx) or a chevron alone (.is-mark), in the pill's colours, pointing at YOUR head.
+   Coach mode's discs keep the pill over the token as before, slid clear only of the ball (board.js discTagPlacement). */
+
+.token-you-shift { transition: transform 0.18s ease-out; }
+.board.no-anim .token-you-shift { transition: none; }
+.token-you .you-compact, .token-you .you-mark { display: none; }
+.token-you-shift.is-compact > rect, .token-you-shift.is-compact > text,
+.token-you-shift.is-mark > rect, .token-you-shift.is-mark > text { display: none; }
+.token-you-shift.is-compact > .you-compact, .token-you-shift.is-mark > .you-mark { display: inline; }
+.token-you .you-chevron { fill: var(--learner); stroke: var(--learner-edge); stroke-width: 0.18; stroke-linejoin: round; }
+/* Beside YOUR head or under YOUR feet the compact form is its pill alone (a chevron there would point at nobody). */
+.token-you-shift.is-beside .you-compact .you-chevron { display: none; }
 
 /* ------------------------------------------------------------------ reduced motion: figures stand, the halo stays still */
 
@@ -79,8 +101,10 @@
   .token.is-running .fig-pose-stand { display: inline; }
   .token.is-running .fig-pose-a, .token.is-running .fig-pose-b { display: none; animation: none; }
   .ball-halo { animation: none; }
+  .token-you-shift { transition: none; }
 }
 :root[data-reduced-motion="true"] .token.is-running .fig-pose-stand { display: inline; }
 :root[data-reduced-motion="true"] .token.is-running .fig-pose-a,
 :root[data-reduced-motion="true"] .token.is-running .fig-pose-b { display: none; animation: none; }
 :root[data-reduced-motion="true"] .ball-halo { animation: none; }
+:root[data-reduced-motion="true"] .token-you-shift { transition: none; }

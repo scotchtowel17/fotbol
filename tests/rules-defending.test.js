@@ -324,6 +324,25 @@ test('level-line: not applicable for the presser, midfielders, or in possession'
   assert.equal(levelLine.weight(ctxOf('ipBuildUp', 'us-RCB')), 0);
 });
 
+test('level-line: a reduced frame with nobody else in the back line has no line to hold (cast.js small games)', () => {
+  // WIDE_RIGHT as a small game: our RCB covering the pressing RB, their winger on the ball and their striker. The line
+  // used to fall back to the RCB's own base, so "in line with your other defenders" named players nobody could see.
+  const full = makeFrame(WIDE_RIGHT);
+  const keep = (ids) => ({ ...full, players: full.players.filter((p) => ids.includes(p.id)) });
+  const base = posOf(WIDE_RIGHT, 'us-RCB');
+  const small = buildContext(keep(['us-RCB', 'us-RB', 'them-LW', 'them-ST']), { learnerId: 'us-RCB', base });
+  assert.equal(small.duty, 'second-defender');
+  assert.equal(levelLine.weight(small), 0, 'nobody to be level with');
+  assert.equal(levelLine.cue(small), null, 'no "Your defenders" line where no defender stands');
+  assert.ok(cover.weight(small) > 0, 'the lesson (cover) still applies');
+  // One more of the back line in the cast: the line is theirs again.
+  const bigger = buildContext(keep(['us-RCB', 'us-RB', 'us-LCB', 'them-LW', 'them-ST']), { learnerId: 'us-RCB', base });
+  assert.equal(levelLine.weight(bigger), 3);
+  assert.equal(levelLine.cue(bigger).x, posOf(WIDE_RIGHT, 'us-LCB').x);
+  // The full game is unchanged.
+  assert.equal(levelLine.weight(wide('us-RCB')), 3);
+});
+
 // ---------------------------------------------------------------------------
 // keeps-onside (U4, critical)
 

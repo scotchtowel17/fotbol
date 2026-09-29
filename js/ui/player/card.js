@@ -20,7 +20,7 @@ import { loadRewards, saveRewards, onRewards, todayLocal, shirtNumber } from '..
 import { kitToken } from '../celebrate.js';
 import { shortDay } from '../modes/trophies.js';
 import { loadProfile, onProfile, loadRoad, roadModel, nodeStars, STRINGS as ROAD_STRINGS, groupOfRole } from './road.js';
-import { playerIcon, levelRing } from './shell.js';
+import { playerIcon, levelRing, kidFigure, kitPalette } from './shell.js';
 import { weekCount } from './home.js';
 
 export const CARD_TABS = Object.freeze(['card', 'stickers', 'badges', 'kit']);
@@ -63,6 +63,7 @@ export const STRINGS = Object.freeze({
   save: 'Save',
   saved: 'Saved',
   savedSr: 'Your kit is saved.',
+  you: 'YOU', // the tag over your figure in the kit locker when you have no nickname (as on the pitch)
 });
 
 // ---------------------------------------------------------------- pure models
@@ -166,8 +167,13 @@ export function kitEditor(app, { showLocked = true, saveLabel = STRINGS.save, on
   const options = Rewards.kitOptions(state).filter((p) => showLocked || p.unlocked);
   const preview = el('div', { class: 'pm-kit-preview', 'aria-hidden': 'true' });
   const status = el('p', { class: 'pm-kit-saved', role: 'status' });
+  // You in the kit you are trying on: your own figure (the look you have on the pitch), your number, your tag.
+  const role = profile.role ?? app.settings?.role ?? null;
   const drawPreview = () => {
-    preview.replaceChildren(kitToken(Rewards.paletteById(draft.palette), { number: draft.number ?? roleNum, label: draft.nickname || 'YOU', size: 104 }));
+    preview.replaceChildren(
+      el('span', { class: 'pm-kit-tag', text: draft.nickname || STRINGS.you }),
+      kidFigure({ role, number: draft.number ?? roleNum, palette: Rewards.paletteById(draft.palette), height: 150, className: 'pm-kit-fig' }),
+    );
   };
   const touched = () => { status.textContent = ''; drawPreview(); };
 
@@ -266,7 +272,7 @@ function cardView(app, road) {
           el('span', { 'aria-hidden': 'true', text: lvl.rank.name }),
         ]),
       ]),
-      el('div', { class: 'pm-fc-token', 'aria-hidden': 'true' }, [kitToken(null, { number, size: 112 })]),
+      el('div', { class: 'pm-fc-token', 'aria-hidden': 'true' }, [kidFigure({ role, number, palette: kitPalette(state), height: 136, className: 'pm-fc-fig' })]),
       state.kit.nickname ? el('p', { class: 'pm-fc-name', text: state.kit.nickname }) : null,
       el('ul', { class: 'pm-fc-skills' }, skills.map((s) => el('li', { class: 'pm-fc-skill', 'aria-label': STRINGS.skillSr(s.label, s.rating) }, [
         el('b', { 'aria-hidden': 'true', text: String(s.rating) }),
