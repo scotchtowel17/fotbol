@@ -1,0 +1,86 @@
+/* fotbol: tabletop player figures (js/ui/figures.js) and their ball (js/ui/board.js), docs/PROGRESSIVE_FIELD.md §4.
+   A figure's kit is custom properties (--fig-shirt, --fig-edge, --fig-ink, --fig-shorts, --fig-socks): on the board
+   they come from the team (ours: the kid's kit palette, --kit-us*, live; theirs: the dark kit, --kit-them*), so the
+   lightness difference between the teams is kept (colour-blind safe); elsewhere a caller may set them (inline style).
+   Skin and hair are the player's own (fill attributes). Units are the figure's (base radius 1). */
+
+:root {
+  --ball-halo: #ffdd00; /* the ball's halo: >= 3:1 against the grass in both themes, at every point of its pulse (tests/board.test.js) */
+  --ball-halo-rim: rgb(0 0 0 / 0.55); /* a thin dark edge either side of the halo ring: it stands out from light grass, light kits and YOUR gold base */
+  --fig-line: rgb(12 16 14 / 0.78); /* outlines round skin, hair, shorts and socks */
+  --fig-boot: #1b1d21;
+  --fig-glove: #f4f6f8;
+  /* Goalkeepers: a kit of their own (and gloves, long sleeves); ours stays light and theirs dark, like the teams. */
+  --kit-us-gk: #c6f432;
+  --kit-us-gk-edge: #3a4a0c;
+  --kit-us-gk-ink: #1a2304;
+  --kit-them-gk: #26282d;
+  --kit-them-gk-edge: #e6e8ee;
+  --kit-them-gk-ink: #f6f7f9;
+}
+
+/* ------------------------------------------------------------------ the figure */
+
+.fig { pointer-events: none; }
+.fig-base { fill: var(--fig-shirt, var(--kit-us)); stroke: var(--fig-edge, var(--kit-us-edge)); stroke-width: 0.12; }
+.fig-foot-shadow { fill: rgb(0 0 0 / 0.3); }
+.fig-shirt { fill: var(--fig-shirt, var(--kit-us)); stroke: var(--fig-edge, var(--kit-us-edge)); stroke-width: 0.07; stroke-linejoin: round; }
+.fig-collar { fill: var(--fig-edge, var(--kit-us-edge)); }
+.fig-shorts { fill: var(--fig-shorts, var(--fig-edge, var(--kit-us-edge))); stroke: var(--fig-line); stroke-width: 0.05; stroke-linejoin: round; }
+.fig-socks { fill: var(--fig-socks, var(--fig-shirt, var(--kit-us))); stroke: var(--fig-line); stroke-width: 0.045; stroke-linejoin: round; }
+.fig-boots { fill: var(--fig-boot); }
+.fig-skin, .fig-hair { stroke: var(--fig-line); stroke-width: 0.045; stroke-linejoin: round; }
+.fig-arms--long { fill: var(--fig-shirt, var(--kit-us)); stroke: var(--fig-edge, var(--kit-us-edge)); stroke-width: 0.045; stroke-linejoin: round; }
+.fig-gloves { fill: var(--fig-glove); stroke: var(--fig-line); stroke-width: 0.045; }
+.fig-num { fill: var(--fig-ink, var(--kit-us-ink)); font-weight: 900; letter-spacing: -0.02px; pointer-events: none; }
+
+/* On the board: the team's kit (and the keepers'). */
+.team-us .fig { --fig-shirt: var(--kit-us); --fig-edge: var(--kit-us-edge); --fig-ink: var(--kit-us-ink); --fig-shorts: var(--kit-us-edge); }
+.team-them .fig { --fig-shirt: var(--kit-them); --fig-edge: var(--kit-them-edge); --fig-ink: var(--kit-them-ink); --fig-shorts: var(--kit-them-edge); }
+.team-us .fig.is-gk { --fig-shirt: var(--kit-us-gk); --fig-edge: var(--kit-us-gk-edge); --fig-ink: var(--kit-us-gk-ink); --fig-shorts: var(--kit-us-gk-ink); }
+.team-them .fig.is-gk { --fig-shirt: var(--kit-them-gk); --fig-edge: var(--kit-them-gk-edge); --fig-ink: var(--kit-them-gk-ink); --fig-shorts: var(--kit-them-gk); }
+.board.no-labels .fig-num { display: none; }
+/* The base disc is a little thinner-edged than a Coach-mode disc: the figure on it carries the outline. */
+.board.has-figures .token-body { stroke-width: 0.22; }
+
+/* The run cycle: two poses in turn while the token moves between renders (board.js toggles .is-running); still otherwise.
+   Its length is FIGURE_DEFAULTS.runMs, which the board sets as --fig-run-ms (single-sourced: no number here). */
+.fig-pose-a, .fig-pose-b { display: none; }
+.token.is-running .fig-pose-stand { display: none; }
+.token.is-running .fig-pose-a, .token.is-running .fig-pose-b {
+  display: inline;
+  animation: var(--fig-run-ms) steps(1, end) var(--fig-run-delay, 0ms) infinite;
+}
+.token.is-running .fig-pose-a { animation-name: fig-run-a; }
+.token.is-running .fig-pose-b { animation-name: fig-run-b; }
+@keyframes fig-run-a { 0% { visibility: visible; } 50% { visibility: hidden; } }
+@keyframes fig-run-b { 0% { visibility: hidden; } 50% { visibility: visible; } }
+
+/* ------------------------------------------------------------------ the ball (figures only: Coach mode's discs keep theirs) */
+
+.ball-shadow { fill: rgb(0 0 0 / 0.34); }
+/* The halo pulses in size only: at full strength all the time, so it never drops below 3:1 against the grass. */
+.ball-halo {
+  transform-box: fill-box; transform-origin: center;
+  animation: ball-halo 1.8s ease-in-out infinite;
+}
+.ball-halo-rim { fill: none; stroke: var(--ball-halo-rim); stroke-width: 0.44; }
+.ball-halo-ring { fill: rgb(255 221 0 / 0.2); stroke: var(--ball-halo); stroke-width: 0.26; }
+@keyframes ball-halo { 50% { transform: scale(1.16); } }
+.board.has-figures .token-ball .ball-body { stroke-width: 0.22; }
+.board.has-figures .token-ball .token-ring { stroke-width: 0.3; }
+.ball-trail { pointer-events: none; }
+.ball-trail-stop--tail { stop-color: #ffffff; stop-opacity: 0; }
+.ball-trail-stop--head { stop-color: #ffffff; stop-opacity: 0.7; }
+
+/* ------------------------------------------------------------------ reduced motion: figures stand, the halo stays still */
+
+@media (prefers-reduced-motion: reduce) {
+  .token.is-running .fig-pose-stand { display: inline; }
+  .token.is-running .fig-pose-a, .token.is-running .fig-pose-b { display: none; animation: none; }
+  .ball-halo { animation: none; }
+}
+:root[data-reduced-motion="true"] .token.is-running .fig-pose-stand { display: inline; }
+:root[data-reduced-motion="true"] .token.is-running .fig-pose-a,
+:root[data-reduced-motion="true"] .token.is-running .fig-pose-b { display: none; animation: none; }
+:root[data-reduced-motion="true"] .ball-halo { animation: none; }

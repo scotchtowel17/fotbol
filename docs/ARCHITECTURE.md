@@ -505,7 +505,9 @@ export function kFactor(n, params?), principleTheta, roleTheta, targetFor(skills
 ```js
 // js/ui/board.js
 export const BALL_ID = 'ball';                         // the ball's id in enableDrag ids, highlight lists and onMove/onEnd
-export function createBoard(container, { orientation = 'auto', params, youLabel = 'YOU', labels = 'role', youNumber = null } = {}) → Board
+export function createBoard(container, { orientation = 'auto', params, youLabel = 'YOU', labels = 'role', youNumber = null, figures = false } = {}) → Board
+//   figures: players drawn as tabletop figures (Player mode, docs/PROGRESSIVE_FIELD.md §4; see "Figures, the ball and the camera"
+//   below) instead of discs (false: Coach mode, as before);
 //   params: BOARD_DEFAULTS overrides; youLabel: the tag over the learner (app.createBoard passes the learner's nickname, §5.13);
 //   labels: 'role' (Coach mode: role codes on the tokens) | 'number' (Player mode: each team's unique shirt numbers, ROLE_INFO num:
 //   GK 1, RB 2, LB 3, LCB 4, RCB 5, DM 6, RW 7, LCM 8, ST 9, RCM 10, LW 11; plain names and places for screen readers, no codes
@@ -520,6 +522,9 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
 //   setGhost(Vec|null), setZone({ center, tol }|null), setHeatmap(field|null),
 //   setOverlays({ thirds, lanes, zone14, offsideLine: number|null, backLine: number|null }),   // merges partial patches
 //   setFocus({ x0, x1 } | Vec[] | null),              // the pitch length a mode needs: a phone held upright crops the rest (focusViewBox)
+//   setCamera({ x0, x1, y0, y1 } | null),             // fit that world rect on both axes (cameraViewBox), easing over cameraMs (at once under
+//                                                     // reduced motion); it wins over setFocus; null = back to setFocus's crop (or the whole pitch)
+//   camera (getter: the rect or null), viewBox (getter: { x, y, width, height } drawn now), ballScale, figureScale, figures (getters),
 //   setMarkers([ arrow {from,to,tone?,label?} | segment {a,b,tone?,dashed?,label?,labelAt?,clear?} | line-x {x,tone?,dashed?,label?,labelAt?,clear?}
 //                | ring {at?|id?, r?, tone?, pulse?, label?} | label {at,text,tone?,lift?,below?,clear?} | a rule cue() object ]),   // tone: fix|cue|good|bad|info
 //                // every marker may carry cls (extra class names: Player mode styles its lanes, rings and ★ ✓ ! ✗ labels with them).
@@ -551,7 +556,59 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
 //   tokenLabel(id, mode, { learnerId, youNumber }), simpleTokenName(id, learnerId, youNumber) ("Teammate, number 4"), describeSpotSimple(p)
 //   tapAction({ armed, pressed, tapToMove, onBody }) → { kind: 'arm'|'disarm'|'move'|'none', id }   // what a tap does (see enableDrag)
 //   hintPose, hintTotalMs, aidLevel, aidStrength    // the worked-example hand's pose over time, its length, the glow band and strength for a distance
+//   Figures, the ball and the camera (docs/PROGRESSIVE_FIELD.md §4):
+//   CAMERA_MIN ({ length: 24, width: 16 } m [D]), cameraViewBox(orientation, box, rect) → viewBox   // setCamera's window (below)
+//   figureScale(pxPerM), ballScale(pxPerM), ballPx(pxPerM)   // a figure's scale (a two-digit number ≥ figureNumberPx, 11 px), the ball's (≥ ballMinPx across)
+//   boardScales(pxPerM, { figures, player, camera }) → { k, kf, kl, kt, kb }   // every drawn size: k the discs (a figure's base), kf the figures,
+//                                                     // kb the ball; discs without a camera = tokenScale/labelScale/tagScale, and kb = kf = k
+//   facingToward(from, target, orientation, prev, P, slope = 0), carrierTarget(team, carrierFacing), carriedBallAt(feet, facing, orientation, { k, kb })
+//   carryReach({ k, kb }), carryWeight(d) → 0..1, stepToward(from, to, max)   // the carried ball's offset: its size, how much of it, the slide
+//   isRunning(dist, dtMs), motionPlan(reduced) → { runCycle, haloPulse, cameraEase, trail }, ballTrail(history) → { tail, head, speed } | null
+//   relLuminance(hex), contrastRatio(a, b)   // WCAG; the ball and its halo are ≥ 3:1 against the grass in both themes (tested)
+// js/ui/figures.js (a DOM helper: no engine imports, nothing touched at import time)
+export function drawFigure(parent, { shirt, edge, ink, shorts, socks, number, skin, hair, hairStyle, gk, facing = 1, size = 1, base = true, run = false }) → SVGGElement
+//   a tabletop figure, feet at the parent's origin: the base disc (base: false, the board draws its own), an upright faceless player
+//   FIGURE.height (2.4) sizes tall (size = the base radius) facing +x (facing -1: the body mirrored, never the number): head and hair,
+//   a shirt with the number in the ink colour, shorts, socks, boots, arms; goalkeepers (gk) long sleeves and gloves; run: also the two
+//   running poses. Kit colours are CSS colours or var(--x) (dropped if not); left out, css/figures.css gives the team's kit
+//   (--fig-shirt ← --kit-us* / --kit-them*, the keepers' --kit-*-gk), so the kid's kit palette applies live
+export function figureLook(playerId, team) → { skin, hair, hairStyle }   // deterministic per id: SKIN_TONES ×5, HAIR_COLOURS ×5, HAIR_STYLES ×4
+//   also figureSpec(opts) (the same figure as plain shape specs, pure), setFacing(fig, ±1), runDelay(id), isKeeperId(id), numberFontSize(text), FIGURE
 ```
+
+**Figures, the ball and the camera** (`css/figures.css`). With `figures: true` each player token is the base disc (`.token-body`, so the
+team's and YOUR colours apply as before) with a figure standing on it, upright in both layouts. **Sizes:** the base disc (and with it the
+token's rings, hit area, targets, ghost and aid rings) keeps a disc's size (`tokenScale`, capped at `maxTokenPx`: 22 px on a phone at full
+stage, today's readability from above); only the figure grows, to `figureScale` (the shirt number at least `figureNumberPx`, up to
+`figureMaxScale`, never taller than `figureMaxPx`; the number fills the shirt, `numberFontSize`, so the figure need grow less). With figures
+or a camera, labels and YOUR tag are capped too (`maxLabelPx`, `maxTagPx`). Measured [M] on the 36 authored freezes, whole pitch on a
+375 × 812 phone (5.07 px/m): figures about 40 px tall, footprints 13 % of the board with 6.3 heavily overlapping pairs a scene (the base
+grown with the figure: 22 %, 9.1; today's discs: 5 %, 2.9). A phone held sideways (about 3.2 px/m for the whole pitch) hits
+`figureMaxScale` and shows shirt numbers about 10 px: bigger figures would hide the team's shape there. **Facing:** a figure faces the
+ball as drawn (a carried ball beside its carrier's boots), keeping its way within `facingDeadZone`; the carrier faces the goal it plays
+toward (its own when `tags.carrierFacing` is 'backward'), but keeps its way while that goal lies within `carrierFacingSlope` (45°) of
+straight up or down the screen (a phone held upright: a carrier crossing the middle never turns), and simply faces the goal's side in a
+new scene. **Running:** a two-pose cycle (`.is-running`, keyframes in css/figures.css, `--fig-run-ms` set from `FIGURE_DEFAULTS.runMs`,
+each player at its own point in it) while it moves between renders at `runMinSpeed` or more, standing `runHoldMs` after the renders stop;
+never under reduced motion. Figures are stacked back to front (lower on the screen in front, re-stacked only past `depthSlop`, moving only
+the nodes out of place), YOU and then the ball on top; YOUR tag sits over the head. A tap or press on the upright figure counts as on the
+token (tap-to-move, targets, drags). DOM nodes are made once per player and reused (22 running figures and the ball: render about 1 ms a
+frame, 2.3 ms at worst, on a phone-sized board with the CPU throttled 4×). **The ball** (figures boards) is drawn last, at least
+`ballMinPx` across at any zoom (`ballScale`, up to `ballMaxPx`), white with dark patches and a thick outline, a halo ring (`--ball-halo`
+with a dark rim, `--ball-halo-rim`; it pulses in size only, so it keeps 3:1 or more against the grass, and is still under reduced
+motion) and a ground shadow; while it flies at `trailMinSpeed` or more a fading trail reaches `trailMs` back, starting afresh when the ball
+is taken or let go. A carried ball is drawn beside the carrier's boots on the side it faces (`carriedBallAt`), a ball between `carryNear`
+and `carryDist` from its carrier partly so (`carryWeight`), and the drawn offset slides there at most one full carry offset
+(`carryReach`) per `carryEaseMs`: taking the ball, letting it go, the carrier turning or the camera zooming never make it jump (after a
+gap of more than `carrySnapMs`, a new scene, or while a hand drags it, it is drawn in place at once; once the renders stop a sliding ball
+finishes its slide, `settleBall`). The slide is where the ball is drawn, not decoration: it stays under reduced motion. A draggable
+carried ball is picked up where it is drawn. Measured [M]: the 36 authored clips at 60 Hz on a 375 px phone, the drawn ball never moves
+more than 0.31 m (1.6 px) beyond the ball's own move in a frame (before: jumps up to 6.8 m, 34 px, in 34 clips). **Coach mode** (discs,
+`figures: false`) is unchanged, its ball included (drawn where it is, growing with the discs, its old ring): the token layer is the same
+DOM as before for the same frames. **The camera** (`setCamera`) fits the rect plus `cameraPad` (and `cameraHeadroom` at the top of the
+screen, where figures stand) on both axes: at least `CAMERA_MIN`, no closer than `cameraMaxPxPerM`, the board's aspect, slid inside the
+pitch and its margin. While it eases only the viewBox and the tokens change (no re-measuring, no label restyle); `--board-label-k`, the
+overlays and the markers are redrawn once, on the frame it lands (a throttled phone keeps its frame rate through the ease).
 
 Every draggable or tappable token is at least `minHitPx` (44 CSS px) wide to hit, however small it is drawn (R10).
 
@@ -1028,6 +1085,53 @@ PLAYER_ICONS, playerIcon(name), levelRing(level, progress), soonCard(), failedCa
 //   skillRatings, cardMetal, stickerAlbum, badgeList, nicknameList (pure)
 // strings.js: the shared words: STAR_WORDS, ROLE_NAMES (plain position names), roleName, starWord, roleCard(role, profileRole), STRINGS
 ```
+
+### 5.17 cast.js (the progressive field: a small game, a bigger game, the full match)
+
+The spec is [PROGRESSIVE_FIELD.md](PROGRESSIVE_FIELD.md) §1-§3. A staged rep is played and judged on a **reduced frame** that holds only its cast: hidden players are not drawn and not scored. The playback is the full game's (the cast moves exactly as in the 22-player clip); only what is drawn and judged is reduced.
+
+```js
+// js/engine/cast.js: PURE, deterministic (no clock, no randomness)
+export const STAGES = ['small', 'medium', 'full'];
+export const CAST_DEFAULTS = { small: { min: 3, max: 6 }, medium: { min: 6, max: 12 }, mediumFrom: 7 /* = small.max + 1 */, sameAnswer: 4,
+  minGhostScore: 90 /* = CHECK_DEFAULTS */, stillMax: 70 /* = CHECK_DEFAULTS.maxStartScore */, minRuleWeight: 2, minRuleScore: 0.9 /* = SPOT_DEFAULTS */,
+  maxGap: 2, cueReach: 0.5, receiveReach: 1.5, laneReach: 3, minOurs: 2, decisiveAt: 0.5, lineLevel: 0.3 /* = OFFSIDE_DEFAULTS.margin */,
+  offsidePrinciples: ['F4', 'B2', 'P5'], offsideRules: ['offside', 'pin', 'keeps-onside'], namedPlural: 2, minOptions: 3, maxOptions: 5,
+  passMargin: 8 /* = PASSDRILL_DEFAULTS.margin */, passMediumFrom: 8, farPass: 45 /* = pass.js PASS_DEFAULTS.farPass */, passNoRise: 2, praiseDepth: 3 };
+  // [D] ([S] farPass); equalities tested
+export function castFor(frame, { learnerId, base, ghost, principles, stage, clipIds = [], keep = [], params, start, size, ctx, rating, decisive }) → { ids, label, ours, theirs, fits }
+                                                   // throws on a frame with no opponent or without the learner
+export function reduceFrame(frame, ids) → Frame     // only those players (frame order); ball, possession, tags and t kept; carrierId only when in ids;
+                                                   //   ids a Set or an array (a single id string throws); no ball in, no ball out
+export function castLabel(ids, stage) → { label, ours, theirs }   // "3 v 2" (a keeper counts only when in the cast); 'full' → "11 v 11"
+export function clipIdsOf(item, { formations, params }) → string[]   // everyone on the ball in the clip: timeline carriers, a pass drill's
+                                                                   //   carrier, scripted players who meet the ball at a ball key, the t = 0 carrier
+export function keepIdsOf(item, frame, { learnerId, base, clipIds, params }) → { ids, scripted, authored, named }   // always shown (below)
+export function kidTextsOf(item) → string[]          // the words a kid can read: briefKid, questionKid, the takeaway, each misconception's text
+export function stageSpotDrill(scenario, stage, { formations, principles /* catalogue: ruleIds */, params, trace }) → SpotStage | null
+export function stagePassDrill(drill, stage, { formations, params, trace }) → PassStage | null
+export function bestStage(item, wanted, opts) → SpotStage | PassStage   // + wanted; `wanted`, else the next bigger stage that passes; never null
+export function stagesOf(item, opts) → { small, medium, full }         // every stage at once (npm run check, reports)
+// item: a scenario, a pass drill (kind 'pass'), or a Road rep ({ kind: 'spot', scenario } | { kind: 'pass', drill }); null = the stage cannot teach it
+// SpotStage = { stage, kind: 'spot', cast: { ids, label, ours, theirs }, ghost /* computeGhost on the reduced frame */, base, tol,
+//   centre /* base, or answer.ideal in authored mode */, frame /* the reduced free frame at the freeze */, ctx /* its context */, t /* freezeAt */,
+//   start, learnerId, clipIds, keep, lesson: { principle, rules, primary, minWeight, unmet? } | null, fullGhost: { spot, score },
+//   gates: { ok, ghostScore, sameAnswer /* m from the full game's ghost */, rule: { id, principle, weight, s } | null, startScore, hold,
+//     fullAnswerScore /* the full game's best spot, scored here */, praise /* the rules praised at the answer */, tries, failed: [] } }
+// PassStage = { stage, kind: 'pass', cast, rating /* rateOptions on the reduced freeze frame */, answer: { best /* rating.best.id */, accept },
+//   frame, t, learnerId, clipIds, keep, fullBest, gates: { ok, best, fullBest, choice: 'wrong-option' | 'clear-best', margin,
+//     options /* receivers a tap can pick */, targets /* their ids */, lesson, tries, failed: [] } }
+```
+
+- **Playing a staged rep (drop-in for today's shapes).** Spot (play.js): the watch draws `reduceFrame(frameAt(s, t, { formations }), cast.ids)` with YOU at the start; the freeze, the judging and the reveal use the staged `{ frame, ctx, ghost }` in place of `repScene`'s `{ freezeFrame, ctx, ghost }` (`judgeSpot({ ctx, ghost }, spot)`, `revealFor`, `keyPlayers({ freezeFrame: frame, ctx })`), so every star, ring and sentence depends only on players in the cast. Pass (pass.js): the watch reduces `passDrillPlayback` frames; targets, grading and words use the staged `rating` and `answer` in place of `drill.rating` and `drill.answer` (`gradePass(rating, choiceId, { accept: answer.accept })`, `explainPass(rating, choiceId, { accept, focus: drill.principles })`). The full stage returns the full game unchanged (all 22, the drill's own rating). Try again stages the twin with `bestStage(twin, firstTry.stage)`. Staging takes up to ~30 ms a rep on a laptop (more on a slow phone): stage the set's reps ahead of time (at the set's start, or during the previous reveal), not on the tap.
+- **Always shown** (the must, never swapped out to even the teams; a stage whose must overflows its cap fails, traced, and the rep falls back): the learner; everyone on the ball in the clip; the players the drill **scripts or names** (`keepIdsOf`): its scripted (override) players, its authored `"stages": { "keep": [ids] }` (mapped with `mirrorPlayerId` for a mirrored drill), and the players its kid words name ("their striker", "your defenders", "your partner": for each name, the players of that team and role nearest the learner's base, `namedPlural` for a plural, counting the clip and the scripted ones), since §1 has every sentence about players the kid can see; the **duties** the judging reads: defending, the context's first defender and the learner's mark; the presser on the ball whenever it is under pressure (the carrier's nearest outfield opponent, the learner at their base as the context reads it), so `pressureOnBall` is never judged on nobody; pass reps, the passer's presser.
+- **The offside line.** When the lesson involves it (F4/B2/P5 asked; the offside, pin or keeps-onside rule weighted 2+ in the full game) the setters are in exactly: the defending team's second-last player and one at least as deep (their keeper, or a defender level within `lineLevel`), ours counted without the learner, so the reduced line is the full game's (tested). Otherwise an attacker in the cast ahead of the ball past halfway brings in setters only when the reduced line would judge someone in the cast differently (an attacker or receiver, or the learner's answer or start when attacking, on the other side of it or between the two lines): then the nearest pair that judges everyone the same (the second-last with one of the next deepest outfield players), the keeper only when nothing else holds (tested: no offside call in the cast changes, and a keeper in a small game holds a line). This keeps a far keeper out of most small games (the camera fits the cast, so figures are big).
+- **Then the lesson's players** (`castFor`, most relevant first). Spot: defending, the context's second defender and the dangerous attacker; attacking, the opponents within `laneReach` of the lanes from the ball to the learner's base and ghost and those nearest the ghost, the base and the ball; the teammate nearest the ghost; the players the rules weighted 2+ cue at the ghost (`rule.cue(ctx, ghost)`: a player, or the players on a cued line, point or segment end within `cueReach`, nearest the ghost first); defending, the opponents nearest the ghost and the base; in the bigger game the learner's unit. Pass: receiver by receiver (the best, then the passer's guards, the decoys, the rest; only receivers a tap can pick, so a far decoy never stretches the camera), each with the defenders who block or press any pass to them, and the defender nearest the ball. Then the nearest players to the ghost (or the best pass's target), the ball and the start. Both teams stay in the game: at least one of theirs (never 0), a teammate beside the learner in spot reps (`minOurs`), and |ours - theirs| within `maxGap` while filling. Ties go by distance (to the ghost, the ball), never frame order, so a mirrored drill stages with exactly the mirrored players (tested with `mirrorPlayerId`).
+- **The gate, spot reps** (§1), on the reduced frame at the freeze, cheap checks first: the learner's duty, first defender and mark are the full game's; the lesson's rule weighs its `minWeight`+; standing still at the start scores below `stillMax` (not for an `answer.hold` drill); the ghost scores S, is within `sameAnswer` of the full game's ghost, and the lesson's rule scores `minRuleScore`+ there; the full game's best spot scores S on the reduced frame too (a 3-star answer in both games); and the kid is praised at the answer for the same rules as in the full game, `praiseDepth` deep (play.js `praiseOf`/`pickLine`/`whyFor`: the reveal's line and the Why? sheet's praise; tested against `revealFor`). Every comparison fails on NaN (a reduced frame without a unit has NaN lines). **The lesson's rule**: the primary principle's (its catalogue `ruleIds`) at `minRuleWeight` when one is weighted 2+ and met at the full game's ghost; at its full-game weight when it is met there but weighs less (m3-08's R3 screen x 1: the staged game keeps it as active as the full one); a primary with no rule in the catalogue (T2, T3, U3, U6, U7, U8, R1, R2, B6, P1: taught by the scene, so §1's "the primary principle's rule" cannot apply) is held through the drill's next idea with a rule met at the full game's ghost, else the heaviest rule met there, and the praise check keeps the words the same; a primary whose rules are not met at the full game's answer at all is `unmet` (npm run check fails it unless a note says why).
+- **The gate, pass reps**, receiver by receiver as pass.js plays a tap (`optionsByReceiver`: the better of feet and space; `passTargets`: nobody past `farPass` from the ball and not the keeper, unless that pass is really on): 3-5 receivers a tap can pick, each one the full game offers too; the best receiver is the full game's (by `targetId`), and its pass is not risky, cut out, offside or dangerous in the full game; a real choice: another receiver's pass is risky, cut out, offside or dangerous, or the best leads every other receiver's by `passMargin` (a too-safe option at its graded cap), and at least one other receiver earns under 3 stars; no receiver earns 3 stars that the full game grades `passNoRise` or fewer; every receiver's offside call is the full game's. Among the casts that pass, the first that still teaches the drill's lesson (`passLessons`) wins (`gates.lesson`). `full` always passes.
+- **Growing** (the gate failed): the small game starts at its minimum (the smallest cast that teaches the lesson wins), the bigger game at the must and the lesson's players and never below `mediumFrom` (pass reps `passMediumFrom`), so it is always bigger than any small game; one player at a time (the next most relevant) up to the cap, first keeping the teams within `maxGap`, then by relevance alone (a lesson that needs our front line against their back four: 8 v 4). When the plain order never passes, a spot rep ranks first the **decisive** players (`decisiveIds`: leave each one out of the full game; one whose absence alone moves the answer `decisiveAt` x `sameAnswer` or uses up that share of the margin standing still has below `stillMax`; it finds players a lesson needs together, such as a line of three forwards that crowds a spot) and grows again from the stage's fewest players; still failing and not a hold drill, `stillIds` ranks first the players who bring standing still back below `stillMax` (greedily, the one who lowers the start's score most each step: the back line whose spacing the start spoils, say) and grows once more. Still failing: null, and `bestStage` tries the next bigger stage.
+- **npm run check** (`scripts/check-scenarios.mjs checkStages`, pure) prints each authored drill's and mirror's passing stages with their casts, the lesson the smaller games are held to and the players always shown, and why a stage fails. It fails: a malformed `"stages"` block (`stagesProblems`: `note` a non-empty string, `keep` an array of player ids, no other fields); and, unless the scenario says why in `"stages": { "note": "..." }`, a drill (or its mirror) with neither a small nor a medium stage, a staged cast that hides a player the drill scripts or names (never, by construction; checked all the same), or an unmet primary idea.
+- **Measured** [M] (Node 24, a laptop; `tests/cast.test.js` holds the gate on the authored drills, generated fixtures, the reveal's words, a small game's camera box and a staged speed bound). Authored drills and their mirrors (72): small 42 (58 %), medium 72 (100 %), neither 0; the smaller games that fall back do so mostly because the players the drill scripts or names, the duties and the line need 7-8 players (9 drills). Generated spot drills (spotdrill.js, 8 seeds a principle and family, 501 drills): small 68 % (CM 54, W 78, ST 68, CB 63, FB 78, DM 70 %), medium 97 % (ST 91 %, the rest 96-100 %). Generated pass drills (passdrill.js, direction 'any', 8 seeds, 442 drills): small 33 % (wingers 75 %, full-backs 2 %: their forward receivers bring in the offside line, which leaves no room in six for the blockers, so the small game changes the answer), medium 96 % (full-backs 85 %); the lesson still taught 66 % of small and 83 % of medium reps. Every staged spot rep says the same line and Why? at the answer as the full game (checked with `revealFor`); every isolated player (25 m+ from the rest) in a small game is a pass target, on the ball in the clip or holds the offside line. Speed: `bestStage` for a spot rep median 2 ms, 90th percentile 9 ms, slowest 26 ms; a pass rep median 0.9 ms, slowest 2 ms; the five slowest drills through the 0-star plan 92 ms.
 
 ## 6. Adding things
 

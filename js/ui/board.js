@@ -37,6 +37,24 @@
 //                                           can sit at `labelAt`
 // Every draggable token is at least minHitPx (44 CSS px) wide to hit (a press there picks it up to drag), however
 // small it is drawn (R10).
+//
+// Figures, the ball and the camera (docs/PROGRESSIVE_FIELD.md §4):
+//   createBoard(el, { figures: true })     Player mode: every player is a tabletop figure (js/ui/figures.js: a base disc
+//                                           in the team's kit, a disc's size, with an upright, faceless footballer on it
+//                                           that alone grows so the number on the shirt reads) that stays upright in both
+//                                           layouts, faces the ball as drawn, and runs (a two-pose cycle, css/figures.css)
+//                                           while it moves between renders; YOU have a gold base and glow, and YOUR tag
+//                                           over the head. Figures are re-stacked so the one lower on the screen stands in
+//                                           front. The ball (figures only) is drawn over everything, at least ballMinPx
+//                                           across (bigger when zoomed), white with dark patches and a thick outline, a
+//                                           pulsing halo (still under reduced motion) and a ground shadow; a fading trail
+//                                           while it flies; a carried ball sits beside the carrier's boots on the side
+//                                           they face, sliding there and away (never jumping), so nobody hides it.
+//                                           Coach mode (discs) is unchanged: its ball is drawn where it is, as before.
+//   board.setCamera({ x0, x1, y0, y1 } | null)
+//                                           fit that world rect on both axes (cameraViewBox), easing there (the viewBox and
+//                                           the tokens each frame; markers and overlays are redrawn once, when it lands);
+//                                           null: back to setFocus's length crop (or the whole pitch)
 
 import {
   LENGTH, WIDTH, HALF_X, MID_Y, GOAL_DEPTH, PENALTY_AREA, GOAL_AREA, PENALTY_SPOT_DIST,
@@ -45,6 +63,7 @@ import {
 } from '../engine/pitch.js';
 import { ROLE_INFO, parsePlayerId } from '../engine/roles.js';
 import { fieldImage } from './heatmap.js';
+import { drawFigure, figureLook, runDelay, isKeeperId, numberFontSize, FIGURE, FIGURE_DEFAULTS } from './figures.js';
 
 export const BOARD_DEFAULTS = Object.freeze({
   minHitPx: 44, // [S] WCAG 2.2 2.5.5 (R10): a token you can drag or tap is at least this wide to hit, however small it is drawn
@@ -64,7 +83,40 @@ export const BOARD_DEFAULTS = Object.freeze({
   playerMaxLabelScale: 3.6, // [D] ...up to this many times life size (a phone showing the whole pitch: about 3 px per metre)
   playerTagPx: 14, // [D] Player mode: the text of YOUR name tag at least this tall (the tag grows round it)...
   maxTagScale: 3, // [D] ...up to this many times the size the token alone would draw it
-  ballRadius: 0.8, // [D] metres (drawn larger than life so it can be seen and grabbed; grows with the tokens)
+  ballRadius: 0.8, // [D] metres (drawn larger than life so it can be seen and grabbed; grows with the tokens, or with figures ballScale)
+  ballMinPx: 20, // [D] figures: the ball at least this many CSS px across at any zoom (the [S] floor is 18, PROGRESSIVE_FIELD §4; 20 leaves a little room)...
+  ballMaxPx: 30, // [D] ...bigger when zoomed in, up to this many CSS px across
+  ballHalo: 1.55, // [D] the ball's halo ring, in ball radii (css/figures.css pulses it, still under reduced motion)
+  carryNear: 1.2, // [D] metres: figures: a carrier this close to the ball has it at their feet, drawn beside the boots on the side they face
+  //                  (the scene puts a carrier 0.8 m behind the ball)...
+  carryDist: 2.5, // [D] ...fading to where the ball really is by this far (carryWeight)
+  carryEaseMs: 180, // [D] ...and the drawn ball slides there: at most one full carry offset in this long (taking the ball, letting it go
+  //                  or the carrier turning never makes it jump; turning takes twice this)...
+  carrySnapMs: 500, // [D] ...except after a gap between renders longer than this (a new scene), when it is drawn in place at once
+  carrierFacingSlope: 1, // [D] a carrier turns to face the goal it plays toward only when the goal is at least 45° (tan = 1) off straight up
+  //                        or down the screen: on a phone held upright the goals are up and down it, and a carrier keeps the way it faced
+  figureNumberPx: 11, // [S] PROGRESSIVE_FIELD §6: figures grow so a two-digit shirt number is at least this many CSS px...
+  figureMaxScale: 2.4, // [D] ...up to this many times life size (bigger figures would hide the team's shape: a phone held sideways,
+  //                      about 3.2 px/m, keeps shirt numbers about 10 px)...
+  figureMaxPx: 96, // [D] ...and a figure is never drawn taller than this many CSS px (a zoomed-in camera)
+  facingDeadZone: 0.6, // [D] metres across the screen: a figure level with the ball keeps the way it faced (no flicker)
+  runMinSpeed: 1.5, // [D] m/s between two renders: faster than this, a figure runs (the two-pose cycle)...
+  runMinStep: 0.02, // [D] metres: ...a smaller move is standing still...
+  runMaxJump: 15, // [D] metres: ...and a bigger one a new scene, not a run
+  runMaxGapMs: 400, // [D] ms: a move after a longer gap than this runs anyway (for the ease that draws it)
+  runHoldMs: 240, // [D] ms: a figure keeps running this long after its last move, so the cycle never flickers
+  trailMinSpeed: 9, // [D] m/s: the ball leaves a trail only this fast (a pass or a shot, not a dribble)...
+  trailMs: 240, // [D] ...reaching this far back along its path...
+  trailMaxGapMs: 200, // [D] ...from renders at most this far apart (farther apart, its path is unknown)
+  cameraMin: Object.freeze({ length: 24, width: 16 }), // [D] PROGRESSIVE_FIELD §4 CAMERA_MIN: setCamera never shows less than this (metres along × across the pitch)
+  cameraPad: 3, // [D] metres of pitch the camera keeps round its rect...
+  cameraHeadroom: 5, // [D] ...plus this at the top of the screen (figures stand up the screen; YOUR tag is over the head)
+  cameraMaxPxPerM: 24, // [D] the camera never zooms in closer than this many CSS px per metre (a desktop board would blow everything up)
+  cameraMs: 450, // [D] the camera eases to a new window over this long (at once under reduced motion)
+  maxTokenPx: 56, // [D] with figures or a camera: discs never drawn wider than this many CSS px...
+  maxLabelPx: 24, // [D] ...pitch and marker labels never taller...
+  maxTagPx: 20, // [D] ...and YOUR tag's text never taller
+  depthSlop: 1, // [D] metres up the screen: figures are re-stacked (lower on the screen in front) only when two are out of order by more
   grabRadius: 4, // [D] metres: pressing this close to a draggable token picks it up (forgiving on touch; never less than the drawn token)
   dragSlopPx: 6, // [D] CSS px of movement before a press becomes a drag; less is a tap
   touchOffsetPx: 44, // [D] CSS px the token floats above a finger during a long touch drag, so it stays visible...
@@ -319,6 +371,204 @@ export function aidStrength(d, P = BOARD_DEFAULTS) {
   return Math.round(k * 20) / 20;
 }
 
+// ---------------------------------------------------------------- figures, the ball and the camera (pure)
+
+/** The camera's smallest window, metres along × across the pitch (PROGRESSIVE_FIELD §4 CAMERA_MIN). */
+export const CAMERA_MIN = BOARD_DEFAULTS.cameraMin;
+
+const up2 = (k) => Math.ceil(k * 100 - 1e-9) / 100; // round a minimum scale up, so the size it guarantees holds
+
+/**
+ * How much bigger than life figures are drawn at `pxPerM`: enough for a two-digit shirt number figureNumberPx tall,
+ * never less than life size nor more than figureMaxScale, and never so big that the figure is taller than figureMaxPx
+ * (a zoomed-in camera: then a little under life size). Rounded to 0.01.
+ */
+export function figureScale(pxPerM, P = BOARD_DEFAULTS) {
+  if (!(pxPerM > 0)) return 1;
+  const lo = P.figureNumberPx / (numberFontSize('10') * P.tokenRadius * pxPerM);
+  const k = Math.min(P.figureMaxScale, Math.max(1, up2(lo)));
+  return Math.min(k, Math.floor((P.figureMaxPx / (FIGURE.height * P.tokenRadius * pxPerM)) * 100) / 100);
+}
+
+/** The ball's own scale at `pxPerM`: its body at least ballMinPx across, bigger when zoomed, at most ballMaxPx. */
+export function ballScale(pxPerM, P = BOARD_DEFAULTS) {
+  if (!(pxPerM > 0)) return 1;
+  const life = 2 * P.ballRadius * pxPerM; // CSS px across at life size
+  return up2(Math.min(P.ballMaxPx / life, Math.max(P.ballMinPx / life, 1)));
+}
+
+/** CSS px across the ball's body at `pxPerM` (0 unmeasured). */
+export const ballPx = (pxPerM, P = BOARD_DEFAULTS) => (pxPerM > 0 ? 2 * P.ballRadius * ballScale(pxPerM, P) * pxPerM : 0);
+
+/**
+ * Every drawn size on a board at `pxPerM` (pure): { k: the players' discs (a figure's base disc: the token, its rings,
+ * hit area and targets), kf: the figures standing on them, kl: pitch and marker labels, kt: YOUR tag (on top of k),
+ * kb: the ball }. Discs without a camera (Coach mode) keep their sizes (tokenScale, labelScale, tagScale) and the ball
+ * grows with them (kb = k, as before the figures). With figures the base disc keeps a disc's size (tokenScale: today's
+ * readability from above, without piling the board up), the figure alone grows to figureScale (a readable shirt
+ * number), and the ball is its own size (ballScale). With figures or a camera, discs, labels and YOUR tag are also
+ * capped in CSS px (maxTokenPx, maxLabelPx, maxTagPx), since a zoomed-in window would blow them up.
+ */
+export function boardScales(pxPerM, { figures = false, player = false, camera = false } = {}, P = BOARD_DEFAULTS) {
+  const capped = (figures || camera) && pxPerM > 0;
+  const cap = (k, px, lifeM) => (capped ? Math.min(k, Math.floor((px / (lifeM * pxPerM)) * 100) / 100) : k);
+  const k = cap(tokenScale(pxPerM, P), P.maxTokenPx, 2 * P.tokenRadius);
+  const kl = cap(labelScale(pxPerM, player ? playerLabelParams(P) : P), P.maxLabelPx, 1.5);
+  const kt = cap(tagScale(pxPerM, k, { player }, P), P.maxTagPx, 1.15 * k);
+  return { k, kf: figures ? figureScale(pxPerM, P) : k, kl, kt, kb: figures ? ballScale(pxPerM, P) : k };
+}
+
+/**
+ * The viewBox that fits world rect `rect` ({ x0, x1, y0, y1 }, metres) on a board of `box` CSS px (setCamera): the
+ * rect plus cameraPad all round and cameraHeadroom at the top of the screen (figures stand up it), grown to at least
+ * cameraMin (along × across the pitch) and to no closer than cameraMaxPxPerM, then to the box's aspect (so it fills
+ * the board on both axes, never cutting the rect), no bigger than the pitch plus its margin (the board letterboxes
+ * the rest, as for the whole pitch) and slid inside it. No rect, or an unmeasured box: the whole pitch.
+ * @param {'horizontal'|'vertical'} orientation
+ * @returns {{x:number, y:number, width:number, height:number}}
+ */
+export function cameraViewBox(orientation, box, rect, P = BOARD_DEFAULTS) {
+  const full = viewBoxFor(orientation, P.margin);
+  if (!rect || ![rect.x0, rect.x1, rect.y0, rect.y1].every(Number.isFinite) || !(box?.width > 0 && box?.height > 0)) return full;
+  const vertical = orientation === 'vertical';
+  const a = project({ x: Math.min(rect.x0, rect.x1), y: Math.min(rect.y0, rect.y1) }, orientation);
+  const b = project({ x: Math.max(rect.x0, rect.x1), y: Math.max(rect.y0, rect.y1) }, orientation);
+  const x0 = Math.min(a.x, b.x) - P.cameraPad, x1 = Math.max(a.x, b.x) + P.cameraPad;
+  const y0 = Math.min(a.y, b.y) - P.cameraPad - P.cameraHeadroom, y1 = Math.max(a.y, b.y) + P.cameraPad;
+  // The pitch length runs across the screen (horizontal) or up it (vertical).
+  let w = Math.max(x1 - x0, vertical ? P.cameraMin.width : P.cameraMin.length, box.width / P.cameraMaxPxPerM);
+  let h = Math.max(y1 - y0, vertical ? P.cameraMin.length : P.cameraMin.width, box.height / P.cameraMaxPxPerM);
+  const aspect = box.width / box.height;
+  if (w / h < aspect) w = h * aspect; else h = w / aspect;
+  w = Math.min(w, full.width);
+  h = Math.min(h, full.height);
+  const slide = (centre, len, lo, span) => Math.max(lo, Math.min(lo + span - len, centre - len / 2));
+  const r = (n) => Math.round(n * 100) / 100;
+  return { x: r(slide((x0 + x1) / 2, w, full.x, full.width)), y: r(slide((y0 + y1) / 2, h, full.y, full.height)), width: r(w), height: r(h) };
+}
+
+/**
+ * Which way a figure faces on the screen (1 right, -1 left): toward `target` (the ball as drawn, or the goal a carrier
+ * plays toward), keeping `prev` when the target is within facingDeadZone of straight up or down the screen from it, or
+ * (`slope` > 0) within that steep an angle of it: |across| <= slope x |up or down| (a carrier: carrierFacingSlope, so
+ * on a phone held upright, where the goals are up and down the screen, a carrier crossing the middle never flips).
+ */
+export function facingToward(from, target, orientation, prev = 1, P = BOARD_DEFAULTS, slope = 0) {
+  const keep = prev < 0 ? -1 : 1;
+  if (!isVec(from) || !isVec(target)) return keep;
+  const a = project(from, orientation), b = project(target, orientation);
+  const dx = b.x - a.x;
+  return Math.abs(dx) <= Math.max(P.facingDeadZone, (slope > 0 ? slope : 0) * Math.abs(b.y - a.y)) ? keep : dx > 0 ? 1 : -1;
+}
+
+/** Where a carrier looks: the middle of the goal their team attacks (us +x, them -x), or their own when
+ *  frame.tags.carrierFacing is 'backward'. */
+export function carrierTarget(team, carrierFacing = null) {
+  const attack = team === 'them' ? 0 : LENGTH;
+  return { x: carrierFacing === 'backward' ? LENGTH - attack : attack, y: MID_Y };
+}
+
+/**
+ * Where a figure's ball is drawn when it has it at its feet (world): beside its boots on the side it faces on the
+ * screen, a little down the screen (name tags sit above players), so nobody hides it (`k` the figure's scale, kf; `kb`
+ * the ball's). Coach mode's discs draw the ball where it is.
+ */
+export function carriedBallAt(feet, facing, orientation, { k = 1, kb = 1 } = {}, P = BOARD_DEFAULTS) {
+  const v = project(feet, orientation);
+  const side = facing < 0 ? -1 : 1;
+  return unproject({ x: v.x + side * (0.55 * P.tokenRadius * k + 0.75 * P.ballRadius * kb), y: v.y + 0.28 * P.tokenRadius * k }, orientation);
+}
+
+/** Metres from a figure's feet to its ball at its feet (carriedBallAt): a full carry offset, at scales k and kb. */
+export const carryReach = ({ k = 1, kb = 1 } = {}, P = BOARD_DEFAULTS) => Math.hypot(0.55 * P.tokenRadius * k + 0.75 * P.ballRadius * kb, 0.28 * P.tokenRadius * k);
+
+/**
+ * How much of the carry offset a ball `d` metres from its carrier is drawn with (0..1): all of it within carryNear
+ * (at the feet), none from carryDist (where it really is), in between in proportion, so a ball leaving the feet or
+ * arriving at them is drawn moving, never jumping.
+ */
+export function carryWeight(d, P = BOARD_DEFAULTS) {
+  if (!(d >= 0) || d >= P.carryDist) return 0;
+  if (d <= P.carryNear) return 1;
+  return (P.carryDist - d) / (P.carryDist - P.carryNear);
+}
+
+/** Vector `from` moved toward `to` by at most `max` (the drawn ball's offset sliding to where it belongs). */
+export function stepToward(from, to, max) {
+  const dx = to.x - from.x, dy = to.y - from.y, d = Math.hypot(dx, dy);
+  if (!(d > max)) return { x: to.x, y: to.y };
+  const u = max > 0 ? max / d : 0;
+  return { x: from.x + dx * u, y: from.y + dy * u };
+}
+
+/** Does a token that moved `dist` metres since a render `dtMs` ago run? At least runMinSpeed (a move after a long
+ *  gap runs for the ease that draws it); render noise and a jump to a new scene do not. */
+export function isRunning(dist, dtMs, P = BOARD_DEFAULTS) {
+  if (!(dist > P.runMinStep) || dist > P.runMaxJump) return false;
+  if (!(dtMs > 0) || dtMs > P.runMaxGapMs) return true;
+  return dist / (dtMs / 1000) >= P.runMinSpeed;
+}
+
+/** What moves on a board: under reduced motion no run cycle, a still halo and no camera easing. The ball's trail
+ *  stays either way (it is drawn where the ball has been, not animated). */
+export const motionPlan = (reduced) => Object.freeze({ runCycle: !reduced, haloPulse: !reduced, cameraEase: !reduced, trail: true });
+
+/**
+ * The ball's trail from its recent drawn positions (view units, `{ x, y, t }` oldest first, the last one now): the
+ * point trailMs back along its path, or null when it is not moving at trailMinSpeed or more, or two renders were more
+ * than trailMaxGapMs apart (its path between them is unknown).
+ * @returns {{ tail: {x:number,y:number}, head: {x:number,y:number}, speed: number } | null}
+ */
+export function ballTrail(history, P = BOARD_DEFAULTS) {
+  if (!Array.isArray(history) || history.length < 2) return null;
+  const head = history[history.length - 1];
+  const since = head.t - P.trailMs;
+  let len = 0, tail = head, i = history.length - 1;
+  for (; i > 0; i--) {
+    const a = history[i - 1], b = history[i];
+    if (b.t - a.t > P.trailMaxGapMs || !(b.t > a.t)) break;
+    const seg = Math.hypot(b.x - a.x, b.y - a.y);
+    if (a.t <= since) { // the trail ends inside this segment
+      const u = (b.t - since) / (b.t - a.t);
+      tail = { x: b.x + (a.x - b.x) * u, y: b.y + (a.y - b.y) * u, t: since };
+      len += seg * u;
+      break;
+    }
+    len += seg;
+    tail = a;
+  }
+  const span = head.t - tail.t;
+  if (!(span > 0)) return null;
+  const speed = len / (span / 1000);
+  return speed >= P.trailMinSpeed ? { tail: { x: tail.x, y: tail.y }, head: { x: head.x, y: head.y }, speed } : null;
+}
+
+/** WCAG relative luminance of a '#rgb' / '#rrggbb' colour (NaN for anything else). */
+export function relLuminance(hex) {
+  const m = /^#?([\da-f]{3}|[\da-f]{6})$/i.exec(String(hex ?? '').trim());
+  if (!m) return NaN;
+  const h = m[1].length === 3 ? [...m[1]].map((c) => c + c).join('') : m[1];
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** WCAG contrast ratio of two colours (1..21). */
+export function contrastRatio(a, b) {
+  const [x, y] = [relLuminance(a), relLuminance(b)].sort((p, q) => q - p);
+  return (x + 0.05) / (y + 0.05);
+}
+
+/** The ball's patches (in ball radii × `B`): a pentagon in the middle and five round the rim, between its corners. */
+function ballPatchPath(B) {
+  const at = (deg, r) => { const a = (deg * Math.PI) / 180; return `${f3(Math.cos(a) * r * B)} ${f3(Math.sin(a) * r * B)}`; };
+  let d = `M${[0, 1, 2, 3, 4].map((i) => at(-90 + 72 * i, 0.42)).join('L')}Z`;
+  for (let i = 0; i < 5; i++) {
+    const c = -54 + 72 * i;
+    d += `M${at(c - 11, 0.72)}L${at(c - 19, 0.97)}A${f3(0.97 * B)} ${f3(0.97 * B)} 0 0 1 ${at(c + 19, 0.97)}L${at(c + 11, 0.72)}Z`;
+  }
+  return d;
+}
+
 const easeInOut = (u) => (u < 0.5 ? 2 * u * u : 1 - (-2 * u + 2) ** 2 / 2);
 const lerpV = (a, b, u) => ({ x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u });
 
@@ -416,20 +666,24 @@ export function drawPitch(parent, { margin = BOARD_DEFAULTS.margin, stripes = BO
  * Create a board inside `container` (which should give it a size; the SVG keeps its aspect ratio).
  * @param {HTMLElement} container
  * @param {{ orientation?: 'auto'|'horizontal'|'vertical', params?: object, youLabel?: string, labels?: 'role'|'number',
- *   youNumber?: number|null }} [opts]
+ *   youNumber?: number|null, figures?: boolean }} [opts]
  *   youLabel: the tag over the learner (default 'YOU'; the app passes the learner's nickname); render() can change it
  *   labels: what the tokens show by default: role codes (Coach mode) or unique shirt numbers (Player mode, §5)
  *   youNumber: in number mode, the number on YOUR token (a chosen kit number; default: the position's number)
+ *   figures: players drawn as tabletop figures (Player mode, PROGRESSIVE_FIELD §4) instead of discs (Coach mode)
  */
-export function createBoard(container, { orientation = 'auto', params, youLabel = 'YOU', labels = 'role', youNumber = null } = {}) {
+export function createBoard(container, { orientation = 'auto', params, youLabel = 'YOU', labels = 'role', youNumber = null, figures = false } = {}) {
   const P = { ...BOARD_DEFAULTS, ...params };
   const doc = container.ownerDocument;
   const win = doc.defaultView;
   const uid = `board${Math.random().toString(36).slice(2, 8)}`;
   const defaultLabels = labels === 'number' ? 'number' : 'role';
+  const figs = figures === true;
 
   const root = doc.createElement('div');
-  root.className = 'board';
+  root.className = figs ? 'board has-figures' : 'board';
+  // The run cycle's length, single-sourced (css/figures.css animates with it).
+  if (figs) root.style.setProperty('--fig-run-ms', `${FIGURE_DEFAULTS.runMs}ms`);
   const hint = doc.createElement('p');
   hint.id = `${uid}-hint`;
   hint.className = 'visually-hidden';
@@ -456,6 +710,10 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
   const aidEl = svgEl(doc, 'circle', { class: 'board-aid', display: 'none' }, aidLayer);
 
   const view = svgEl(doc, 'g', { class: 'board-view' }, svg);
+  // The ball's trail fades from nothing at its tail to the ball (a gradient along it, set per render in the ball's units).
+  const trailGrad = svgEl(doc, 'linearGradient', { id: `${uid}-trail`, gradientUnits: 'userSpaceOnUse' }, svgEl(doc, 'defs', {}, view));
+  svgEl(doc, 'stop', { class: 'ball-trail-stop ball-trail-stop--tail', offset: 0 }, trailGrad);
+  svgEl(doc, 'stop', { class: 'ball-trail-stop ball-trail-stop--head', offset: 1 }, trailGrad);
   const overlayLabels = svgEl(doc, 'g', { class: 'board-overlay-labels' }, view);
   const tokenLayer = svgEl(doc, 'g', { class: 'board-tokens' }, view);
   const targetLayer = svgEl(doc, 'g', { class: 'board-targets' }, view);
@@ -475,7 +733,6 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
   let lscale = 1; // pitch and marker labels likewise (CSS --board-label-k)
   let tagK = 1; // YOUR name tag, this much bigger again than the token draws it (Player mode: tagScale)
   const player = defaultLabels === 'number'; // Player mode's sizes: labels and YOUR tag big enough to read on a phone
-  const LP = player ? playerLabelParams(P) : P;
   let ghostAt = null;
   let you = youTag(youLabel); // { text, width } of the learner's tag
   let opts = { learnerId: null, highlight: [], labels: defaultLabels, dimOthers: false };
@@ -494,6 +751,19 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
   let aid = null; // { kind: 'glow', target } | { kind: 'heat', level } (setAid)
   let aidKey = '';
   let handRun = null; // the running worked-example hand: { finish() }
+  let figK = 1; // figures: how much bigger than life the figure on each base disc is drawn (figureScale; discs: = scale)
+  let ballK = 1; // the ball's scale (figures: ballScale, at least ballMinPx across; discs: = scale, as before)
+  let camera = null; // the world rect setCamera fits, or null (setFocus's crop, or the whole pitch)
+  let camAnim = null; // the camera easing to its window: { from: viewBox, t0, raf, timer }
+  let decorStale = false; // labels, markers and overlays not redrawn for the current layout yet (skipped while the camera eases)
+  let measured = null; // the last measure() (a camera frame reuses it)
+  let ballSettle = null; // the carried ball still sliding after the last render: { raf, timer }
+  const ballHist = []; // the ball's recent drawn positions { x, y, t } (view units), for its trail
+  let runTimer = 0; // stops the run cycles (and the trail) once renders stop
+  const rmq = (() => { try { return win?.matchMedia?.('(prefers-reduced-motion: reduce)') ?? null; } catch { return null; } })();
+  /** Reduced motion, from the device or the page (settings: data-reduced-motion). */
+  const reduced = () => doc.documentElement?.dataset?.reducedMotion === 'true' || !!rmq?.matches;
+  const clock = () => win?.performance?.now?.() ?? Date.now();
 
   /** Accessible name and plain position of a token, in the board's wording (number mode: no codes, no metres). */
   const nameOf = (id) => (labelMode === 'number' ? simpleTokenName(id, opts.learnerId, youNum) : tokenName(id, opts.learnerId));
@@ -511,8 +781,12 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     text.textContent = you.text;
   }
 
-  /** Where the tag sits (in the token's units): above the token, drawn tagK times its life size (Player mode). */
-  const tagCentre = () => -(P.tokenRadius + 1.15 + 1.05 * tagK);
+  /** A figure's size on its base, in the token's (base disc's) units: figK / scale. */
+  const figRel = () => figK / (scale || 1);
+
+  /** Where the tag sits (in the token's units): above the token (a figure: above its head), drawn tagK times its life
+   *  size (Player mode). */
+  const tagCentre = () => -((figs ? FIGURE.height * P.tokenRadius * figRel() + 0.45 : P.tokenRadius + 1.15) + 1.05 * tagK);
   const tagTransform = () => `translate(0 ${f3(tagCentre())})${tagK === 1 ? '' : ` scale(${tagK})`}`;
   function placeYouTag(tag) {
     const tx = tagTransform();
@@ -531,9 +805,24 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
 
   function makeToken(id) {
     const isBall = id === BALL_ID;
-    const g = svgEl(doc, 'g', { class: isBall ? 'token token-ball' : `token team-${parsePlayerId(id).team}`, 'data-id': id, 'aria-hidden': 'true' }, tokenLayer);
-    const t = { id, g, pos: null, tx: '', flags: '', aria: '' };
-    if (isBall) {
+    const team = isBall ? null : parsePlayerId(id).team;
+    const g = svgEl(doc, 'g', { class: isBall ? 'token token-ball' : `token team-${team}`, 'data-id': id, 'aria-hidden': 'true' }, tokenLayer);
+    const t = { id, g, pos: null, at: null, tx: '', flags: '', aria: '', facing: team === 'them' ? -1 : 1, depth: 0 };
+    if (isBall && figs) {
+      // Over everything (ensureStacking): a fading trail while it flies, a ground shadow, a bright halo (a yellow ring
+      // with a dark rim either side, so it reads on light grass, light kits and YOUR gold base), the ball.
+      const B = P.ballRadius, H = P.ballHalo * B;
+      t.trail = svgEl(doc, 'polygon', { class: 'ball-trail', fill: `url(#${uid}-trail)`, display: 'none' }, g);
+      svgEl(doc, 'ellipse', { class: 'ball-shadow', cx: f3(0.14 * B), cy: f3(0.7 * B), rx: f3(1.05 * B), ry: f3(0.45 * B) }, g);
+      const halo = svgEl(doc, 'g', { class: 'ball-halo' }, g);
+      svgEl(doc, 'circle', { class: 'ball-halo-rim', r: f3(H) }, halo);
+      svgEl(doc, 'circle', { class: 'ball-halo-ring', r: f3(H) }, halo);
+      svgEl(doc, 'circle', { class: 'token-ring', r: f3(H + 0.3) }, g);
+      svgEl(doc, 'circle', { class: 'ball-body', r: B }, g);
+      svgEl(doc, 'path', { class: 'ball-patch', d: ballPatchPath(B) }, g);
+      svgEl(doc, 'circle', { class: 'token-focus', r: f3(H + 0.55) }, g);
+    } else if (isBall) {
+      // Coach mode (discs): the ball as it always was.
       svgEl(doc, 'circle', { class: 'token-ring', r: P.ballRadius + 0.7 }, g);
       svgEl(doc, 'circle', { class: 'ball-body', r: P.ballRadius }, g);
       const k = P.ballRadius * 0.45;
@@ -547,10 +836,20 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
       svgEl(doc, 'circle', { class: 'token-glow', r: R + 1.5 }, g);
       svgEl(doc, 'circle', { class: 'token-ring', r: R + 0.75 }, g);
       svgEl(doc, 'circle', { class: 'token-carrier', r: R + 0.45 }, g);
-      svgEl(doc, 'circle', { class: 'token-body', r: R }, g);
+      svgEl(doc, 'circle', { class: 'token-body', r: R }, g); // a figure's base disc
       const text = labelOf(id);
-      t.code = svgEl(doc, 'text', { class: codeClass(text), 'text-anchor': 'middle', dy: '0.36em' }, g);
-      t.code.textContent = text;
+      if (figs) {
+        // The figure stands on the base: its look is the player's own, its kit the team's (css/figures.css).
+        // Its base disc is the token (a disc's size, `scale`); the figure alone is drawn figK times life size (syncFigure).
+        t.fig = drawFigure(g, { ...figureLook(id, team), number: text, gk: isKeeperId(id), facing: t.facing, size: R, base: false, run: true });
+        t.flip = t.fig.querySelector('.fig-body');
+        t.code = t.fig.querySelector('.fig-num');
+        g.style.setProperty('--fig-run-delay', `${runDelay(id)}ms`);
+        syncFigure(t);
+      } else {
+        t.code = svgEl(doc, 'text', { class: codeClass(text), 'text-anchor': 'middle', dy: '0.36em' }, g);
+        t.code.textContent = text;
+      }
       t.label = text;
       const tag = svgEl(doc, 'g', { class: 'token-you', transform: tagTransform() }, g);
       svgEl(doc, 'rect', { y: -1.05, height: 2.1, rx: 1.05 }, tag);
@@ -566,9 +865,11 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     return t;
   }
 
-  function placeToken(t, p) {
+  /** Place a token at world point p (where it is), drawn at `at` (the ball at a carrier's feet; else p). */
+  function placeToken(t, p, at = null) {
     t.pos = { x: p.x, y: p.y };
-    const tx = transformAt(p);
+    t.at = at ? { x: at.x, y: at.y } : t.pos;
+    const tx = transformAt(t.at, t.id === BALL_ID ? ballK : scale);
     if (tx !== t.tx) { t.g.style.transform = tx; t.tx = tx; }
     if (drag.ids.has(t.id)) {
       const aria = `${nameOf(t.id)}, ${spotText(p)}`;
@@ -576,10 +877,17 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     }
   }
 
-  /** The CSS transform that draws a token (or anything token-sized) at world point p. */
-  function transformAt(p) {
+  /** A figure's size on its base disc: figK times life size, in the token's units (the token is drawn `scale` times). */
+  function syncFigure(t) {
+    if (!t.fig) return;
+    const tx = `scale(${f3(P.tokenRadius * figRel())})`;
+    if (t.figTx !== tx) { t.fig.setAttribute('transform', tx); t.figTx = tx; }
+  }
+
+  /** The CSS transform that draws a token (or anything token-sized) at world point p, `k` times life size. */
+  function transformAt(p, k = scale) {
     const v = project(p, orient);
-    return `translate(${v.x.toFixed(2)}px, ${v.y.toFixed(2)}px)${scale === 1 ? '' : ` scale(${scale})`}`;
+    return `translate(${v.x.toFixed(2)}px, ${v.y.toFixed(2)}px)${k === 1 ? '' : ` scale(${k})`}`;
   }
 
   /** Keep a token's text in step with the label mode (role codes or shirt numbers). Cached: cheap per render. */
@@ -589,7 +897,114 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     if (text === t.label) return;
     t.label = text;
     t.code.textContent = text;
-    t.code.setAttribute('class', codeClass(text));
+    if (t.fig) t.code.setAttribute('font-size', numberFontSize(text));
+    else t.code.setAttribute('class', codeClass(text));
+  }
+
+  /** Face a figure left (-1) or right (1) on the screen: its body is mirrored, its number never is. */
+  function setFacing(t, f) {
+    if (f === t.facing) return;
+    t.facing = f;
+    if (!t.flip) return;
+    if (f < 0) t.flip.setAttribute('transform', 'scale(-1 1)'); else t.flip.removeAttribute('transform');
+  }
+
+  /** Run cycle on or off (css/figures.css shows the two running poses in turn while .is-running). */
+  function setRunning(t, on) {
+    if (on === !!t.running) return;
+    t.running = on;
+    t.g.classList.toggle('is-running', on);
+  }
+
+  /** Stop every run cycle and the ball's trail (renders stopped: nothing is moving any more). */
+  function stopMotion() {
+    clearTimeout(runTimer);
+    runTimer = 0;
+    for (const t of tokens.values()) { t.runUntil = 0; setRunning(t, false); }
+    ballHist.length = 0;
+    drawTrail(null);
+  }
+
+  /**
+   * Where the ball is drawn at `now` (world), advancing its carry offset (figures; Coach mode's discs: where it is). A
+   * figure's ball at its feet is drawn beside its boots on the side it faces (carriedBallAt), a ball leaving or reaching
+   * the feet partly so (carryWeight), and the offset slides toward that at most one full carry offset per carryEaseMs:
+   * taking the ball, letting it go, the carrier turning or the camera zooming never make it jump. `snap` (a new scene
+   * or layout, a hand on the ball) draws it in place at once.
+   */
+  function carryBall(t, now, snap = false) {
+    if (!figs || !t?.pos) return t?.pos ?? null;
+    let want = { x: 0, y: 0 };
+    const c = t.heldBy ? tokens.get(t.heldBy) : null;
+    if (c?.pos && c.g.getAttribute('display') !== 'none') {
+      const w = carryWeight(Math.hypot(t.pos.x - c.pos.x, t.pos.y - c.pos.y), P);
+      if (w > 0) {
+        const feet = carriedBallAt(c.pos, c.facing, orient, { k: figK, kb: ballK }, P);
+        want = { x: w * (feet.x - t.pos.x), y: w * (feet.y - t.pos.y) };
+      }
+    }
+    const gap = now - (t.carryAt ?? -Infinity);
+    t.carry = snap || !t.carry || !(gap >= 0 && gap <= P.carrySnapMs) ? want
+      : stepToward(t.carry, want, (carryReach({ k: figK, kb: ballK }, P) * gap) / P.carryEaseMs);
+    t.carryAt = now;
+    t.carryWant = want;
+    return { x: t.pos.x + t.carry.x, y: t.pos.y + t.carry.y };
+  }
+
+  /** Is the ball still sliding to where it is drawn (carryBall)? */
+  const ballSliding = (t) => !!(t?.carry && t.carryWant) && Math.hypot(t.carry.x - t.carryWant.x, t.carry.y - t.carryWant.y) > 1e-3;
+
+  function endSettle() {
+    if (!ballSettle) return;
+    win?.cancelAnimationFrame?.(ballSettle.raf);
+    clearTimeout(ballSettle.timer);
+    ballSettle = null;
+  }
+
+  /** Keep a sliding ball going once the renders stop (a freeze mid-slide): one animation frame at a time, landing at
+   *  once when animation frames stall (a hidden tab). */
+  function settleBall() {
+    endSettle();
+    const t = tokens.get(BALL_ID);
+    if (!ballSliding(t)) return;
+    const place = (at) => { placeToken(t, t.pos, at); updateBoundRings(); };
+    const step = () => {
+      if (!ballSettle) return;
+      place(carryBall(t, clock()));
+      if (ballSliding(t)) ballSettle.raf = win.requestAnimationFrame(step); else endSettle();
+    };
+    ballSettle = { raf: win?.requestAnimationFrame ? win.requestAnimationFrame(step) : 0, timer: 0 };
+    ballSettle.timer = setTimeout(() => {
+      if (!ballSettle || !t.carryWant) return;
+      endSettle();
+      t.carry = t.carryWant;
+      t.carryAt = clock();
+      place({ x: t.pos.x + t.carry.x, y: t.pos.y + t.carry.y });
+    }, 2 * P.carryEaseMs + 100);
+  }
+
+  /** The trail behind the ball (ballTrail, view units) in the ball's own units; null hides it. */
+  function drawTrail(trail) {
+    const t = tokens.get(BALL_ID);
+    if (!t?.trail) return;
+    if (!trail) {
+      if (!t.trailOn) return;
+      t.trailOn = false;
+      t.trail.setAttribute('display', 'none');
+      return;
+    }
+    // Local units: view metres from the ball, divided by the ball's scale.
+    const k = ballK || 1, hx = trail.head.x, hy = trail.head.y;
+    const tx = (trail.tail.x - hx) / k, ty = (trail.tail.y - hy) / k;
+    const len = Math.hypot(tx, ty);
+    if (len < P.ballRadius) { drawTrail(null); return; }
+    const nx = -ty / len, ny = tx / len, w = P.ballRadius * 0.85; // half its width at the ball
+    t.trail.setAttribute('points', `${f3(tx)},${f3(ty)} ${f3(nx * w)},${f3(ny * w)} ${f3(-nx * w)},${f3(-ny * w)}`);
+    trailGrad.setAttribute('x1', f3(tx));
+    trailGrad.setAttribute('y1', f3(ty));
+    trailGrad.setAttribute('x2', 0);
+    trailGrad.setAttribute('y2', 0);
+    if (!t.trailOn) { t.trailOn = true; t.trail.removeAttribute('display'); }
   }
 
   /** Spotlight: tokens outside it are drawn at 40 % (the learner and the ball are always lit). */
@@ -627,7 +1042,7 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
       t.g.removeAttribute('aria-hidden');
       t.g.classList.add('is-draggable');
       t.aria = '';
-      if (t.pos) placeToken(t, t.pos);
+      if (t.pos) placeToken(t, t.pos, t.at); // the ball stays where it is drawn (a carrier's feet)
     } else {
       for (const a of ['tabindex', 'role', 'aria-roledescription', 'aria-describedby', 'aria-label', 'aria-pressed']) t.g.removeAttribute(a);
       t.g.setAttribute('aria-hidden', 'true');
@@ -640,10 +1055,38 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
    *  (re-appending a node would drop keyboard focus and restart its transition). */
   function ensureStacking() {
     const order = [opts.learnerId, BALL_ID].filter((id) => id && tokens.has(id)).map((id) => tokens.get(id).g);
+    if (figs && stackFigures(order)) return;
     let n = tokenLayer.lastChild;
     for (let i = order.length - 1; i >= 0; i--, n = n?.previousSibling) {
       if (n !== order[i]) { for (const g of order) tokenLayer.appendChild(g); return; }
     }
+  }
+
+  /**
+   * Figures: the painter's order, so a figure lower on the screen (nearer the viewer) stands in front of one higher up;
+   * YOU, then the ball, on top of all. Re-stacks only when two visible figures are out of order by more than depthSlop,
+   * and then moves only the figures out of place (moving a node restarts its run cycle and would drop its focus).
+   * @returns {boolean} true when it re-stacked (YOU and the ball included)
+   */
+  function stackFigures(top) {
+    const rest = [];
+    for (const g of tokenLayer.children) if (!top.includes(g)) rest.push(tokens.get(g.dataset.id));
+    let bad = false, last = -Infinity;
+    for (const t of rest) {
+      if (!t?.pos || t.g.getAttribute('display') === 'none') continue;
+      if (last > t.depth + P.depthSlop) { bad = true; break; }
+      last = Math.max(last, t.depth);
+    }
+    if (!bad) return false;
+    // Hidden figures first (in their order), then the visible ones back to front (a stable sort keeps level ones put).
+    const key = (t) => (t?.pos && t.g.getAttribute('display') !== 'none' ? t.depth : -Infinity);
+    const want = rest.map((t, i) => ({ t, i })).sort((a, b) => key(a.t) - key(b.t) || a.i - b.i).map((e) => e.t.g).concat(top);
+    let n = tokenLayer.firstChild;
+    for (const g of want) {
+      if (n === g) { n = n.nextSibling; continue; }
+      tokenLayer.insertBefore(g, n);
+    }
+    return true;
   }
 
   // ---- render
@@ -652,13 +1095,18 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     if (nextOpts.youLabel !== undefined) setYouLabel(nextOpts.youLabel);
     if (nextOpts.youNumber !== undefined) youNum = Number.isInteger(nextOpts.youNumber) ? nextOpts.youNumber : null;
     if (opts.labels === 'role' || opts.labels === 'number') labelMode = opts.labels; // 'none' keeps the text, hidden
-    const now = win?.performance?.now?.() ?? Date.now();
-    root.classList.toggle('is-live', now - lastRenderAt < P.liveMs);
+    const now = clock();
+    const dt = now - lastRenderAt;
+    root.classList.toggle('is-live', dt < P.liveMs);
     lastRenderAt = now;
     root.classList.toggle('no-labels', opts.labels === 'none');
     root.classList.toggle('is-numbered', labelMode === 'number');
     if (!frame) {
       for (const t of tokens.values()) t.g.setAttribute('display', 'none');
+      stopMotion();
+      endSettle();
+      const b = tokens.get(BALL_ID);
+      if (b) b.carry = null;
       placeTargets();
       updateAid();
       return;
@@ -668,11 +1116,26 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     const seen = new Set();
     const focusIds = new Set([opts.learnerId, frame.carrierId, ...hl]);
     const dragging = active?.dragging ? active.id : null;
+    const motion = motionPlan(reduced());
+    const ball = isVec(frame.ball) ? frame.ball : null;
+    const prevBall = tokens.get(BALL_ID)?.pos;
+    // A new scene (the first render, one after a long gap, or the ball somewhere else entirely): nothing eases from what
+    // was drawn before.
+    const fresh = !(dt <= P.carrySnapMs) || !ball || !prevBall || !(Math.hypot(ball.x - prevBall.x, ball.y - prevBall.y) <= P.runMaxJump);
+    let running = false;
 
     for (const p of frame.players) {
       seen.add(p.id);
       const t = tokens.get(p.id) ?? makeToken(p.id);
+      const was = t.pos;
       placeToken(t, p); // controlled: the frame wins, also for a token being dragged (§5.8)
+      t.depth = project(p, orient).y;
+      if (figs) {
+        if (motion.runCycle && was && isRunning(Math.hypot(p.x - was.x, p.y - was.y), dt, P)) t.runUntil = now + P.runHoldMs;
+        const run = motion.runCycle && now < (t.runUntil ?? 0);
+        setRunning(t, run);
+        running ||= run;
+      }
       const flags = [];
       if (p.id === opts.learnerId) flags.push('is-learner');
       if (hl.has(p.id)) flags.push('is-highlight');
@@ -684,25 +1147,57 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
       syncLabel(t);
       syncSpot(t);
     }
-    if (frame.ball) {
-      seen.add(BALL_ID);
-      const t = tokens.get(BALL_ID) ?? makeToken(BALL_ID);
-      placeToken(t, frame.ball);
-      const flags = [];
-      if (hl.has(BALL_ID)) flags.push('is-highlight');
-      if (armed === BALL_ID) flags.push('is-armed');
-      if (dragging === BALL_ID) flags.push('is-dragging');
-      setFlags(t, flags);
-    }
     for (const [id, t] of tokens) {
-      const show = seen.has(id);
+      const show = seen.has(id) || (id === BALL_ID && !!ball);
       if (show === (t.g.getAttribute('display') === 'none')) {
         if (show) t.g.removeAttribute('display'); else t.g.setAttribute('display', 'none');
       }
     }
+    // Figures: the carrier faces the goal it plays toward (its ball sits on that side), but keeps the way it faced while
+    // that goal is roughly straight up or down the screen (a phone held upright), so the ball never flips sides as it
+    // crosses the middle; in a new scene it simply faces the goal's side.
+    const carrier = figs && frame.carrierId && seen.has(frame.carrierId) ? tokens.get(frame.carrierId) : null;
+    if (carrier) {
+      const target = carrierTarget(parsePlayerId(carrier.id).team, frame.tags?.carrierFacing);
+      setFacing(carrier, facingToward(carrier.pos, target, orient, carrier.facing, P, fresh ? 0 : P.carrierFacingSlope));
+    }
+    const b = ball ? tokens.get(BALL_ID) ?? makeToken(BALL_ID) : null;
+    if (b) {
+      seen.add(BALL_ID);
+      // Figures: at the carrier's feet while it is on the board and close to the ball (never while a hand drags it).
+      const held = carrier?.pos && dragging !== BALL_ID && Math.hypot(ball.x - carrier.pos.x, ball.y - carrier.pos.y) < P.carryDist ? carrier.id : null;
+      if (held !== b.heldBy) ballHist.length = 0; // taken or let go: the trail starts afresh (no streak from the feet)
+      b.heldBy = held;
+      b.pos = { x: ball.x, y: ball.y };
+      placeToken(b, ball, carryBall(b, now, fresh || dragging === BALL_ID));
+      if (figs) trackBall(b, now, dt, motion);
+      const flags = [];
+      if (hl.has(BALL_ID)) flags.push('is-highlight');
+      if (armed === BALL_ID) flags.push('is-armed');
+      if (dragging === BALL_ID) flags.push('is-dragging');
+      setFlags(b, flags);
+    }
+    // Figures face the ball where it is drawn (a carried ball beside the carrier's boots); the carrier faced its goal.
+    if (figs) {
+      const at = b?.at ?? null;
+      for (const p of frame.players) if (p.id !== carrier?.id) { const t = tokens.get(p.id); setFacing(t, facingToward(t.pos, at, orient, t.facing, P)); }
+    }
+    // Renders stopped (a freeze, a pause): the run cycles and the trail stop soon after; a sliding ball lands.
+    clearTimeout(runTimer);
+    runTimer = running || b?.trailOn ? setTimeout(stopMotion, P.runHoldMs + 40) : 0;
+    if (figs) settleBall();
     ensureStacking();
     updateBoundRings();
     placeTargets();
+  }
+
+  /** The ball's recent drawn positions (view units) and the trail they make while it flies fast. */
+  function trackBall(t, now, dt, motion) {
+    if (!motion.trail || dt > P.trailMaxGapMs) ballHist.length = 0;
+    const v = project(t.at, orient);
+    ballHist.push({ x: v.x, y: v.y, t: now });
+    while (ballHist.length > 2 && now - ballHist[1].t > P.trailMs + P.trailMaxGapMs) ballHist.shift();
+    drawTrail(motion.trail && !t.heldBy ? ballTrail(ballHist, P) : null);
   }
 
   // ---- spotlight (Player mode: YOU, the ball and a few key players lit; the rest at 40 %)
@@ -953,7 +1448,9 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     if (!v) return [];
     const r = (P.tokenRadius + 0.75) * scale;
     const cy = v.y + tagCentre() * scale, hw = (you.width / 2) * tagK * scale, hh = 1.05 * tagK * scale;
-    return [{ x0: v.x - r, x1: v.x + r, y0: v.y - r, y1: v.y + r }, { x0: v.x - hw, x1: v.x + hw, y0: cy - hh, y1: cy + hh }];
+    const bw = figs ? Math.max(r, FIGURE.halfWidth * P.tokenRadius * figK) : r;
+    const body = { x0: v.x - bw, x1: v.x + bw, y0: v.y - (figs ? Math.max(r, FIGURE.height * P.tokenRadius * figK) : r), y1: v.y + r }; // a figure stands up the screen
+    return [body, { x0: v.x - hw, x1: v.x + hw, y0: cy - hh, y1: cy + hh }];
   }
 
   /** A drawn text's box in view units, or null when it is not rendered. */
@@ -1002,9 +1499,10 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
       const visible = t?.pos && t.g.getAttribute('display') !== 'none';
       if (!visible) { el.setAttribute('display', 'none'); continue; }
       el.removeAttribute('display');
-      el.setAttribute('cx', f3(t.pos.x));
-      el.setAttribute('cy', f3(t.pos.y));
-      const rr = f3(r * scale);
+      const at = t.at ?? t.pos; // the ball: where it is drawn (a carrier's feet)
+      el.setAttribute('cx', f3(at.x));
+      el.setAttribute('cy', f3(at.y));
+      const rr = f3(r * (id === BALL_ID ? ballK : scale));
       if (el.getAttribute('r') !== String(rr)) el.setAttribute('r', rr);
     }
     updateAid();
@@ -1084,7 +1582,8 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
       const d = Math.hypot(t.pos.x - w.x, t.pos.y - w.y);
       if (d <= bd) { bd = d; best = id; }
     }
-    return best;
+    // Figures: a tap on the upright figure picks it too (the nearest one whose figure it is on).
+    return best ?? figureAt(targets.ids, w);
   }
 
   function previewTarget(id, notify = true) {
@@ -1219,46 +1718,111 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     return { width: w || vw, height: h > 1 ? h : vh, box: { width: Math.max(0, (w || vw) - px), height: Math.max(0, (h > 1 ? h : vh) - py) } };
   }
 
-  function relayout(force = false) {
-    const { width, height, box } = measure();
+  /**
+   * Lay the board out again: orientation, viewBox, sizes. `cameraFrame`: a frame of the camera's ease, which only
+   * moves the view and re-sizes the tokens: it reuses the last measurement (measuring forces a layout of the whole
+   * page) and leaves the label size, the overlays and the markers to the frame it lands on.
+   */
+  function relayout(force = false, { cameraFrame = false } = {}) {
+    const { width, height, box } = cameraFrame && measured ? measured : (measured = measure());
     const next = pickOrientation(requested, width, height, P);
     const turned = next !== orient;
-    const nextVb = focusViewBox(next, box, focus, focusForced ? { ...P, focusMinPxPerM: Infinity } : P);
+    // The camera's window (setCamera) wins over the focus crop (setFocus); while it eases, the window in between.
+    let nextVb = camera ? cameraViewBox(next, box, camera, P) : focusViewBox(next, box, focus, focusForced ? { ...P, focusMinPxPerM: Infinity } : P);
+    const zoomed = !!camera || !!camAnim;
+    if (camAnim) {
+      const u = turned ? 1 : Math.min(1, Math.max(0, (clock() - camAnim.t0) / P.cameraMs));
+      if (u >= 1) endCamAnim(); else nextVb = lerpBox(camAnim.from, nextVb, easeInOut(u));
+    }
+    const easing = !!camAnim; // a frame part way through the camera's ease (the tokens and the view only)
     const px = pxPerMetre(box, nextVb);
-    const k = tokenScale(px, P);
-    const kl = labelScale(px, LP);
-    const kt = tagScale(px, k, { player }, P);
+    const { k, kf, kl, kt, kb } = boardScales(px, { figures: figs, player, camera: zoomed }, P);
     const vbChanged = !vb || ['x', 'y', 'width', 'height'].some((key) => vb[key] !== nextVb[key]);
     pxm = px;
-    if (!force && !turned && !vbChanged && k === scale && kl === lscale && kt === tagK) return;
-    orient = next;
-    vb = nextVb;
-    scale = k;
-    lscale = kl;
-    tagK = kt;
-    svg.setAttribute('viewBox', `${vb.x} ${vb.y} ${vb.width} ${vb.height}`);
-    const wt = worldTransform(orient);
-    if (wt) world.setAttribute('transform', wt); else world.removeAttribute('transform');
-    root.dataset.orientation = orient;
-    root.style.setProperty('--board-label-k', String(kl));
-    // Re-project (and re-scale) without animating tokens across the pitch.
-    root.classList.add('no-anim');
-    for (const t of tokens.values()) {
-      syncHit(t);
-      const tag = t.g.querySelector('.token-you');
-      if (tag) placeYouTag(tag);
-      if (t.pos) { t.tx = ''; placeToken(t, t.pos); }
+    const changed = force || turned || vbChanged || k !== scale || kf !== figK || kl !== lscale || kt !== tagK || kb !== ballK;
+    if (changed) {
+      orient = next;
+      vb = nextVb;
+      scale = k;
+      figK = kf;
+      lscale = kl;
+      tagK = kt;
+      ballK = kb;
+      svg.setAttribute('viewBox', `${vb.x} ${vb.y} ${vb.width} ${vb.height}`);
+      if (turned || force) { // (the same layout keeps the same rotation: rewriting it would restyle the pitch)
+        const wt = worldTransform(orient);
+        if (wt) world.setAttribute('transform', wt); else world.removeAttribute('transform');
+      }
+      if (root.dataset.orientation !== orient) root.dataset.orientation = orient;
+      // Re-project (and re-scale) without animating tokens across the pitch; the ball slides on from where it was drawn
+      // (a new layout: in place).
+      if (!root.classList.contains('no-anim')) root.classList.add('no-anim');
+      const now = clock();
+      for (const t of tokens.values()) {
+        syncHit(t);
+        syncFigure(t);
+        const tag = t.g.querySelector('.token-you');
+        if (tag) placeYouTag(tag);
+        if (t.pos) { t.tx = ''; placeToken(t, t.pos, t.id === BALL_ID ? carryBall(t, now, turned) : null); }
+      }
+      if (figs) settleBall();
+      placeTargets();
+      if (ghostAt) {
+        ghostEl.style.transition = 'none';
+        setGhost(ghostAt);
+        if (!easing) ghostEl.getBoundingClientRect?.(); // (a forced layout: once it has landed)
+        ghostEl.style.transition = '';
+      }
     }
-    placeTargets();
-    if (ghostAt) {
-      ghostEl.style.transition = 'none';
-      setGhost(ghostAt);
-      ghostEl.getBoundingClientRect?.();
-      ghostEl.style.transition = '';
+    // Labels, overlays and markers are sized, rebuilt and re-placed once the camera lands, not on every frame of its
+    // ease (each would restyle or rebuild the whole board; meanwhile they zoom with the view, and rings bound to
+    // tokens follow the tokens).
+    if (easing) {
+      if (changed) { decorStale = true; updateBoundRings(); }
+      return;
     }
+    if (!changed && !decorStale) return;
+    decorStale = false;
+    const lk = String(lscale);
+    if (root.style.getPropertyValue('--board-label-k') !== lk) root.style.setProperty('--board-label-k', lk);
     applyOverlays(true);
     setMarkers(markers);
     win?.requestAnimationFrame?.(() => win.requestAnimationFrame(() => root.classList.remove('no-anim')));
+  }
+
+  /** A viewBox part way (u, 0..1) from a to b, rounded to 0.01. */
+  const lerpBox = (a, b, u) => Object.fromEntries(['x', 'y', 'width', 'height'].map((key) => [key, Math.round((a[key] + (b[key] - a[key]) * u) * 100) / 100]));
+
+  function endCamAnim() {
+    if (!camAnim) return;
+    win?.cancelAnimationFrame?.(camAnim.raf);
+    clearTimeout(camAnim.timer);
+    camAnim = null;
+  }
+
+  /**
+   * Fit the world rect { x0, x1, y0, y1 } (metres) on both axes (cameraViewBox: padded, at least CAMERA_MIN, the
+   * board's aspect, inside the pitch and its margin), easing there over cameraMs (at once under reduced motion);
+   * null: back to setFocus's length crop, or the whole pitch. Resizes keep the window fitted.
+   * @param {{x0:number, x1:number, y0:number, y1:number}|null} rect
+   */
+  function setCamera(rect = null) {
+    const next = rect && [rect.x0, rect.x1, rect.y0, rect.y1].every(Number.isFinite)
+      ? { x0: Math.min(rect.x0, rect.x1), x1: Math.max(rect.x0, rect.x1), y0: Math.min(rect.y0, rect.y1), y1: Math.max(rect.y0, rect.y1) }
+      : null;
+    const same = next && camera ? ['x0', 'x1', 'y0', 'y1'].every((key) => next[key] === camera[key]) : next === camera;
+    if (same) return;
+    const from = vb ? { ...vb } : null;
+    endCamAnim();
+    camera = next;
+    if (from && motionPlan(reduced()).cameraEase && win?.requestAnimationFrame) {
+      camAnim = { from, t0: clock(), raf: 0, timer: 0 };
+      const step = () => { if (!camAnim) return; relayout(false, { cameraFrame: true }); if (camAnim) camAnim.raf = win.requestAnimationFrame(step); };
+      camAnim.raf = win.requestAnimationFrame(step);
+      // Animation frames stall in a hidden tab: land on the window anyway.
+      camAnim.timer = setTimeout(() => { endCamAnim(); relayout(); }, P.cameraMs + 150);
+    }
+    relayout();
   }
 
   function setOrientation(o = 'auto') {
@@ -1298,9 +1862,11 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     for (const id of drag.ids) {
       const t = tokens.get(id);
       if (!t?.pos || t.g.getAttribute('display') === 'none') continue;
-      const d = Math.hypot(t.pos.x - w.x, t.pos.y - w.y);
+      const at = t.at ?? t.pos; // the ball: where it is drawn
+      const d = Math.hypot(at.x - w.x, at.y - w.y);
       if (d <= bd) { bd = d; best = id; }
     }
+    best ??= figureAt(drag.ids, w); // figures: a press on the upright figure picks it up too
     if (!best && drag.tapToMove) {
       // Player mode: a DRAG from the learner's YOU tag drags YOU (the tag moves with the token); a TAP on it is a
       // destination like any other spot (tapAction).
@@ -1314,8 +1880,29 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
   function onToken(id, w) {
     const t = tokens.get(id);
     if (!t?.pos || !Number.isFinite(w?.x)) return false;
-    const r = (id === BALL_ID ? P.ballRadius + 0.7 : P.tokenRadius + 0.5) * scale;
-    return Math.hypot(t.pos.x - w.x, t.pos.y - w.y) <= r;
+    const at = t.at ?? t.pos;
+    const r = id !== BALL_ID ? (P.tokenRadius + 0.5) * scale : figs ? P.ballHalo * P.ballRadius * ballK : (P.ballRadius + 0.7) * scale;
+    return Math.hypot(at.x - w.x, at.y - w.y) <= r || onFigure(t, w);
+  }
+
+  /** Is `w` on a player's upright figure (figures mode: the box it stands in, from its feet up to its head)? */
+  function onFigure(t, w) {
+    if (!figs || !t?.fig || !t.pos || !isVec(w)) return false;
+    const v = project(t.pos, orient), q = project(w, orient), R = P.tokenRadius * figK;
+    return Math.abs(q.x - v.x) <= FIGURE.halfWidth * R && q.y <= v.y && q.y >= v.y - FIGURE.height * R;
+  }
+
+  /** The token among `ids` whose figure `w` is on, the nearest (by its feet) when figures overlap; null if none. */
+  function figureAt(ids, w) {
+    if (!figs) return null;
+    let best = null, bd = Infinity;
+    for (const id of ids) {
+      const t = tokens.get(id);
+      if (!t?.pos || t.g.getAttribute('display') === 'none' || !onFigure(t, w)) continue;
+      const d = Math.hypot(t.pos.x - w.x, t.pos.y - w.y);
+      if (d < bd) { bd = d; best = id; }
+    }
+    return best;
   }
 
   /** Is `w` on the learner's YOU tag (the pill over the token, drawn tagK times its size)? */
@@ -1328,6 +1915,7 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
 
   function moveTo(id, p, final) {
     const t = tokens.get(id);
+    if (t) { t.heldBy = null; t.carry = null; } // a ball moved by hand is drawn where it is put, until the next render says otherwise
     if (t) placeToken(t, p);
     updateBoundRings();
     drag.onMove?.(id, { ...p });
@@ -1368,7 +1956,8 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     active = {
       kind: 'drag', id, pointerId: e.pointerId, pointerType: e.pointerType, x0: e.clientX, y0: e.clientY, dragging: false, last: null,
       // Every drag is relative: the token keeps its offset from where it was picked up, so it never jumps.
-      grab: t?.pos ? { x: t.pos.x - w.x, y: t.pos.y - w.y } : { x: 0, y: 0 },
+      // (From where it is drawn: a carried ball sits beside its carrier's boots.)
+      grab: t?.pos ? { x: (t.at ?? t.pos).x - w.x, y: (t.at ?? t.pos).y - w.y } : { x: 0, y: 0 },
       liftFrom: null, // time the touch lift started (after touchLiftAfterPx of travel)
     };
     try { svg.setPointerCapture(e.pointerId); } catch { /* synthetic events */ }
@@ -1527,9 +2116,21 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     setOrientation,
     /** Extra: the pitch length to keep in view on a small board (see setFocus above). */
     setFocus,
+    /** Fit a world rect on both axes, easing there; null: back to setFocus (PROGRESSIVE_FIELD §4). */
+    setCamera,
+    /** Extra: the world rect the camera fits now, or null. */
+    get camera() { return camera ? { ...camera } : null; },
+    /** Extra: the viewBox drawn now ({ x, y, width, height }, view metres), or null before the first layout. */
+    get viewBox() { return vb ? { ...vb } : null; },
+    /** Extra: how much bigger than life the ball is drawn (figures: ballScale; discs: as the tokens). */
+    get ballScale() { return ballK; },
+    /** Extra: how much bigger than life a figure is drawn on its base disc (figureScale; discs: tokenScale). */
+    get figureScale() { return figK; },
+    /** Extra: players are drawn as figures (createBoard { figures: true }). */
+    get figures() { return figs; },
     /** Extra: the resolved layout, 'horizontal' | 'vertical'. */
     get orientation() { return orient; },
-    /** Extra: how much bigger than life tokens are drawn (1 on a big board). */
+    /** Extra: how much bigger than life tokens (a figure's base disc) are drawn (1 on a big board). */
     get tokenScale() { return scale; },
     /** Extra: CSS px per metre as drawn (0 before the board is measured). */
     get pxPerMetre() { return pxm; },
@@ -1545,6 +2146,9 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     setAid,
     destroy() {
       handRun?.finish();
+      endCamAnim();
+      endSettle();
+      clearTimeout(runTimer);
       ro?.disconnect();
       win?.removeEventListener('resize', onResize);
       svg.removeEventListener('pointerdown', onPointerDown);

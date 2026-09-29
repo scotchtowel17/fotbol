@@ -22,6 +22,7 @@ export const TEST_FILES = Object.freeze([
   'passing.test.js',
   'passdrill.test.js',
   'spotdrill.test.js',
+  'cast.test.js',
   'integration.test.js',
   // data files
   'content.test.js',
@@ -32,6 +33,7 @@ export const TEST_FILES = Object.freeze([
   'store.test.js',
   'app.test.js',
   'board.test.js',
+  'figures.test.js',
   'heatmap.test.js',
   'reveal.test.js',
   'session.test.js',
