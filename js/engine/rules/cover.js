@@ -78,7 +78,8 @@ export default {
     return {
       s,
       target: { x: p.tx, y: p.ty },
-      vars: { mate: p.mate, mateKid: p.mateKid, depth: whole(depth), inside: whole(inside), want: p.want, issue },
+      // depthRaw, insideRaw: the unrounded depth and inside (kidscore.js: covering level with, or outside, the presser)
+      vars: { mate: p.mate, mateKid: p.mateKid, depth: whole(depth), inside: whole(inside), want: p.want, issue, depthRaw: depth, insideRaw: inside },
     };
   },
   text: {

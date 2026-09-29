@@ -23,6 +23,7 @@ export const TEST_FILES = Object.freeze([
   'passdrill.test.js',
   'spotdrill.test.js',
   'cast.test.js',
+  'kidscore.test.js',
   'integration.test.js',
   // data files
   'content.test.js',

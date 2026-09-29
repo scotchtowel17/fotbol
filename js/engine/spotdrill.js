@@ -19,6 +19,8 @@ import { computeGhost } from './ghost.js';
 import { evaluate, toleranceFor } from './score.js';
 import { RULES } from './rules/index.js';
 import { createRng } from './sequence.js';
+import { lessonOf } from './cast.js';
+import { kidArea, kidStars } from './kidscore.js';
 
 export const SPOT_DEFAULTS = Object.freeze({
   maxAttempts: 30, // [D] tries (the seed asked for, then '<seed>#1', '#2', ...) before generateSpotDrill gives up (null)
@@ -193,13 +195,14 @@ export function allSpotTexts(wording = 'kid') {
  * Judge a spot drill as npm run check does (ARCHITECTURE §5.3 "Judging a drill"): the free frame at the freeze,
  * the learner's base, the ghost round it, and standing still at the start; plus the rules of the principles asked
  * for (or the scenario's) at the answer, and the player on the ball at the freeze on it and standing (the question
- * names them: "Their defender has the ball"), never a loose ball.
+ * names them: "Their defender has the ball"), never a loose ball; and in Player mode's right area (kidscore.js, the full
+ * match) standing still earns no stars (unless answer.hold) and the best spot 3.
  * @param {object} scenario
  * @param {{ formations, principles?: object, want?: string[], params?: object, quick?: boolean }} opts
  *   principles: the catalogue for validation; want: principle ids whose rules count (default: scenario.principles);
  *   quick: stop at the gates that need no ghost when one fails (ghost, start and startScore are then null)
- * @returns {{ errors: string[] } | { errors: [], t, frame, base, ctx, ghost, start, moved, startScore, taught: {principle, rule, weight, s, sStart}[], problems: string[] }}
- *   taught: the rules of `want` weighted at least minRuleWeight and met (s >= minRuleScore) at the answer, most improved first
+ * @returns {{ errors: string[] } | { errors: [], t, frame, base, ctx, ghost, start, moved, startScore, kidStart, kidBest, taught: {principle, rule, weight, s, sStart}[], problems: string[] }}
+ *   kidStart, kidBest: Player mode's stars standing still and at the best spot (null after a quick stop); taught: the rules of `want` weighted at least minRuleWeight and met (s >= minRuleScore) at the answer, most improved first
  */
 export function checkSpotDrill(scenario, { formations, principles, want, params, quick = false } = {}) {
   const S = { ...SPOT_DEFAULTS, ...params };
@@ -222,7 +225,7 @@ export function checkSpotDrill(scenario, { formations, principles, want, params,
   const heavy = RULES.some((r) => r.principles.some((p) => wanted.has(p)) && r.weight(ctx) >= S.minRuleWeight);
   if (!heavy) problems.push(`no rule of ${[...wanted].join(', ')} weighs ${S.minRuleWeight}+ here`);
   problems.push(...speedProblems(s, S));
-  if (quick && problems.length) return { errors: [], t, frame, base, ctx, ghost: null, start: null, moved: 0, startScore: null, taught: [], problems };
+  if (quick && problems.length) return { errors: [], t, frame, base, ctx, ghost: null, start: null, moved: 0, startScore: null, kidStart: null, kidBest: null, taught: [], problems };
   const tol = toleranceFor(s.learner.role, s.answer.tol);
   const ghost = computeGhost(ctx, { base, tol });
   const start = s.learner.start ?? (() => { const p = frameAt(s, 0, { formations }).players.find((q) => q.id === me); return { x: p.x, y: p.y }; })();
@@ -241,7 +244,13 @@ export function checkSpotDrill(scenario, { formations, principles, want, params,
   if (atStart.score >= S.maxStartScore) problems.push(`standing still scores ${atStart.score} (>= ${S.maxStartScore})`);
   for (const m of s.misconceptions) if (inRegion(ghost.spot, m.region)) problems.push(`the answer is inside misconception "${m.id}"`);
   if (heavy && !taught.length) problems.push(`no rule of ${[...wanted].join(', ')} weighs ${S.minRuleWeight}+ and is met at the answer`);
-  return { errors: [], t, frame, base, ctx, ghost, start, moved, startScore: atStart.score, taught, problems };
+  // Player mode's right area (kidscore.js, the full match): standing still earns no stars and the best spot 3.
+  const hold = s.answer.hold === true;
+  const area = kidArea(ctx, { best: ghost.spot, centre: base, tol, start, hold, stage: 'full', lesson: lessonOf(s.principles, ghost.result, principles), misconceptions: s.misconceptions });
+  const kidStart = kidStars(ctx, start, area).stars, kidBest = kidStars(ctx, ghost.spot, area).stars;
+  if (!hold && kidStart !== 0) problems.push(`standing still earns ${kidStart} stars in Player mode (not 0)`);
+  if (kidBest !== 3) problems.push(`the best spot earns ${kidBest} stars in Player mode (not 3)`);
+  return { errors: [], t, frame, base, ctx, ghost, start, moved, startScore: atStart.score, kidStart, kidBest, taught, problems };
 }
 
 /**

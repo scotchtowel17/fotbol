@@ -14,7 +14,9 @@
 //     answer far from the start is not enough if the start itself already earns an A;
 //   - the ghost is outside every misconception region;
 //   - engine mode: the ghost is within disagreeDistance of answer.ideal (RESEARCH 5.7 "key
-//     disagreement": the engine moved an answer the coach keyed, so review it).
+//     disagreement": the engine moved an answer the coach keyed, so review it);
+//   - Player mode's right area (js/engine/kidscore.js, the full match): standing still earns no stars
+//     (unless answer.hold) and the best spot 3 stars. The staged games hold the same two (cast.js gate).
 // In authored mode the engine's own best spot is printed for coach review (not a failure).
 // The progressive field (docs/PROGRESSIVE_FIELD.md §1, §3; js/engine/cast.js): which stages each drill and its mirror
 // pass (a small game, a bigger game; the full match always does), with their casts ("3 v 2"). A drill (or its mirror)
@@ -32,7 +34,8 @@ import { buildContext } from '../js/engine/context.js';
 import { computeGhost } from '../js/engine/ghost.js';
 import { evaluate, toleranceFor } from '../js/engine/score.js';
 import { dist } from '../js/engine/geometry.js';
-import { stagesOf } from '../js/engine/cast.js';
+import { stagesOf, lessonOf } from '../js/engine/cast.js';
+import { kidArea, kidStars, kidOutline } from '../js/engine/kidscore.js';
 import { renderAscii } from './lib/ascii.mjs';
 
 export const CHECK_DEFAULTS = Object.freeze({
@@ -71,13 +74,16 @@ export function startSpot(s, { formations }) {
  * @param {{ principles: object, formations: {us: object, them?: object} }} opts
  * @returns {{ errors: string[] } | { errors: [], scenario: object, t: number, frame: object, base: object, ctx: object,
  *   ghost: object, engineGhost: object, start: object, moved: number, startScore: number,
- *   ideal: { spot: object, score: number, distance: number, disagree: boolean } | null, misconceptions: string[], problems: string[] }}
+ *   ideal: { spot: object, score: number, distance: number, disagree: boolean } | null, misconceptions: string[],
+ *   kid: { area: object, start: number, best: number }, problems: string[] }}
  *   scenario is the normalised copy; t its freezeAt (the duration when not authored); engineGhost the ghost searched round the
  *   base (= ghost in engine mode); start the learner's playback spot, moved the ghost's distance from it and startScore what
- *   standing still there scores (judged as the drill judges it); misconceptions the ids whose region holds the ghost; problems
- *   the failed drill-quality gates (empty = a good drill)
+ *   standing still there scores (judged as the drill judges it); misconceptions the ids whose region holds the ghost; kid
+ *   Player mode's right area round the ghost (kidscore.js kidArea, the full match) and its stars standing still and at the
+ *   ghost; problems the failed drill-quality gates (empty = a good drill)
  */
 export function checkScenario(raw, { principles, formations }) {
+  // (principles: the catalogue, for validation and each idea's rules: the lesson Player mode's keys read.)
   const errors = validateScenario(raw, { principles });
   if (errors.length) return { errors };
   // Optional fields filled in: freezeAt defaults to the duration, an answer.override becomes ideal + tol.
@@ -108,7 +114,12 @@ export function checkScenario(raw, { principles, formations }) {
   if (startScore >= C.maxStartScore && s.answer.hold !== true) problems.push(`standing still at the start spot scores ${startScore} (>= ${C.maxStartScore}): the drill is passed without moving (start the learner somewhere worse, or set answer.hold for a "hold your position" lesson)`);
   for (const id of misconceptions) problems.push(`the best spot is inside misconception region "${id}"`);
   if (ideal?.disagree) problems.push(`key disagreement: the ghost is ${ideal.distance.toFixed(1)} m from answer.ideal (> ${C.disagreeDistance} m): coach review, then fix the engine or the ideal`);
-  return { errors: [], scenario: s, t, frame, base, ctx, ghost, engineGhost, start, moved, startScore, ideal, misconceptions, problems };
+  const hold = s.answer.hold === true;
+  const area = kidArea(ctx, { best: ghost.spot, centre, tol, start, hold, stage: 'full', lesson: lessonOf(s.principles, ghost.result, principles), misconceptions: s.misconceptions });
+  const kid = { area, start: kidStars(ctx, start, area).stars, best: kidStars(ctx, ghost.spot, area).stars };
+  if (!hold && kid.start !== 0) problems.push(`standing still earns ${kid.start} stars in Player mode (not 0): the right area reaches the start`);
+  if (kid.best !== 3) problems.push(`the best spot earns ${kid.best} stars in Player mode (not 3)`);
+  return { errors: [], scenario: s, t, frame, base, ctx, ghost, engineGhost, start, moved, startScore, ideal, misconceptions, kid, problems };
 }
 
 /**
@@ -132,10 +143,15 @@ export function stagesProblems(raw) {
  * @param {object} raw  scenario JSON as authored (valid: run checkScenario first)
  * @param {{ principles: object, formations: {us: object, them?: object} }} opts
  * @returns {{ stages: { small: string|null, medium: string|null }, mirror: { small: string|null, medium: string|null },
- *   why: { small: string[], medium: string[] }, lesson: string, keep: string[], note: string|null, problems: string[] }}
+ *   why: { small: string[], medium: string[] }, lesson: string, keep: string[], note: string|null,
+ *   kid: { small, medium, full }, kidMirror: { small, medium, full }, problems: string[] }}
  *   stages / mirror: each passing stage's cast label ("3 v 2"), null when it fails; why: the last reasons the drill's
  *   small and medium casts failed the gate (for the report); lesson: the idea and rules the gate holds ("R3 screen x 1+",
- *   "U1 compact (T3 has no rule)"); keep: the players the drill scripts or names (always shown)
+ *   "U1 compact (T3 has no rule)"); keep: the players the drill scripts or names (always shown); kid: per stage of the
+ *   drill, Player mode's { start, best, green } (stars standing still and at the best spot, the green's mean radius in m:
+ *   kidscore.js kidOutline), null for a stage it does not pass (the staged gate holds start 0 and best 3); kidMirror: the
+ *   same for the mirror. Problems also: the mirror's full match where standing still earns a star or the best spot fewer
+ *   than 3 (checkScenario says so for the drill itself)
  */
 export function checkStages(raw, { principles, formations }) {
   const problems = stagesProblems(raw);
@@ -163,7 +179,18 @@ export function checkStages(raw, { principles, formations }) {
     }
     if (l?.unmet) problems.push(`the primary idea ${primary}'s rules are not met at the answer, so the smaller games hold ${l.principle} instead: fix the drill, or say why in "stages": { "note": "..." }`);
   }
-  return { stages, mirror, why, lesson, keep: [...(own.full.keep ?? [])], note, problems };
+  // Player mode's right area per stage (the smaller games' gate holds start 0 and best 3; the full match always plays,
+  // so its stars are checked here for the mirror and in checkScenario for the drill).
+  const kidOf = (r) => Object.fromEntries(['small', 'medium', 'full'].map((k) => {
+    if (!r[k]) return [k, null];
+    const green = kidOutline(r[k].ctx, r[k].area);
+    return [k, { start: r[k].gates.kidStart, best: r[k].gates.kidBest, green: green.reduce((a, q) => a + q.r, 0) / green.length }];
+  }));
+  const kid = kidOf(own), kidMirror = kidOf(mirrored);
+  const hold = normalizeScenario(raw).answer?.hold === true;
+  if (!hold && kidMirror.full.start !== 0) problems.push(`its mirror's standing still earns ${kidMirror.full.start} stars in Player mode (not 0): the right area reaches the start`);
+  if (kidMirror.full.best !== 3) problems.push(`its mirror's best spot earns ${kidMirror.full.best} stars in Player mode (not 3)`);
+  return { stages, mirror, why, lesson, keep: [...(own.full.keep ?? [])], note, kid, kidMirror, problems };
 }
 
 async function main() {
@@ -181,6 +208,7 @@ async function main() {
 
   let invalid = 0, failed = 0, checked = 0, unstaged = 0;
   const tally = { n: 0, small: 0, medium: 0, mSmall: 0, mMedium: 0 };
+  const kids = { reps: 0, best: 0, moving: 0, still: 0, greens: { small: [], medium: [], full: [] } }; // Player mode, every staged rep
   for (const file of files) {
     const id = file.replace(/\.json$/, '');
     let raw;
@@ -208,6 +236,13 @@ async function main() {
     const st = checkStages(raw, { principles, formations });
     const say = (x) => ['small', 'medium'].map((k) => (x[k] ? `${k} ${x[k]}` : `${k} ✗`)).join(' · ');
     console.log(`    stages: ${say(st.stages)} · full 11 v 11 (mirror: ${say(st.mirror)}); held to ${st.lesson}${st.keep.length ? `; always shown: ${st.keep.join(' ')}` : ''}${st.note ? `; note: ${st.note}` : ''}`);
+    const kidSay = (x) => ['small', 'medium', 'full'].filter((k) => x[k]).map((k) => `${k} ${x[k].start}/${x[k].best}★ green ${x[k].green.toFixed(1)} m`).join(' · ');
+    console.log(`    player mode (standing still / best spot, the green's mean radius): ${kidSay(st.kid)} (mirror: ${kidSay(st.kidMirror)})${hold ? ' (hold: standing still is not judged)' : ''}`);
+    for (const x of [st.kid, st.kidMirror]) for (const k of ['small', 'medium', 'full']) {
+      if (!x[k]) continue;
+      kids.reps++; kids.best += x[k].best === 3; kids.greens[k].push(x[k].green);
+      if (!hold) { kids.moving++; kids.still += x[k].start === 0; }
+    }
     for (const k of ['small', 'medium']) if (st.why[k].length) console.log(`      ${k} fails: ${st.why[k].join('; ')}`);
     for (const p of st.problems) console.log(`    ✗ ${p}`);
     if (st.problems.length) unstaged++;
@@ -220,6 +255,8 @@ async function main() {
 
   console.log(`\n${checked} scenario(s) checked: ${invalid} invalid, ${failed} failing a drill-quality gate, ${unstaged} with a stage problem (no small or medium stage, a hidden player, an unmet primary idea, a malformed "stages").`);
   console.log(`stages (drills / mirrors): small ${tally.small}/${tally.n} / ${tally.mSmall}/${tally.n}, medium ${tally.medium}/${tally.n} / ${tally.mMedium}/${tally.n}, full ${tally.n}/${tally.n}`);
+  const median = (xs) => { const q = [...xs].sort((a, b) => a - b); return q.length ? q[Math.floor(q.length / 2)].toFixed(1) : '-'; };
+  console.log(`player mode (js/engine/kidscore.js, drills and mirrors at every stage they play): the best spot 3★ in ${kids.best}/${kids.reps} reps, standing still 0★ in ${kids.still}/${kids.moving} (hold drills not judged); the green's mean radius, median: small ${median(kids.greens.small)} m, medium ${median(kids.greens.medium)} m, full ${median(kids.greens.full)} m`);
   process.exitCode = invalid || failed || unstaged ? 1 : 0;
 }
 

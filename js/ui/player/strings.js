@@ -107,6 +107,8 @@ export const STRINGS = Object.freeze({
   seeWhat: 'See what happens',
   missNote: 'Hard one. Pros miss it too.',
   bestSpot: 'Best spot',
+  // the right area (Player mode judges the right area, drawn green at the reveal, not one exact spot)
+  greenIsRight: 'Anywhere in the green is right.',
   stars: (n) => `${n} of 3 stars`,
   // leaving and ending
   stop: 'Stop and go home',

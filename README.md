@@ -1,6 +1,6 @@
 # fotbol
 
-**Learn where to stand.** fotbol is a free football (soccer) game about positioning, made for players of about 10 to 14. You play one position, watch a bit of a match, and when the whistle stops play you move yourself to where you should be. The pitch then shows you the best spot, you get up to three stars, and one plain sentence tells you why.
+**Learn where to stand.** fotbol is a free football (soccer) game about positioning, made for players of about 10 to 14. You play one position, watch a bit of a match, and when the whistle stops play you move yourself to where you should be. The pitch then shows you the right area in green, with the best spot inside it, you get up to three stars, and one plain sentence tells you why.
 
 **▶ Play it now: <https://scotchtowel17.github.io/fotbol/>** (phones, tablets and computers)
 
@@ -17,7 +17,7 @@ No account, no ads, no tracking. Your progress stays on your device.
 1. Tap **Play**, then tap what you play: **Defender**, **Midfielder**, **Winger** or **Striker**. That's it: no sign-up, no tour.
 2. A short bit of play runs, first as a small game of just a few players. The whistle blows and play freezes: "The ball is on the other side now. Where do you go?"
 3. The first time, a hand shows you the best spot, then it's your turn. Drag yourself there (or tap yourself, then tap a spot) and press **Lock it**.
-4. The pitch shows the best spot as a ring with an arrow from where you stood. You get 0 to 3 stars and one word (Spot on, Great, Close or Not yet), never a grade or a score out of 100. **Why?** tells you a little more, **Try again** gives you the same idea on the other side (just practice: your first try is the one that counts), and **See what happens** plays on.
+4. The pitch shows the right area in green, with the best spot as a ring inside it. Anywhere in the green is three stars; just outside it is two; and if you missed, an arrow shows you the way in. Being on the wrong side of your player or the ball, offside, or where you started is never right, however close. You get 0 to 3 stars and one word (Spot on, Great, Close or Not yet), never a grade or a score out of 100. **Why?** tells you a little more, **Try again** gives you the same idea on the other side (just practice: your first try is the one that counts), and **See what happens** plays on.
 5. After three plays it's Full time. Then you pick your shirt colour, number and a nickname, and you're on the home screen.
 
 ## Player mode and Coach mode
@@ -72,7 +72,7 @@ The engine lives in `js/engine/`. It is plain JavaScript that runs the same in t
 2. **What the situation asks of you (layer B).** First, fotbol works out your job from the ball: first, second or third defender, or supporting attacker. Then 17 small geometric rules check the principles that apply, for example "goal-side of your man", "cover behind and inside the presser", "level with your back line", "out of the passing shadow" or "stay onside". Each rule gives a 0-1 score and a sentence.
 3. **The best spot (layer C).** A grid search around your zone finds the highest-scoring spot. That spot is the ghost ring you see after the reveal, drawn over a heatmap.
 
-Your score is 55% "how close to your zone" and 45% "which principles you met". Breaking a hard rule, such as being offside or playing their striker onside, caps it at 59. Player mode turns the score into stars (3 at 90, 2 at 75, 1 at 55) and never shows the number. The other 21 players move automatically as an authored ball path plays out, so each drill is a moving scene with no physics engine behind it.
+Your score is 55% "how close to your zone" and 45% "which principles you met". Breaking a hard rule, such as being offside or playing their striker onside, caps it at 59. Coach mode shows that score and its grade. Player mode never shows the number and judges the right area instead (`js/engine/kidscore.js`): 3 stars anywhere in an area round the best spot about as big as your position's zone, fewer further out (never fewer than the score would give), none where you started, and at most one for a mistake no distance forgives, such as the wrong side of your man, offside at a pass or the drill's own lesson clearly missed. The other 21 players move automatically as an authored ball path plays out, so each drill is a moving scene with no physics engine behind it.
 
 When you have the ball ("Who's open?"), `js/engine/passing.js` rates every pass you could play: how likely it is to arrive (the lane, who can get there first, the pressure on your teammate) and what it gains (lines broken, space, the danger if it is lost). A risky pass is starred only when it is worth clearly more than the best safe one, and a safe pass earns two stars or more unless a clearly better forward pass was on. `js/engine/passdrill.js` builds those drills from match-like scenes and keeps only the ones with a clear best pass and a tempting wrong one. `js/engine/spotdrill.js` builds new "Find your spot" drills the same way, so the Road never runs out of plays, and keeps only the ones that pass the same quality checks as the 36 hand-made drills.
 

@@ -36,15 +36,23 @@
 // Words that name a group ("their winger") name the player by shirt number when the game shows more than one of them
 // ("their number 7": repSpeaker, from the rule or the words that say who is on the ball, never a guess); a line or a
 // Why? sentence that cannot say whom it means is not shown (the next one says it), a question asks the default one.
-// After a miss, once a set: "Hard one. Pros miss it too." (R20). Stars come from the score (rewards.js starsForScore);
-// letters, "/100", codes and metres never show. The words match the stars (pickLine, whyFor): 3 stars get praise
-// only, 2 stars one fix at most, and the drill's own ideas come before any other rule's.
+// After a miss, once a set: "Hard one. Pros miss it too." (R20). Stars judge the right AREA, not one exact point
+// (js/engine/kidscore.js: 3 anywhere in the green round the best spot, 2 just outside it, 0 where you started, at
+// most 1 past a key line such as offside or the wrong side of your man); the reveal draws the green (the 3-star
+// outline: zoneOf) with the best-spot ring inside it, and after a miss an arrow from YOU into its nearest edge; the
+// set's first reveal says "Anywhere in the green is right." Coach mode keeps its strict 0-100 score. Letters, "/100",
+// codes and metres never show. The words match the stars (pickLine, whyFor): 3 stars get praise only, 2 stars one fix
+// at most (a key's first), and the drill's own ideas come before any other rule's.
 //
 // What a rep counts for is recordPolicy's call. A counted first try updates Elo, the history and the streaks exactly
 // as a Coach-mode drill does (js/ui/modes/drill.js), awards the rep and any sticker its mastery earned (celebrate:
 // false: Full time shows them) and may get the set's one big celebration. Try again is practice only, as in "Who's
 // open?": nothing is recorded, it never celebrates, and the slot keeps the first try's stars (the tally, Full time,
 // the Road), so copying the ring you were just shown is never worth more than getting it right first time.
+// Everything a rep records follows the stars the kid saw (recordOf): award() gets those `stars`, and the score that
+// stands for them is kidScore(stars, Coach score): Coach mode's score held inside the band of those stars (0-54, 55-74,
+// 75-89, 90-100), so starsForScore(kidScore) always equals the stars shown; Elo learns score01 = kidScore / 100 and the
+// streak that score. The history keeps Coach mode's strict score and grade beside the `stars` (stickers read them).
 // Worked-example and glow-aided reps teach; they skip Elo (and, in the first set, which is the tutorial, the XP too:
 // R28). The set ends with road.recordSet and showFullTime. Leaving a set early (the X, Back, anything) keeps what was
 // played (R37, ICO standard 5: quit at any time without losing progress): the Road records the reps locked in so far
@@ -56,7 +64,8 @@ import { el, button, icon, notice, linkButton, announce } from '../components.js
 import { BALL_ID, project, unproject, CAMERA_MIN, BOARD_DEFAULTS, shirtNumberOf } from '../board.js';
 import { nameOf, kidNameOf } from '../../engine/rules/_util.js';
 import { frameAt, learnerBaseAt, timing } from '../../engine/timeline.js';
-import { bestStage, reduceFrame, STAGES } from '../../engine/cast.js';
+import { bestStage, reduceFrame, STAGES, lessonOf } from '../../engine/cast.js';
+import { kidArea, kidStars, kidOutline, KID_LEVELS, KID_DEFAULTS } from '../../engine/kidscore.js'; // Player mode's judgement: the right area
 import { normalizeScenario, mirrorScenario, validateScenario, learnerId as learnerIdOf } from '../../engine/scenario.js';
 import { buildContext } from '../../engine/context.js';
 import { computeGhost } from '../../engine/ghost.js';
@@ -122,6 +131,9 @@ export const PLAY_DEFAULTS = Object.freeze({
   labelCost: Object.freeze({ you: 12, ball: 6, other: 1, arrow: 0.5, outside: 8, far: 0.01 }), // [D] covering YOU and your tag
   //   (area, as a share of the label), the ball, another player, the arrow, the edge of the view; `far` per type height out
   labelOthersMax: 0.12, // [D] a place by the ring covering at most this share of other players still fits (else a callout)
+  // The right area (js/engine/kidscore.js: Player mode judges the right AREA, not one exact point; Coach mode keeps its
+  // strict 0-100 score). The reveal draws it as a soft green zone (the 3-star outline, kidOutline) round the best spot.
+  zoneArrowIn: 0.75, // [D] metres: after a miss the arrow runs from YOU to the green's nearest edge and this far on into it
 });
 
 export const STRINGS = Object.freeze({
@@ -136,13 +148,17 @@ export const STRINGS = Object.freeze({
   keysHint: 'Arrow keys move YOU. Enter locks it.',
   watchThis: 'Watch this.',
   yourTurnHint: 'Your turn: drag YOU, or tap a spot.',
-  ringIsBest: 'The ring is the best spot. Move YOU there.',
-  glowHint: 'Your ring gets hot near the best spot.',
+  ringIsBest: 'Anywhere in the green is right. Move YOU there.',
+  glowHint: 'Your ring gets hot in the right area.',
+  greenIsRight: SHARED.greenIsRight, // the tip on the set's first reveal: the green zone is the answer, not one exact spot
   otherSide: 'Same play, other side',
   practiceNote: 'Practice only. Your first try counts.',
   missNote: SHARED.missNote,
-  lineBest: 'That is the best spot.',
-  lineFix: 'Follow the arrow to the best spot.',
+  // The reveal's line when no reason or praise fits (pickLine), by stars
+  lineInGreen: 'You found the right area.', // 3 stars
+  lineNear: 'One more step into the green.', // 2 stars
+  lineClose: 'The green shows where to be.', // 0-1 star
+  lineStill: 'You stayed where you started. Move with the play.', // locked in at your start (0 stars)
   bestSpot: SHARED.bestSpot,
   // A player named by their shirt number when the game shows more than one of their group ("their number 7")
   theirNumber: (n) => `their number ${n}`,
@@ -259,26 +275,32 @@ export function praiseOf(result, P = EXPLAIN_DEFAULTS) {
 }
 
 /**
- * The reveal's one line (≤ 14 words, simple wording, no metres or codes), matched to the stars (R17, R19). `own` is the
- * drill's ideas (scenario.principles): a line about them comes before one about any other rule.
- *   3 stars   praise only, for what you got right ("That is the best spot." when none fits)
- *   2 stars   one fix: the top reason ("Follow the arrow to the best spot." when none fits)
- *   0-1 star  the drill's note on the mistake you made (its misconception), else the top reason about the drill's
- *             ideas, else the drill's own lesson (its takeaway), else any other reason
+ * The reveal's one line (≤ 14 words, simple wording, no metres or codes), matched to the stars (R17, R19) of Player
+ * mode's right area (js/engine/kidscore.js kidStars). `own` is the drill's ideas (scenario.principles): a line about
+ * them comes before one about any other rule. `key` is the fix of the key the spot broke (a side, an order or a line
+ * no distance forgives: offside, the wrong side of your man, the lesson clearly failed: kidStars' reason), said first.
+ *   3 stars   praise only, for what you got right ("You found the right area." when none fits)
+ *   still     you locked in where you started: "You stayed where you started. Move with the play."
+ *   2 stars   one fix: the key's, else the top reason about the drill's ideas, else any other ("One more step into the
+ *             green." when none fits)
+ *   0-1 star  the key's fix, else the drill's note on the mistake you made (its misconception), else the top reason
+ *             about the drill's ideas, else the drill's own lesson (its takeaway), else any other reason ("The green
+ *             shows where to be." when none fits)
  * @param {{ feedback?: object, reasons?: object[], praise?: (string|object)[], misconception?: string|null, stars: number,
- *   principles?: string[], takeaway?: string }} m  feedback: judgeSpot's, in kid wording; reasons (default
- *   feedback.reasons): explain.js reasons, more than the one kid feedback keeps; praise (default feedback.praise):
- *   praiseOf, so a line can be matched to its idea
+ *   principles?: string[], takeaway?: string, key?: string|null, still?: boolean }} m  feedback: judgeSpot's, in kid
+ *   wording; reasons (default feedback.reasons): explain.js reasons, more than the one kid feedback keeps; praise
+ *   (default feedback.praise): praiseOf, so a line can be matched to its idea
  */
-export function pickLine({ feedback = null, reasons, praise, misconception = null, stars = 0, principles: own = [], takeaway = '' } = {}) {
+export function pickLine({ feedback = null, reasons, praise, misconception = null, stars = 0, principles: own = [], takeaway = '', key = null, still = false } = {}) {
   const ok = (s) => usableText(s, PLAY_DEFAULTS.lineMaxWords);
   const ideas = Array.isArray(own) ? own : [];
-  if (stars >= 3) return drillFirst(praise ?? feedback?.praise ?? [], ideas).map(textOf).find(ok) ?? STRINGS.lineBest;
+  if (stars >= 3) return drillFirst(praise ?? feedback?.praise ?? [], ideas).map(textOf).find(ok) ?? STRINGS.lineInGreen;
+  if (still) return STRINGS.lineStill;
   const list = drillFirst(reasons ?? feedback?.reasons ?? [], ideas);
   const about = list.filter((r) => ideas.length && ideasOf(r).some((id) => ideas.includes(id))).map(textOf);
   const rest = list.map(textOf).filter((t) => !about.includes(t));
-  const candidates = stars <= 1 ? [misconception, ...about, takeaway, ...rest] : [...about, ...rest];
-  return candidates.find(ok) ?? STRINGS.lineFix;
+  const candidates = stars <= 1 ? [key, misconception, ...about, takeaway, ...rest] : [key, ...about, ...rest];
+  return candidates.find(ok) ?? (stars >= 2 ? STRINGS.lineNear : STRINGS.lineClose);
 }
 
 /**
@@ -679,7 +701,7 @@ export function setStep(i, { nodePlays = 0, nodeStars = 0 } = {}, P = PLAY_DEFAU
 
 /** The set's tally (pure): each slot keeps its first try's stars. Try again is practice (recordPolicy): it is never
  *  tallied, and a second try at a slot could not change it anyway. */
-export const createTally = (n) => ({ slots: Array.from({ length: Math.max(0, n) }, () => null), missNoted: false });
+export const createTally = (n) => ({ slots: Array.from({ length: Math.max(0, n) }, () => null), missNoted: false, greenTold: false });
 export function tallyTry(tally, { slot, stars }) {
   const slots = [...tally.slots];
   const s = Math.max(0, Math.min(3, Math.round(Number(stars)) || 0));
@@ -695,10 +717,38 @@ export function missNote(tally, stars) {
   return { note: STRINGS.missNote, tally: { ...tally, missNoted: true } };
 }
 
+/**
+ * The reveal's note (pure): Try again says it is practice ("Practice only. Your first try counts."); else the set's
+ * first reveal says what the green is ("Anywhere in the green is right."); else, after a miss, once a set, "Hard one.
+ * Pros miss it too." (missNote, R20: a miss on the first reveal keeps it for the next one).
+ * @returns {{ note: string, tally }}
+ */
+export function revealNote(tally, { stars = 0, practice = false } = {}) {
+  if (practice) return { note: STRINGS.practiceNote, tally };
+  if (!tally.greenTold) return { note: STRINGS.greenIsRight, tally: { ...tally, greenTold: true } };
+  return missNote(tally, stars);
+}
+
 /** A rep's name for Full time's "Best move": its main idea's simple name, else its simple title. */
 export function repTitle(scenario, principles = {}) {
   const p = principles?.[scenario?.principles?.[0]];
   return (typeof p?.kidName === 'string' && p.kidName) || scenario?.titleKid || scenario?.title || '';
+}
+
+/**
+ * What a first try records (pure), from the stars the kid was shown (Player mode's right area): the record id, those
+ * stars, the score that stands for them (kidScore: Coach mode's score held in their band), Elo's score01 (that score /
+ * 100: the skill model agrees with the stars) and the rewards event (`stars` as shown, `score` = kidScore, so XP, a
+ * first 3 stars, improvement and comebacks all follow the stars; no grade: the kid never sees one).
+ * @param {object} s  the scenario
+ * @param {{ stars: number, judgement: { result: { score: number } } }} judged  revealFor's
+ * @returns {{ id: string, stars: number, score: number, score01: number, event: object }}
+ */
+export function recordOf(s, judged) {
+  const stars = Math.max(0, Math.min(3, Math.round(Number(judged?.stars)) || 0));
+  const score = kidScore(stars, judged?.judgement?.result?.score);
+  const id = recordIdOf(s);
+  return { id, stars, score, score01: score / 100, event: { type: 'rep', scenarioId: id, role: s?.learner?.role, score, stars } };
 }
 
 /** A deterministic seed for a node's nth play. */
@@ -715,13 +765,129 @@ export function recordIdOf(s) {
   return String(s?.mirrorOf ?? s?.id ?? '').replace(/-m$/, '');
 }
 
+// ---------------------------------------------------------------- the right area (Player mode's judgement)
+
+/**
+ * The score (0-100) that stands for a Player-mode judgement (pure): Coach mode's score at the spot, held inside the
+ * band of the stars the kid was shown (rewards.js starsForScore: 0 below 55, 1 at 55-74, 2 at 75-89, 3 at 90+; starsAt),
+ * so starsForScore(kidScore(n, x)) is n for every score x. A spot in the green (3 stars) Coach mode scores 80 counts as
+ * 90; a spot past a key line (1 star) that Coach mode scores 80 counts as 74. This is what Elo learns from (score01 =
+ * kidScore / 100: the skill model agrees with the stars) and what the rewards see (award's `score`, beside `stars`;
+ * Match day's run: its average held in the band of the run's stars), so every star, XP and sticker follows the right
+ * area, while Coach mode's own records (the history's score and grade, Live's best) keep the strict score.
+ * @param {number} stars  0-3, as shown
+ * @param {number} [coachScore]  evaluate()'s score at the spot (none: the bottom of the band)
+ */
+export function kidScore(stars, coachScore, P = PLAY_DEFAULTS) {
+  const n = Math.max(0, Math.min(3, Math.round(Number(stars)) || 0));
+  const [one, two, three] = P.starsAt;
+  const lo = [0, one, two, three][n], hi = [one - 1, two - 1, three - 1, 100][n];
+  const s = Number(coachScore);
+  return Math.round(Math.min(hi, Math.max(lo, Number.isFinite(s) ? s : lo)));
+}
+
+/** The rep's lesson for the right area (cast.js lessonOf, as a staged rep carries it: its primary idea's rules), or
+ *  null (the lesson's keys are then left out: only the hard ones and the lines that are not the lesson count). */
+function lessonFor(s, result, catalogue) {
+  try { return result ? lessonOf(s?.principles ?? [], result, catalogue ?? undefined) ?? null : null; } catch { return null; }
+}
+
+/**
+ * A rep's right area (pure; js/engine/kidscore.js kidArea): round the best spot, as big as the position's zone
+ * tolerance allows at the rep's stage, never reaching toward YOUR start (standing still is never right), with the
+ * rep's lesson and the drill's misconceptions as its keys.
+ * @param {object} s  the scenario
+ * @param {{ ctx, ghost: { spot, result }, start, stage?, lesson?, base }} scene  stagedScene's or repScene's
+ */
+export function repArea(s, scene) {
+  return kidArea(scene.ctx, {
+    best: scene.ghost.spot,
+    centre: scene.ghost.result?.center ?? scene.base,
+    tol: scene.ghost.result?.tol ?? toleranceFor(s?.learner?.role, s?.answer?.tol),
+    start: scene.start ?? null, hold: s?.answer?.hold === true, stage: STAGES.includes(scene.stage) ? scene.stage : 'full',
+    lesson: scene.lesson ?? null, misconceptions: Array.isArray(s?.misconceptions) ? s.misconceptions : [],
+  });
+}
+
+const AREAS = new WeakMap(); // scene → its right area (a scene built without one: repArea once)
+/** A scene's right area: its own (stagedScene, repScene), else repArea once per scene. */
+export function areaOf(s, scene) {
+  if (scene?.area) return scene.area;
+  if (!AREAS.has(scene)) AREAS.set(scene, repArea(s, scene));
+  return AREAS.get(scene);
+}
+
+const OUTLINES = new WeakMap(); // area → its drawn green (kidOutline: about 1.4 ms, once per rep)
+/** The green the reveal draws: where the right area gives 3 stars (kidOutline, traced round the best spot). */
+export function zoneOf(s, scene) {
+  const area = areaOf(s, scene);
+  if (!OUTLINES.has(area)) {
+    let pts = [];
+    try { pts = kidOutline(scene.ctx, area) ?? []; } catch (err) { console.warn('[fotbol] play: the right area could not be traced', err); pts = []; }
+    OUTLINES.set(area, pts.filter(isPoint).map((p) => ({ x: p.x, y: p.y })));
+  }
+  return OUTLINES.get(area);
+}
+
+/** The green as a board marker (board.js 'zone': css/play.css .mk-zone), or null with fewer than 3 points. */
+export const zoneMarker = (points) => ((points ?? []).filter(isPoint).length >= 3 ? { type: 'zone', points: points.filter(isPoint).map((p) => ({ x: p.x, y: p.y })), tone: 'good' } : null);
+
+/** Is a point inside a closed outline (pure; even-odd)? */
+export function insideOutline(points, p) {
+  const q = (points ?? []).filter(isPoint);
+  if (q.length < 3 || !isPoint(p)) return false;
+  let c = false;
+  for (let i = 0, j = q.length - 1; i < q.length; j = i++) {
+    const a = q[i], b = q[j];
+    if ((a.y > p.y) !== (b.y > p.y) && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) c = !c;
+  }
+  return c;
+}
+
+/** The nearest point of a closed outline to a spot (pure), or null with fewer than 2 points. */
+export function nearestOnOutline(points, spot) {
+  const q = (points ?? []).filter(isPoint);
+  if (q.length < 2 || !isPoint(spot)) return null;
+  let best = null, bd = Infinity;
+  for (let i = 0; i < q.length; i++) {
+    const a = q[i], b = q[(i + 1) % q.length];
+    const dx = b.x - a.x, dy = b.y - a.y, L = dx * dx + dy * dy;
+    const t = L > 0 ? Math.max(0, Math.min(1, ((spot.x - a.x) * dx + (spot.y - a.y) * dy) / L)) : 0;
+    const p = { x: a.x + dx * t, y: a.y + dy * t };
+    const d = Math.hypot(p.x - spot.x, p.y - spot.y);
+    if (d < bd - 1e-12) { bd = d; best = p; }
+  }
+  return best;
+}
+
+/**
+ * Where the arrow after a miss ends (pure): at the green's nearest edge to YOU, then `zoneArrowIn` on toward the best
+ * spot (so it points into the green, never at one exact point); the best spot itself when YOU stand inside the drawn
+ * green (a key broke it there) or there is no green to point to.
+ */
+export function zoneArrowEnd(points, spot, best, P = PLAY_DEFAULTS) {
+  if (!isPoint(best)) return null;
+  if (insideOutline(points, spot)) return { x: best.x, y: best.y };
+  const e = nearestOnOutline(points, spot);
+  if (!e) return { x: best.x, y: best.y };
+  const d = Math.hypot(best.x - e.x, best.y - e.y);
+  const k = d > 1e-9 ? Math.min(P.zoneArrowIn, d) / d : 0;
+  return { x: e.x + (best.x - e.x) * k, y: e.y + (best.y - e.y) * k };
+}
+
+/** The glow's level at a spot (pure): KID_LEVELS by the right area's stars there ('hot' in the green). */
+export function levelAt(scene, area, p) {
+  return KID_LEVELS[Math.max(0, Math.min(3, kidStars(scene.ctx, p, area).stars))];
+}
+
 /**
  * The judging scene of a rep (pure; ARCHITECTURE §5.3): its timing, your start, the frame at the freeze with you at
- * the start, your base, the context and the best spot (the ghost).
+ * the start, your base, the context, the best spot (the ghost), the rep's lesson (cast.js lessonOf, with `catalogue`:
+ * data/principles.json) and its right area at the full match (repArea).
  * @param {object} s  a normalised scenario
- * @param {{ formations: object }} opts
+ * @param {{ formations: object, catalogue?: object }} opts
  */
-export function repScene(s, { formations } = {}) {
+export function repScene(s, { formations, catalogue = null } = {}) {
   const { duration, freezeAt } = timing(s);
   const learnerId = learnerIdOf(s);
   const auto = frameAt(s, 0, { formations }).players.find((p) => p.id === learnerId);
@@ -731,14 +897,20 @@ export function repScene(s, { formations } = {}) {
   const ctx = buildContext({ ...freezeFrame, players: freezeFrame.players.map((p) => (p.id === learnerId ? { ...p, x: start.x, y: start.y } : p)) }, { learnerId, base });
   const authored = s.answer?.mode === 'authored' && s.answer.ideal;
   const ghost = computeGhost(ctx, { base: authored ? s.answer.ideal : base, tol: toleranceFor(s.learner.role, s.answer?.tol) });
-  return { duration, freezeAt, learnerId, start, freezeFrame, base, ctx, ghost };
+  const scene = { duration, freezeAt, learnerId, start, freezeFrame, base, ctx, ghost, lesson: lessonFor(s, ghost.result, catalogue), hold: s.answer?.hold === true };
+  scene.area = repArea(s, scene);
+  return scene;
 }
 
 /**
  * Everything the reveal says about a spot (pure): the judgement, the stars, the line, the Why? sheet (its idea: the
  * one behind the line's reason, else the drill's own) and what you did best (Full time's "Best move").
+ * The stars are Player mode's: the right area (js/engine/kidscore.js kidStars on the scene's area: 3 anywhere in the
+ * green, 2 just outside it, never fewer outside it than Coach mode's score gives up to 2, 0 where YOU started, and at
+ * most 1 past a key line: offside at a pass, the wrong side of your man or of the ball, the lesson clearly failed);
+ * `judgement` keeps Coach mode's strict evaluation (its score, grade and reasons) for the records and the words.
  * @param {object} s  the scenario
- * @param {{ ctx: object, ghost: object }} scene  repScene's
+ * @param {{ ctx: object, ghost: object, area?: object }} scene  stagedScene's or repScene's (area: its right area)
  * @param {{x:number, y:number}} spot
  * Every sentence names the player it means by shirt number where the game shows more than one of their group
  * (repSpeaker: "Get closer to their number 7"); one that cannot say whom it means is left out (the next one says it).
@@ -746,12 +918,20 @@ export function repScene(s, { formations } = {}) {
  * (STRINGS.zoneLine).
  * @param {{ principles?: object, youNumber?: number|null }} [opts]  principles: data/principles.json by id; youNumber:
  *   YOUR kit number (the shirts' numbers)
- * @returns {{ judgement, more, stars, misId, misText, line, why, move, who }}  who: the rep's repSpeaker (the cue's name)
+ * @returns {{ judgement, more, stars, misId, misText, line, why, move, who, kid, area, still, keyRule, lineRule, cue }}  who: the
+ *   rep's repSpeaker (the cue's name); kid: kidStars' result; area: the right area; still: locked in where YOU started;
+ *   keyRule: the rule of the key that capped the stars (its fix is the line), or null; lineRule: the rule the line is
+ *   about (the key's, or the reason's the line says), or null; cue: the one cue after a miss (keyCue: the key's, else
+ *   the line's rule's, so the pitch shows what the line talks about, else judgeSpot's), null at 3 stars
  */
 export function revealFor(s, scene, spot, { principles = {}, youNumber = null } = {}) {
   const judgement = judgeSpot({ ctx: scene.ctx, ghost: scene.ghost }, spot, { wording: 'kid', principles });
   const more = explain(judgement.result, scene.ctx, spot, { wording: 'kid', max: 3, principles, ghost: { spot: scene.ghost.spot, result: scene.ghost.result } });
-  const stars = starsForScore(judgement.result.score);
+  // Player mode's stars: the right area (js/engine/kidscore.js), not Coach mode's exact point (judgement.result.score).
+  const area = areaOf(s, scene);
+  const kid = kidStars(scene.ctx, spot, area);
+  const stars = kid.stars;
+  const still = stars === 0 && (kid.reason === 'start' || (kid.keys ?? []).includes('stood-still'));
   const who = repSpeaker(s, scene, { youNumber });
   const rules = judgement.result.rules;
   const staged = !!scene?.ids;
@@ -762,17 +942,96 @@ export function revealFor(s, scene, spot, { principles = {}, youNumber = null } 
   const reasons = (more.reasons ?? []).map((r) => ({ ...r, text: sayRule(r) })).filter((r) => r.text);
   const praise = praiseOf(judgement.result).map((p) => ({ ...p, text: who.rule(p.text, p.ruleId, rules, spot) })).filter((p) => p.text);
   const takeaway = who.free(takeawayFor(s)) ?? '';
-  const line = pickLine({ reasons, praise, misconception: misText, stars, principles: own, takeaway });
-  const source = reasons.find((r) => r.text === line);
+  // The key the spot broke (a side, an order or a line no distance forgives): its fix is said first (a key about an
+  // angle in the rule's words at that angle: angleVars).
+  const keyRule = stars < 3 && RULES_BY_ID[kid.reason] ? kid.reason : null;
+  const keyName = keyRule ? kid.keys?.[kid.broken?.indexOf(keyRule)] ?? null : null;
+  const key = keyRule ? keyFix(keyRule, { reasons, rules, who, spot, vars: angleVars(keyName, keyRule, { ctx: scene.ctx, spot, area, rules }) }) : null;
+  const line = pickLine({ reasons, praise, misconception: misText, stars, principles: own, takeaway, key: key?.text ?? null, still });
+  const source = reasons.find((r) => r.text === line) ?? (key?.text === line ? key : undefined);
   const drillIdea = principles[own[0]];
   const idea = principles[source?.principleId] ?? drillIdea;
   // The idea's summary about this play: its player by number too (the line's rule's, else the drill's), or none.
   const sum = typeof idea?.summary === 'string' ? idea.summary : idea?.summary?.kid;
   const summary = typeof sum === 'string' ? (source ? who.rule(sum, source.ruleId, rules, spot) : null) ?? who.free(sum) : null;
   const principle = idea ? { ...idea, summary: summary ?? '' } : idea;
-  const why = whyFor({ principle, reasons, praise, line, stars, principles: own, takeaway: idea === drillIdea ? who.free(S.wordingOf(s?.takeaway, 'kid')) ?? '' : '' });
+  // (The key's fix is a fix like explain's reasons: a 2-star line that is the key's gets no second fix on Why?.)
+  const fixes = key && !reasons.some((r) => r.text === key.text) ? [key, ...reasons] : reasons;
+  const why = whyFor({ principle, reasons: fixes, praise, line, stars, principles: own, takeaway: idea === drillIdea ? who.free(S.wordingOf(s?.takeaway, 'kid')) ?? '' : '' });
   const move = bestMoveOf({ praise, principles: own, byId: principles });
-  return { judgement, more, stars, misId: mc?.id ?? null, misText, line, why, move, who };
+  // The one cue after a miss: the broken key's (the offside line, the player you mark), else the rule the line talks
+  // about (a line about their striker rings their striker, not the line of your defenders), else Coach mode's top one.
+  const lineRule = keyRule ?? (typeof source?.ruleId === 'string' ? source.ruleId : null);
+  const cue = stars < 3 ? keyCue(lineRule, { ctx: scene.ctx, spot, fallback: judgement.feedback.cue }) : null;
+  return { judgement, more, stars, misId: mc?.id ?? null, misText, line, why, move, who, kid, area, still, keyRule, lineRule, cue };
+}
+
+/**
+ * The cue a reveal draws after a miss (pure; cueMarker draws it): the rule of the key the spot broke (or of the reason
+ * the line says), highlighted as that rule highlights it (rule.cue: the offside line, the player you mark, the ball you
+ * press), so the one cue shows the relationship the line talks about; else `fallback` (judgeSpot's feedback.cue: Coach
+ * mode's top failing rule).
+ * @param {string|null} ruleId  revealFor's lineRule (its keyRule, else the line's rule)
+ * @param {{ ctx?: object, spot?: {x:number,y:number}, fallback?: object|null }} [opts]
+ * @returns {{ text: string, ruleId: string, highlight: object }|object|null}
+ */
+export function keyCue(ruleId, { ctx = null, spot = null, fallback = null } = {}) {
+  if (!ruleId || fallback?.ruleId === ruleId) return fallback;
+  let highlight = null;
+  try { highlight = ctx ? RULES_BY_ID[ruleId]?.cue?.(ctx, spot) ?? null : null; } catch { highlight = null; }
+  return highlight && typeof highlight === 'object' ? { text: '', ruleId, highlight } : fallback;
+}
+
+/**
+ * The fix for a key the spot broke (pure): with `vars` (a key about an angle: angleVars) the rule's own simple fix at
+ * that angle (its `text.kid.fail`: "Come from the middle side of their number 10, so they have to go wide." rather
+ * than "Get closer" at YOUR distance); else explain's reason for that rule when it gave one, else the rule's own fix
+ * at the spot; each with the player it means by number (repSpeaker), or null.
+ * @param {string} ruleId
+ * @param {{ reasons?: object[], rules?: object[], who?: object|null, spot?: {x,y}|null, vars?: object|null }} [opts]
+ * @returns {{ ruleId: string, principleId: string|null, principles: string[], text: string }|null}
+ */
+export function keyFix(ruleId, { reasons = [], rules = [], who = null, spot = null, vars = null } = {}) {
+  const r = vars ? null : reasons.find((x) => x.ruleId === ruleId);
+  if (r?.text) return r;
+  const rule = RULES_BY_ID[ruleId];
+  const v = vars ?? (rules ?? []).find((x) => x.id === ruleId)?.vars ?? {};
+  let t = '';
+  try { t = rule?.text?.kid?.fail?.(v) ?? ''; } catch { t = ''; }
+  t = typeof t === 'string' ? t.trim() : '';
+  if (!t) return vars ? keyFix(ruleId, { reasons, rules, who, spot }) : null;
+  t = t[0].toUpperCase() + t.slice(1) + (/[.!?…]$/.test(t) ? '' : '.');
+  const said = who ? who.rule(t, ruleId, rules, spot) : t;
+  const idea = typeof v.principle === 'string' && rule?.principles?.includes(v.principle) ? v.principle : rule?.principles?.[0] ?? null;
+  if (!said) return vars ? keyFix(ruleId, { reasons, rules, who, spot }) : null;
+  return { ruleId, principleId: idea, principles: [...(rule?.principles ?? [])], text: said };
+}
+
+/**
+ * A key about an angle, judged where kidscore.js judges it (pure): the rule's vars there, so its words say which side,
+ * not how far. 'wrong-way' (a D2 press lesson: the carrier shown inside) is the press rule pressRef from the carrier
+ * (or the loose ball) in YOUR direction; 'not-between' of goal-side (a D5 lesson) is the goal-side rule at its marking
+ * distance from the man in YOUR direction. null for any other key (its words are the rule's at YOUR spot).
+ * @param {string|null} key  kidStars' key for the rule (kid.keys beside kid.broken)
+ * @param {string} ruleId
+ * @param {{ ctx: object, spot: {x,y}, area?: object, rules?: object[] }} at  area: the right area (its P and goalSide)
+ * @returns {object|null}
+ */
+export function angleVars(key, ruleId, { ctx, spot, area = null, rules = [] } = {}) {
+  const P = area?.P ?? KID_DEFAULTS;
+  const at = (ref, len) => { const d = dist(spot, ref); return d > P.angleFrom ? { x: ref.x + ((spot.x - ref.x) / d) * len, y: ref.y + ((spot.y - ref.y) / d) * len } : null; };
+  try {
+    if (key === 'wrong-way' && ruleId === 'press') {
+      const q = at(ctx.carrier ?? ctx.ball, P.pressRef);
+      return q ? RULES_BY_ID.press.evaluate(ctx, q)?.vars ?? null : null;
+    }
+    if (key === 'not-between' && ruleId === 'goal-side') {
+      const g = area?.goalSide, r = (rules ?? []).find((x) => x.id === 'goal-side');
+      const q = g && r?.target ? at(g, dist(r.target, g)) : null;
+      return q ? RULES_BY_ID['goal-side'].evaluate(ctx, q)?.vars ?? null : null;
+    }
+  } catch { /* the words at YOUR spot instead */ }
+  return null;
 }
 
 // ---------------------------------------------------------------- stages: a small game, a bigger game, the full match
@@ -796,18 +1055,24 @@ export function wantedStage(rep, i, { plan = null, first = false } = {}) {
  * A staged rep's judging scene (pure; drop-in for repScene): the freeze frame is the REDUCED frame (only the cast:
  * hidden players are not drawn and not scored), with its context and the best spot searched on it (cast.js bestStage),
  * so every star, ring and sentence depends only on players the kid can see. `ids` is the cast (null at the full
- * match: nobody is left out), for watchFrame.
+ * match: nobody is left out), for watchFrame. `lesson` (cast.js's, the rule the gate holds), `hold` and `area` (the
+ * right area at the stage: repArea) are Player mode's judgement's.
  * @param {object} s  the normalised scenario the rep plays
  * @param {object} staged  cast.js bestStage's result for it
  */
 export function stagedScene(s, staged) {
   const { duration } = timing(s);
   const full = staged.stage === 'full';
-  return {
+  const scene = {
     duration, freezeAt: staged.t, learnerId: staged.learnerId, start: { x: staged.start.x, y: staged.start.y },
     freezeFrame: staged.frame, base: staged.base, ctx: staged.ctx, ghost: staged.ghost,
     stage: staged.stage, cast: staged.cast, ids: full ? null : new Set(staged.cast.ids),
+    lesson: staged.lesson ?? null, hold: s?.answer?.hold === true,
   };
+  // The right area at this stage (a small game's a little smaller: kidArea's stageScale): the one cast.js gated the
+  // stage on (standing still 0 stars, the best spot 3), else worked out here.
+  scene.area = staged.area ?? repArea(s, scene);
+  return scene;
 }
 
 /** A frame with the learner's token moved to `spot` (pure). */
@@ -1209,7 +1474,7 @@ export async function mount(root, app, params = []) {
         st = null;
       }
     }
-    const scene = st ? stagedScene(s, st) : { ...repScene(s, { formations }), stage: 'full', cast: null, ids: null };
+    const scene = st ? stagedScene(s, st) : { ...repScene(s, { formations, catalogue: app.data?.principles }), stage: 'full', cast: null, ids: null };
     // Its words (the player they mean by number: repWords); words about the sideline keep it in view (the one by the
     // ball: a small game's camera once showed "has the ball by the sideline" with no sideline in sight).
     let words = null;
@@ -1425,10 +1690,13 @@ export async function mount(root, app, params = []) {
     }, P.exampleDelayMs);
   }
 
-  /** The worked example's answer on the pitch (the ring, an arrow from your start and "Best spot"). */
+  /** The worked example's answer on the pitch: the green (anywhere in it is right) with the ring inside it, an arrow
+   *  from your start to the ring (where the hand took YOU) and "Best spot". */
   function showExampleAnswer() {
     board.setGhost(rep.ghost.spot);
-    const marks = () => [{ type: 'arrow', from: rep.start, to: rep.ghost.spot, tone: 'fix' }, ...bestSpotMarks(rep.start, { arrow: true })];
+    const zone = repZone();
+    keepInView(...zone); // (a small game's camera takes in the whole green)
+    const marks = () => [zoneMarker(zone), { type: 'arrow', from: rep.start, to: rep.ghost.spot, tone: 'fix' }, ...bestSpotMarks(rep.start, { arrow: true })].filter(Boolean);
     board.setMarkers(marks());
     // Placed again where the camera lands (the words' size and everyone's place are the landed view's).
     const r0 = rep;
@@ -1440,9 +1708,10 @@ export async function mount(root, app, params = []) {
    * tag, the ball, the other players, the view): the words by the ring where they cover nobody, else a short callout
    * with a leader line from the ring. Before the board has a view (nothing measured yet): bestSpotMarker's place.
    * @param {{x:number,y:number}} you  where YOU stand
-   * @param {{ arrow?: boolean }} [opts]  arrow: an arrow runs from YOU to the ring (the words keep off it)
+   * @param {{ arrow?: boolean, to?: {x:number,y:number}|null }} [opts]  arrow: an arrow runs from YOU to `to` (default the
+   *   ring; after a miss, into the green: zoneArrowEnd), and the words keep off it
    */
-  function bestSpotMarks(you, { arrow = false } = {}) {
+  function bestSpotMarks(you, { arrow = false, to = null } = {}) {
     const o = board.orientation;
     const view = board.targetViewBox ?? board.viewBox;
     if (!view) return [bestSpotMarker(you, rep.ghost.spot, board)];
@@ -1454,7 +1723,7 @@ export async function mount(root, app, params = []) {
       ring, r: (BOARD_DEFAULTS.tokenRadius + 0.5) * t, fs: P.labelFont * k, text: STRINGS.bestSpot,
       you: [drawn(rep.learnerId)], ball: drawn(BALL_ID),
       others: (rep.freezeFrame?.players ?? []).filter((p) => p.id !== rep.learnerId).map((p) => drawn(p.id)),
-      arrow: arrow && dist(you, rep.ghost.spot) >= 1 ? { a: project(you, o), b: ring } : null, view,
+      arrow: arrow && dist(you, to ?? rep.ghost.spot) >= 0.5 ? { a: project(you, o), b: to ? project(to, o) : ring } : null, view,
     });
     const label = { type: 'label', at: unproject(place.at, o), text: STRINGS.bestSpot, tone: 'good', lift: 0, cls: 'pl-best' };
     if (place.kind !== 'callout') return [label];
@@ -1469,10 +1738,20 @@ export async function mount(root, app, params = []) {
     board.setMarkers([]);
   }
 
+  /** The rep's green (zoneOf: where the right area gives 3 stars), traced once. */
+  function repZone() {
+    try { return zoneOf(rep.s, rep); } catch (err) { console.warn('[fotbol] play: no green for this play', err); return []; }
+  }
+
   /** Decide: move YOU and lock it. `example`: the worked example's answer stays on the pitch until YOU is moved. */
   function showPlace({ turn = false, example = false } = {}) {
     setPhase('place');
-    if (rep.plan.aid === 'glow') board.setAid({ kind: 'glow', target: rep.ghost.spot });
+    // The glow: hot anywhere in the right area (its 3 stars), warm just outside it, cool further, cold elsewhere and
+    // where YOU started (levelAt: the reveal's own stars at YOUR spot).
+    if (rep.plan.aid === 'glow') {
+      const r0 = rep, area = areaOf(rep.s, rep);
+      board.setAid({ kind: 'glow', target: rep.ghost.spot, levelAt: (p) => (rep === r0 ? levelAt(r0, area, p) : null) });
+    }
     if (example) showExampleAnswer();
     setTip(turn ? placeTip({ turn }) : example ? STRINGS.ringIsBest : placeTip());
     if (example) set.tapHintShown = true;
@@ -1571,22 +1850,24 @@ export async function mount(root, app, params = []) {
 
   /** Elo, streaks and history exactly as a drill rep (drill.js lockIn), then the rep's rewards (drill.js rewardRep),
    *  each as far as the rep's recordPolicy allows. */
-  function record({ judgement, misId }) {
+  function record(judged) {
+    const { judgement, misId } = judged;
     const s = rep.s, r = judgement.result, pol = rep.policy;
-    const id = recordIdOf(s);
+    const { id, stars, score, score01, event } = recordOf(s, judged);
     try {
       if (pol.elo) {
-        set.skills = eloUpdate(set.skills, { itemId: id, principles: s.principles, role: s.learner.role, score01: r.score / 100, prior: Number.isFinite(s.difficulty) ? s.difficulty : 0 });
+        set.skills = eloUpdate(set.skills, { itemId: id, principles: s.principles, role: s.learner.role, score01, prior: Number.isFinite(s.difficulty) ? s.difficulty : 0 });
         S.saveSkills(store, set.skills);
       }
       if (pol.streak && typeof S.updateStreak === 'function' && set.streak) {
-        set.streak = S.updateStreak(set.streak, { day: S.dayKey(new Date()), score: r.score });
+        set.streak = S.updateStreak(set.streak, { day: S.dayKey(new Date()), score });
         S.saveStreak?.(store, set.streak);
       }
       if (pol.history) {
+        // Coach mode's history keeps the strict score and grade; `stars` are the ones the kid saw (stickers read them).
         S.appendHistory(store, {
           t: Date.now(), mode: 'drill', via: 'play', id: s.id, baseId: id, title: s.title ?? '', module: s.module ?? null,
-          principles: s.principles ?? [], role: s.learner.role, score: r.score, grade: r.grade,
+          principles: s.principles ?? [], role: s.learner.role, score: r.score, grade: r.grade, stars,
           dist: Math.round(dist(rep.spot, rep.ghost.spot) * 10) / 10, ms: Math.round(performance.now() - rep.t0), confidence: null,
           misconception: misId, mirrored: !!s.mirrorOf || /-m$/.test(String(s.id)), reasons: judgement.feedback.reasons.map((x) => x.ruleId),
           nodeId: first ? 'first' : node?.id ?? null, aid: rep.plan.example ? 'example' : rep.plan.aid ?? null,
@@ -1594,7 +1875,7 @@ export async function mount(root, app, params = []) {
       }
     } catch (err) { console.warn('[fotbol] play: could not save the rep', err); }
     if (!pol.rewards) return; // the first set's taught reps are the tutorial: no XP (R28)
-    let gained = award(app, { type: 'rep', scenarioId: id, role: s.learner.role, grade: r.grade, score: r.score, stars: starsForScore(r.score) }, { celebrate: false });
+    let gained = award(app, event, { celebrate: false });
     for (const pid of pol.mastery ? s.principles ?? [] : []) {
       const m = mastery(set.skills, pid);
       const tier = typeof Rewards.cardTier === 'function' ? Rewards.cardTier(loadRewards(app), pid) : 0;
@@ -1605,21 +1886,26 @@ export async function mount(root, app, params = []) {
 
   // ---- the reveal
   /**
-   * The answer's markers: the arrow from YOUR spot to the ring, "Best spot" (bestSpotMarks: by the ring, or a callout
-   * when nowhere by it is clear) on every reveal but a 3-star one with YOU on the ring (YOUR tag is there, and the
-   * stars say it), and after a miss one cue the pitch can name (cueMarker: no unlabelled lines; its player by number
-   * where the game shows two of the group).
+   * The answer's markers: the right area as a soft green zone (zoneOf: anywhere in it is 3 stars) with the best-spot
+   * ring inside it (setGhost); in the green (3 stars) nothing more: no arrow, no words. After a miss: an arrow from
+   * YOUR spot into the green's nearest edge (zoneArrowEnd), "Best spot" by the ring (bestSpotMarks: by the ring, or a
+   * callout when nowhere by it is clear), and one cue the pitch can name (cueMarker: no unlabelled lines; its player by
+   * number where the game shows two of the group). The zone and the ring count as the answer (R8: 2 cues at most).
    */
   function answerMarks() {
     const { judgement, stars, who } = rep.judged;
-    const marks = [];
-    const off = dist(rep.spot, rep.ghost.spot);
-    if (off >= 1) marks.push({ type: 'arrow', from: rep.spot, to: rep.ghost.spot, tone: 'fix' });
-    if (stars < 3 || off >= P.labelClear * board.tokenScale) marks.push(...bestSpotMarks(rep.spot, { arrow: off >= 1 }));
+    const zone = repZone();
+    const marks = [zoneMarker(zone)].filter(Boolean);
+    if (stars < 3) {
+      const to = zoneArrowEnd(zone, rep.spot, rep.ghost.spot);
+      const arrow = !!to && dist(rep.spot, to) >= 0.5;
+      if (arrow) marks.push({ type: 'arrow', from: rep.spot, to, tone: 'fix' });
+      marks.push(...bestSpotMarks(rep.spot, { arrow, to }));
+    }
     const rules = judgement.result.rules;
-    const cue = stars < 3 ? cueMarker(judgement.feedback.cue, { rules, ball: rep.freezeFrame.ball, name: (t, id) => (who ? who.rule(t, id, rules, rep.spot) : t) }) : null;
+    const cue = stars < 3 ? cueMarker(rep.judged.cue ?? judgement.feedback.cue, { rules, ball: rep.freezeFrame.ball, name: (t, id) => (who ? who.rule(t, id, rules, rep.spot) : t) }) : null;
     if (cue) marks.push(cue);
-    return { marks, cue };
+    return { marks, cue, zone };
   }
 
   function drawAnswer() {
@@ -1628,9 +1914,9 @@ export async function mount(root, app, params = []) {
     board.setGhost(rep.ghost.spot);
     if (rep.answerCam) moveCamera(rep.answerCam); // (back from "See what happens", which plays on the clip's camera)
     // Words about the sideline keep it in view (the one by the best spot), as the question's did.
-    const { cue } = answerMarks();
+    const { cue, zone } = answerMarks();
     const side = mentionsSideline(line, why?.summary, ...(why?.reasons ?? []), cue?.label) ? touchlineBy(rep.ghost.spot) : null;
-    keepInView(rep.spot, rep.ghost.spot, side);
+    keepInView(rep.spot, rep.ghost.spot, side, ...zone); // (the whole green in view)
     board.setMarkers(answerMarks().marks); // (placed for the view keepInView may have widened)
     if (cue?.type === 'player' && !rep.camera) board.setSpotlight([rep.learnerId, ...rep.key, cue.id]);
     // Placed again once the camera has landed and the reveal has its height (the words' size and everyone's place are
@@ -1646,8 +1932,9 @@ export async function mount(root, app, params = []) {
     put(els.line);
     setTip('');
     setActions();
-    // Try again says it is practice; a first try may get the once-a-set "Hard one" after a miss (R20).
-    const miss = pol.practice ? { note: STRINGS.practiceNote, tally: set.tally } : missNote(set.tally, stars);
+    // Try again says it is practice; the set's first reveal says the green is the answer; a first try may get the
+    // once-a-set "Hard one" after a miss (R20).
+    const miss = revealNote(set.tally, { stars, practice: pol.practice });
     set.tally = miss.tally;
     const retry = stars <= 1 && !rep.retry;
     stageAhead(rep.slot, { twin: retry }); // the next rep (and a Try again twin) while the reveal is up

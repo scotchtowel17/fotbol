@@ -1,17 +1,21 @@
 // Player mode: Match day, a simplified Live (docs/KID_REDESIGN.md §4.6).
 //
 // 45 s of open play (js/engine/sequence.js generateSequence, a fresh seed each time) while you keep moving yourself.
-// It is scored exactly as Coach mode's Live (js/ui/modes/live.js): 10 samples a second off the render path, the frame
-// with you where you are (the others react to you), your base from the free playback, then context, ghost and
-// judgeSpot; samples in the moment after a pass or a turnover are not scored. What you see is simpler: no numbers,
-// just the ring around YOU in its heat colour and style and one big word with a shape: Hot (a flame), Warm (a sun),
-// Cold (a snowflake). Colour never works alone (R39).
+// It is sampled as Coach mode's Live (js/ui/modes/live.js): 10 samples a second off the render path, the frame with
+// you where you are (the others react to you), your base from the free playback, then context, ghost and judgeSpot;
+// samples in the moment after a pass or a turnover are not scored. What you see is simpler, and judges the right AREA
+// as "Find your spot" does (js/engine/kidscore.js kidLive): Hot anywhere in the right area round any best spot of the
+// last second (liveMemory: the best spot jumps as the play moves), never colder than Coach mode's heat for the same
+// spot, never Hot past a key line (offside, the wrong side of your man); no numbers, just the ring around YOU in its
+// heat colour and style and one big word with a shape: Hot (a flame), Warm (a sun), Cold (a snowflake). Colour never
+// works alone (R39).
 //
-// The result is Full time (js/ui/player/fulltime.js) with the run's stars (rewards.js starsForScore on the average),
-// its word, your best hot streak in seconds and "Replay your hardest moment" (frozen where you were, the best-spot
-// ring and an arrow, one line; "Watch it" plays the lead-up). The chart, the table and the seed stay in Coach mode's
-// Live. A run played to the end earns rewards (award { type: 'live', average }); the history and your Live best are
-// kept as Live keeps them.
+// The result is Full time (js/ui/player/fulltime.js) with the run's stars (runStars: the share of scored time you were
+// Hot), its word, your best hot streak in seconds and "See your hardest moment" (frozen where you were, the right area
+// in green with the best-spot ring inside it and an arrow into it, one line; "Watch it" plays the lead-up). The chart,
+// the table and the seed stay in Coach mode's Live. A run played to the end earns rewards (award { type: 'live',
+// average, stars }: its average held in the band of its stars, play.js kidScore); the history and your Live best keep
+// the strict average, as Live keeps them.
 //
 // Match day opens when the Road's `matchday.unlockAfter` node (chapter 1's Big Match) has a star (road.js
 // isMatchdayUnlocked; '?dev' in the address skips the lock).
@@ -34,7 +38,8 @@ import { award, loadRewards, emptyGains } from '../rewards-store.js';
 import { createBurstBudget } from '../celebrate.js';
 import * as S from '../session.js';
 import { showFullTime } from './fulltime.js';
-import { starsForScore, wordForStars, pickLine, cueMarker, praiseOf, bestSpotMarker, PLAY_DEFAULTS } from './play.js';
+import * as Kid from '../../engine/kidscore.js'; // the right area: kidLive (the heat), kidArea and kidOutline (the hardest moment)
+import { wordForStars, pickLine, cueMarker, praiseOf, bestSpotMarker, PLAY_DEFAULTS, kidScore, zoneMarker, zoneArrowEnd, keyFix, keyCue } from './play.js';
 import { STRINGS as SHARED, roleCard } from './strings.js';
 
 export const MATCHDAY_DEFAULTS = Object.freeze({
@@ -46,7 +51,9 @@ export const MATCHDAY_DEFAULTS = Object.freeze({
   maxFrameDt: 1, // [D] s of play per animation frame at most: slow or throttled frames keep real time (a hidden tab
   //               pauses the run, and play restarts the clock)
   hotAt: 70, // [D] a sample at or above this is Hot (reveal.js HOT_COLD_BANDS: hot starts at 70)...
-  warmAt: 50, // [D] ...at or above this Warm, else Cold
+  warmAt: 50, // [D] ...at or above this Warm, else Cold (heatFor: Coach mode's heat; kidLive never runs colder than it)
+  liveMemory: Kid.KID_DEFAULTS.liveMemory, // [S] = kidscore.js: s of best spots the right area is judged round (the best spot
+  //   jumps as the play moves): the samples keep liveMemory x sampleHz of them for kidLive
   minScoredS: 5, // [D] a run needs this many seconds of scored play to count
   leadUp: 3, // [D] s of play shown before the hardest moment
   announceMs: 900, // [D] a screen reader hears a new heat once it has held this long
@@ -55,8 +62,8 @@ export const MATCHDAY_DEFAULTS = Object.freeze({
 
 export const STRINGS = Object.freeze({
   title: 'Match day',
-  lead: 'Keep moving to the best spot.',
-  ringTip: 'Your ring says Hot, Warm or Cold.',
+  lead: 'Keep moving. Stay in the right area.',
+  ringTip: 'Your ring gets hot in the right area.',
   start: 'Start',
   go: 'Go',
   pause: 'Pause',
@@ -90,17 +97,36 @@ export function heatFor(score, P = MATCHDAY_DEFAULTS) {
   return s >= P.hotAt ? 'hot' : s >= P.warmAt ? 'warm' : 'cold';
 }
 
+/** The heat word for a sample's stars (the right area, kidLive): 'hot' at 3, 'warm' at 2, else 'cold'. */
+export const heatForStars = (stars) => (stars >= 3 ? 'hot' : stars === 2 ? 'warm' : 'cold');
+
+/** Was a scored sample Hot: its stars (the right area) when it has them, else its score (Coach mode's heat). */
+const isHot = (s, P) => (Number.isFinite(s?.stars) ? s.stars >= 3 : s.score >= P.hotAt);
+
+/** The share of a run's scored samples (not in a reaction moment) that were Hot, 0..1 (0 with none). */
+export function hotShare(samples = [], P = MATCHDAY_DEFAULTS) {
+  const scored = (samples ?? []).filter((s) => s && !s.grace && Number.isFinite(s.score));
+  return scored.length ? scored.filter((s) => isHot(s, P)).length / scored.length : 0;
+}
+
+/** A run's stars from how much of it you were Hot (hotShare; kidscore.js kidRunStars: 3 at 75 % or more, 2 at 50 %,
+ *  1 at 30 %): the time in the right area, not the average of a strict score. */
+export function runStars(samples = [], P = MATCHDAY_DEFAULTS) {
+  return Kid.kidRunStars(hotShare(samples, P) + 1e-9);
+}
+
 /**
- * The longest time you stayed Hot, in whole seconds: a run of Hot samples, broken by any scored sample below Hot
- * (a sample in the reaction moment after a pass neither breaks nor starts one). One sample counts as 1/hz s.
- * @param {{ t: number, score: number|null, grace?: boolean }[]} samples
+ * The longest time you stayed Hot, in whole seconds: a run of Hot samples (3 stars; a sample without stars: a score of
+ * hotAt or more), broken by any scored sample below Hot (a sample in the reaction moment after a pass neither breaks
+ * nor starts one). One sample counts as 1/hz s.
+ * @param {{ t: number, score: number|null, stars?: number, grace?: boolean }[]} samples
  */
 export function bestHotStreak(samples = [], P = MATCHDAY_DEFAULTS) {
   const step = 1 / P.sampleHz;
   let best = 0, from = null, last = null;
   for (const s of [...samples].filter((x) => Number.isFinite(x?.t)).sort((a, b) => a.t - b.t)) {
     if (s.grace || !Number.isFinite(s.score)) continue;
-    if (s.score >= P.hotAt) {
+    if (isHot(s, P)) {
       if (from === null) from = s.t;
       last = s.t;
       best = Math.max(best, last - from + step);
@@ -109,10 +135,17 @@ export function bestHotStreak(samples = [], P = MATCHDAY_DEFAULTS) {
   return Math.round(best);
 }
 
-/** The hardest moment to replay: the lowest-scoring of the run's worst moments (session.js summarizeLive), or null. */
-export function hardestMoment(result) {
+/**
+ * The hardest moment to replay: the lowest-scoring of the run's worst moments (session.js summarizeLive), among those
+ * the ring showed Cold when the samples say (stars 0-1: out of the right area, or past a key line), or null.
+ * @param {{ worst?: { t: number, score: number }[] }} result
+ * @param {{ t: number, stars?: number }[]} [samples]  the run's samples (their stars)
+ */
+export function hardestMoment(result, samples = []) {
   const worst = Array.isArray(result?.worst) ? result.worst : [];
-  return worst.reduce((a, w) => (!a || w.score < a.score ? w : a), null);
+  const starsAt = (t) => (samples ?? []).find((s) => s?.t === t)?.stars;
+  const cold = worst.filter((w) => { const n = starsAt(w.t); return !Number.isFinite(n) || n <= 1; });
+  return (cold.length ? cold : worst).reduce((a, w) => (!a || w.score < a.score ? w : a), null);
 }
 
 // ---------------------------------------------------------------- the app (browser only below)
@@ -231,7 +264,8 @@ export async function mount(root, app) {
     const held = createPlayback(scenario, { formations });
     const r = { seed, scenario, learnerId, free, held, events: graceEvents(scenario), tol: toleranceFor(role), duration: scenario.timeline.duration };
     r.start = baseAt(r, 0);
-    Object.assign(r, { t: 0, spot: { ...r.start }, samples: [], nextSample: 0, pending: [], paused: false, heat: '', last: null, startedAt: 0 });
+    // recent: the best spots of the last liveMemory s (the right area is judged round each: kidLive)
+    Object.assign(r, { t: 0, spot: { ...r.start }, samples: [], nextSample: 0, pending: [], paused: false, heat: '', last: null, startedAt: 0, recent: [] });
     return r;
   }
 
@@ -360,14 +394,28 @@ export async function mount(root, app) {
     sampleTimer = 0;
     if (!alive || !run) return;
     let latest = null;
+    const keep = Math.max(1, Math.round(P.liveMemory * P.sampleHz));
     for (const s of run.pending.splice(0)) {
       const a = analyseAt(s.t, s.spot);
       const grace = inGrace(run.events, s.t, P.grace);
       const r = a.judgement.result;
-      run.samples.push({ t: s.t, spot: s.spot, score: r.score, grade: r.grade, grace });
-      latest = r.score;
+      run.recent.push(a.ghost.spot);
+      if (run.recent.length > keep) run.recent.splice(0, run.recent.length - keep);
+      // The heat: the right area round the best spots of the last second (kidLive), never colder than Coach mode's.
+      // (best: the best spot whose area gave the heat; the hardest moment draws its green.)
+      let stars, best = a.ghost.spot;
+      try {
+        const k = Kid.kidLive(a.ctx, s.spot, { recent: run.recent, centre: a.ghost.result.center, tol: run.tol, coachScore: r.score });
+        stars = k.stars;
+        if (k.best) best = k.best;
+      } catch (err) {
+        if (!run.warned) { run.warned = true; console.warn('[fotbol] matchday: the right area could not judge; Coach mode\'s heat instead', err); }
+        stars = r.score >= P.hotAt ? 3 : r.score >= P.warmAt ? 2 : 0;
+      }
+      run.samples.push({ t: s.t, spot: s.spot, score: r.score, grade: r.grade, grace, stars, best });
+      latest = stars;
     }
-    if (latest !== null && phase === 'playing') setHeat(heatFor(latest));
+    if (latest !== null && phase === 'playing') setHeat(heatForStars(latest));
   }
 
   function togglePause() {
@@ -401,7 +449,10 @@ export async function mount(root, app) {
           onSpot: Math.round(res.onSpot * 100), early,
         });
       } catch (err) { console.warn('[fotbol] matchday: could not save the run', err); }
-      if (!early) gained = award(app, { type: 'live', average: res.average }, { celebrate: false });
+      // The run's stars (the share of it Hot) with its average held in their band (play.js kidScore), so the XP and the
+      // badges follow the stars the kid sees; the history and the Live best above keep the strict average.
+      const stars = runStars(run.samples);
+      if (!early) gained = award(app, { type: 'live', average: kidScore(stars, res.average), stars }, { celebrate: false });
     }
     run.result = res;
     run.counted = counted;
@@ -410,9 +461,9 @@ export async function mount(root, app) {
 
   /** Full time for the run (a run stopped early or too short shows its result, with no rewards). */
   function showResults({ res, gained, xpBefore }) {
-    const stars = run.counted ? starsForScore(res.average) : 0;
+    const stars = run.counted ? runStars(run.samples) : 0;
     const streakS = bestHotStreak(run.samples);
-    const worst = run.counted ? hardestMoment(res) : null;
+    const worst = run.counted ? hardestMoment(res, run.samples) : null;
     const extra = el('section', { class: 'md-summary' }, [
       el('p', { class: 'md-word', text: run.counted ? wordForStars(stars) : STRINGS.tooShort }),
       run.counted ? el('p', { class: 'md-streak' }, [heatShape('hot'), el('span', { text: streakS > 0 ? STRINGS.streak(streakS) : STRINGS.noStreak })]) : null,
@@ -440,25 +491,52 @@ export async function mount(root, app) {
     els.heat.hidden = true;
     els.title.hidden = true;
     setTip('');
-    drawMoment(sample, a);
-    els.line.textContent = pickLine({ feedback: a.judgement.feedback, praise: praiseOf(a.judgement.result), stars: starsForScore(a.judgement.result.score) });
+    const m = drawMoment(sample, a);
+    els.line.textContent = m.line;
     const back = button(STRINGS.back, { variant: 'primary', icon: 'arrow', className: 'pl-main', onClick: () => { stopLoops(); els.stage.hidden = true; els.results.hidden = false; setPhase('done'); els.results.querySelector('.ft-title')?.focus({ preventScroll: true }); } });
     put(els.actions, button(STRINGS.watchIt, { icon: 'play', className: 'pl-again', onClick: () => playLeadUp(sample, a) }), back);
     back.focus({ preventScroll: true });
     announce(els.line.textContent);
   }
 
+  /**
+   * The hardest moment, frozen: the right area of that moment in green (kidArea round its best spot, as Match day
+   * judged it: no start, the full match) with the best-spot ring inside it, and, as the ring was not Hot, an arrow
+   * from where you were into the green's nearest edge, "Best spot" and one cue: the one the line talks about.
+   * @returns {{ stars, keyRule, line }} the stars the ring showed then, the key the spot broke (its rule) and the line
+   *   (for those stars, a key's fix first: offside, the wrong side of your man)
+   */
   function drawMoment(sample, a) {
     draw(sample.t, sample.spot);
-    board.setGhost(a.ghost.spot);
-    const marks = [];
-    const off = dist(sample.spot, a.ghost.spot);
-    if (off >= 1) marks.push({ type: 'arrow', from: sample.spot, to: a.ghost.spot, tone: 'fix' });
-    if (off >= PLAY_DEFAULTS.labelClear * board.tokenScale) marks.push(bestSpotMarker(sample.spot, a.ghost.spot, board));
-    // One cue, as a "Find your spot" reveal draws it: a line only with its name on it (play.js cueMarker).
-    const cue = cueMarker(a.judgement.feedback.cue, { rules: a.judgement.result.rules, ball: a.frame.ball });
-    if (cue) marks.push(cue);
+    // The best spot whose area the ring was judged by then (kidLive's: the last second's), else the moment's own.
+    const best = sample.best && Number.isFinite(sample.best.x) ? sample.best : a.ghost.spot;
+    board.setGhost(best);
+    let zone = [], keyRule = null;
+    try {
+      const area = Kid.kidArea(a.ctx, { best, centre: a.ghost.result.center, tol: run.tol, start: null, stage: 'full' });
+      zone = (Kid.kidOutline(a.ctx, area) ?? []).map((p) => ({ x: p.x, y: p.y }));
+      const k = Kid.kidStars(a.ctx, sample.spot, area);
+      keyRule = typeof k.reason === 'string' && a.judgement.result.rules.some((r) => r.id === k.reason) ? k.reason : null;
+    } catch (err) { console.warn('[fotbol] matchday: no green for this moment', err); }
+    const stars = Number.isFinite(sample.stars) ? sample.stars : a.judgement.result.score >= P.hotAt ? 3 : a.judgement.result.score >= P.warmAt ? 2 : 0;
+    // The line for the stars the ring showed then, a key's fix first (offside, the wrong side of your man), and the rule
+    // it talks about (the key's, else the reason's the line says).
+    const rules = a.judgement.result.rules;
+    const key = stars < 3 && keyRule ? keyFix(keyRule, { reasons: a.judgement.feedback.reasons, rules }) : null;
+    const line = pickLine({ feedback: a.judgement.feedback, praise: praiseOf(a.judgement.result), stars, key: key?.text ?? null });
+    const lineRule = keyRule ?? (a.judgement.feedback.reasons ?? []).find((r) => r?.text === line)?.ruleId ?? null;
+    const marks = [zoneMarker(zone)].filter(Boolean);
+    if (stars < 3) {
+      const to = zone.length ? zoneArrowEnd(zone, sample.spot, best) : best;
+      if (dist(sample.spot, to) >= 0.5) marks.push({ type: 'arrow', from: sample.spot, to, tone: 'fix' });
+      if (dist(sample.spot, best) >= PLAY_DEFAULTS.labelClear * board.tokenScale) marks.push(bestSpotMarker(sample.spot, best, board));
+      // One cue, as a "Find your spot" reveal draws it: the broken key's first, else the line's rule's (play.js
+      // keyCue), a line only with its name on it (cueMarker).
+      const cue = cueMarker(keyCue(lineRule, { ctx: a.ctx, spot: sample.spot, fallback: a.judgement.feedback.cue }), { rules, ball: a.frame.ball });
+      if (cue) marks.push(cue);
+    }
     board.setMarkers(marks);
+    return { stars, keyRule, line };
   }
 
   /** Where you were at time t (between the 10 Hz samples). */

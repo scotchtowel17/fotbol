@@ -88,7 +88,8 @@ export default {
     return {
       s,
       target: { x: p.tx, y: p.ty },
-      vars: { who: p.who, whoKid: p.whoKid, ahead: whole(ahead), off: whole(off), issue },
+      // aheadRaw: the unrounded height above the back line (kidscore.js: a #6 who has dropped into it)
+      vars: { who: p.who, whoKid: p.whoKid, ahead: whole(ahead), off: whole(off), issue, aheadRaw: ahead },
     };
   },
   text: {
