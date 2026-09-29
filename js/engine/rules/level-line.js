@@ -38,7 +38,8 @@ export default {
     return {
       s,
       target: { x: tx, y: spot.y },
-      vars: { ref: p.ref, off: whole(Math.abs(dx)), covering: p.covering, issue },
+      // dx, lo, hi: the unrounded height off the line and the band allowed (kidscore.js: clearly out of line)
+      vars: { ref: p.ref, off: whole(Math.abs(dx)), covering: p.covering, issue, dx, lo: p.lo, hi: p.hi },
     };
   },
   text: {

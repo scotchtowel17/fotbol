@@ -81,7 +81,9 @@ export default {
     }
     // D1 is the pressure itself (distance, goal side); D2 the angle that shows the carrier away from goal.
     const principle = issue === 'show-inside' || issue === 'inside' || issue === 'too-round' ? 'D2' : 'D1';
-    return { s, target: { x: p.tx, y: p.ty }, vars: { who: p.who, whoKid: p.whoKid, dist: whole(d), issue, principle } };
+    // along (unrounded): m from the ball toward our goal (< 0: past the ball, the wrong side); kidscore.js reads it
+    const along = vx * p.ux + vy * p.uy;
+    return { s, target: { x: p.tx, y: p.ty }, vars: { who: p.who, whoKid: p.whoKid, dist: whole(d), issue, principle, along } };
   },
   text: {
     standard: {

@@ -30,8 +30,11 @@
 //                                           big (≥ 44 px) tap targets on tokens: first tap previews, a second tap confirms
 //   board.showHintHand({ from, to })        the worked-example hand drags YOU, then YOU snaps back (a Promise; instant
 //                                           under reduced motion)
-//   board.setAid({ kind: 'glow', target } | { kind: 'heat', level } | null)
-//                                           a warm/cold ring on YOU (glow: brighter and warmer as YOU nears `target`)
+//   board.setAid({ kind: 'glow', target, levelAt? } | { kind: 'heat', level } | null)
+//                                           a warm/cold ring on YOU (glow: brighter and warmer as YOU nears `target`; with
+//                                           levelAt(p) the level the screen says at YOUR spot: the right area's, glowAt)
+//   markers: { type: 'zone', points, tone }  an area on the grass (Player mode's right area: css/play.css .mk-zone), a
+//                                           closed outline in world metres, under every other marker and the figures
 //   enableDrag({ ..., tapToMove: id, onArm })  a tap on the pitch moves that token there (tap-YOU-then-a-spot still works:
 //                                           only a tap on the drawn token picks it up, tapAction); markers: a line's label
 //                                           can sit at `labelAt`
@@ -77,6 +80,8 @@ export const BOARD_DEFAULTS = Object.freeze({
   minHitPx: 44, // [S] WCAG 2.2 2.5.5 (R10): a token you can drag or tap is at least this wide to hit, however small it is drawn
   aidFar: 15, // [D] metres: the glow aid is at its faintest this far from its target (and brightens as YOU gets closer)...
   aidBands: Object.freeze({ hot: 2.5, warm: 6, cool: 11 }), // [D] ...and warms through these bands (metres from the target)
+  aidLevelK: Object.freeze({ hot: 1, warm: 0.7, cool: 0.45, cold: 0.2 }), // [D] a glow told its level by the screen (levelAt: Player
+  //                mode's "right area", 3/2/1/0 stars) is this bright at each level (the colour and the brightness always agree)
   hint: Object.freeze({ inMs: 350, dragMs: 1100, holdMs: 500, backMs: 260, outMs: 260 }), // [D] the worked-example hand's beats
   handSize: 4.2, // [D] metres the hand is drawn tall at life size (it grows with the tokens on a small board)...
   handMinPx: 56, // [D] ...and never less than this many CSS px tall (a big board draws the pitch small per metre)
@@ -427,6 +432,36 @@ export function aidStrength(d, P = BOARD_DEFAULTS) {
   if (!Number.isFinite(d)) return 0;
   const k = Math.max(0, Math.min(1, 1 - d / P.aidFar));
   return Math.round(k * 20) / 20;
+}
+
+/** The glow's levels, coldest first (= js/engine/kidscore.js KID_LEVELS: the level for 0, 1, 2 and 3 stars). */
+export const AID_LEVELS = Object.freeze(['cold', 'cool', 'warm', 'hot']);
+
+/**
+ * The glow aid on YOU at `p` (pure): its level and brightness. Told its level by the screen (`levelAt(p)`: Player mode's
+ * "right area", KID_LEVELS[stars]), the ring shows that level at that level's brightness (aidLevelK), so it is hot
+ * exactly where the reveal would give 3 stars; a levelAt that throws or says something else falls back to the distance
+ * to `target` (aidLevel, aidStrength), as a glow without levelAt always does.
+ * @param {{x:number,y:number}} p  YOU
+ * @param {{ target: {x:number,y:number}, levelAt?: ((p: {x:number,y:number}) => string) | null }} aid
+ * @returns {{ level: 'hot'|'warm'|'cool'|'cold', k: number }}
+ */
+export function glowAt(p, { target, levelAt = null } = {}, P = BOARD_DEFAULTS) {
+  let told = null;
+  if (typeof levelAt === 'function') { try { told = levelAt({ x: p.x, y: p.y }); } catch { told = null; } }
+  if (AID_LEVELS.includes(told)) return { level: told, k: P.aidLevelK[told] };
+  const d = Math.hypot(p.x - target.x, p.y - target.y);
+  return { level: aidLevel(d, P), k: aidStrength(d, P) };
+}
+
+/**
+ * A 'zone' marker's outline as an SVG polygon's `points` (pure; world metres): the points that are real vectors, to 0.001
+ * m; '' with fewer than 3 (nothing to draw).
+ * @param {{x:number,y:number}[]} points
+ */
+export function zonePoints(points) {
+  const ps = (Array.isArray(points) ? points : []).filter((p) => Number.isFinite(p?.x) && Number.isFinite(p?.y));
+  return ps.length < 3 ? '' : ps.map((p) => `${Math.round(p.x * 1000) / 1000},${Math.round(p.y * 1000) / 1000}`).join(' ');
 }
 
 // ---------------------------------------------------------------- figures, the ball and the camera (pure)
@@ -1219,6 +1254,10 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
   const aidLayer = svgEl(doc, 'g', { class: 'board-aid-layer' }, world);
   world.insertBefore(aidLayer, markersW);
   const aidEl = svgEl(doc, 'circle', { class: 'board-aid', display: 'none' }, aidLayer);
+  // 'zone' markers (Player mode's right area) go under the aid ring and every other marker, over the pitch overlays;
+  // setMarkers clears them with the rest. Coach mode never draws one.
+  const zoneMarks = svgEl(doc, 'g', { class: 'board-zones', 'pointer-events': 'none' }, world);
+  world.insertBefore(zoneMarks, aidLayer);
 
   const view = svgEl(doc, 'g', { class: 'board-view' }, svg);
   // The ball's trail fades from nothing at its tail to the ball (a gradient along it, set per render in the ball's units).
@@ -2224,6 +2263,7 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
   function setMarkers(list = []) {
     markers = Array.isArray(list) ? list : [];
     markersW.replaceChildren();
+    zoneMarks.replaceChildren();
     markerLabels.replaceChildren();
     labelBoxes = null; // (measured again when YOUR tag next looks: syncTag)
     boundRings = [];
@@ -2239,6 +2279,13 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
     const extra = typeof m.cls === 'string' && /^[\w\s-]+$/.test(m.cls) ? ` ${m.cls.trim()}` : '';
     const cls = (base) => `mk ${base} tone-${tone}${extra}`;
     switch (m.type) {
+      case 'zone': {
+        // An area on the grass (Player mode's right area: a soft fill with a lighter edge, css/play.css .mk-zone), drawn
+        // under every other marker, the aid ring and the figures: points, world metres, a closed outline.
+        const pts = zonePoints(m.points);
+        if (pts) svgEl(doc, 'polygon', { class: cls('mk-zone'), points: pts }, zoneMarks);
+        return;
+      }
       case 'arrow': {
         const { from, to } = m;
         if (!from || !to) return;
@@ -2424,9 +2471,13 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
   }
 
   // ---- the aid ring on YOU (Player mode): 'glow' warms and brightens as YOU nears its target; 'heat' shows a given level
-  /** @param {{ kind: 'glow', target: {x:number,y:number} } | { kind: 'heat', level: 'hot'|'warm'|'cool'|'cold' } | null} next */
+  /**
+   * @param {{ kind: 'glow', target: {x:number,y:number}, levelAt?: (p: {x:number,y:number}) => 'hot'|'warm'|'cool'|'cold' }
+   *   | { kind: 'heat', level: 'hot'|'warm'|'cool'|'cold' } | null} next  levelAt (Player mode): the level at YOUR spot
+   *   (the right area's, KID_LEVELS[stars]) instead of metres to `target` (glowAt)
+   */
   function setAid(next = null) {
-    if (next?.kind === 'glow' && isVec(next.target)) aid = { kind: 'glow', target: { x: next.target.x, y: next.target.y } };
+    if (next?.kind === 'glow' && isVec(next.target)) aid = { kind: 'glow', target: { x: next.target.x, y: next.target.y }, levelAt: typeof next.levelAt === 'function' ? next.levelAt : null };
     else if (next?.kind === 'heat' && ['hot', 'warm', 'cool', 'cold'].includes(next.level)) aid = { kind: 'heat', level: next.level };
     else aid = null;
     updateAid();
@@ -2438,9 +2489,7 @@ export function createBoard(container, { orientation = 'auto', params, youLabel 
       if (aidKey !== 'off') { aidEl.setAttribute('display', 'none'); aidKey = 'off'; }
       return;
     }
-    const d = aid.kind === 'glow' ? Math.hypot(t.pos.x - aid.target.x, t.pos.y - aid.target.y) : NaN;
-    const level = aid.kind === 'glow' ? aidLevel(d, P) : aid.level;
-    const k = aid.kind === 'glow' ? aidStrength(d, P) : 1;
+    const { level, k } = aid.kind === 'glow' ? glowAt(t.pos, aid, P) : { level: aid.level, k: 1 };
     const r = f3((P.tokenRadius + 1.3) * scale);
     const key = `${f3(t.pos.x)},${f3(t.pos.y)},${r},${level},${k},${aid.kind}`;
     if (key === aidKey) return;

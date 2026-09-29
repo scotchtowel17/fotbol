@@ -84,6 +84,18 @@ const prep = perContext((ctx) => {
   };
 });
 
+/**
+ * The opponent this rule judges you against (your mark; a covering full-back's winger on his flank; the carrier in our
+ * box for the first defender), or null when the rule does not apply: { id, x, y, weight, sideOnly }. Player mode's right
+ * area (kidscore.js) reads it for "the wrong side of your man", so the reference is worked out here only.
+ * @param {object} ctx  from buildContext()
+ * @returns {{ id: string, x: number, y: number, weight: number, sideOnly: boolean } | null}
+ */
+export function goalSideRef(ctx) {
+  const p = prep(ctx);
+  return p ? { id: p.aid, x: p.ax, y: p.ay, weight: p.w, sideOnly: p.sideOnly } : null;
+}
+
 export default {
   id: 'goal-side',
   principles: ['D5'],
@@ -113,7 +125,8 @@ export default {
       s,
       critical: p.inBox && margin < 0,
       target: { x: p.tx, y: p.ty },
-      vars: { who: p.who, whoKid: p.whoKid, dist: whole(dv), want: p.want, inBox: p.inBox, issue },
+      // margin (unrounded): m nearer our goal than them (< 0: the wrong side); kidscore.js reads it (never the score)
+      vars: { who: p.who, whoKid: p.whoKid, dist: whole(dv), want: p.want, inBox: p.inBox, issue, margin },
     };
   },
   text: {

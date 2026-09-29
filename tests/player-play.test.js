@@ -11,11 +11,14 @@ import {
   repCard, ideasOf, praiseOf, bestMoveOf, cueMarker, repScene, revealFor, bestSpotMarker, lockAction, redirectTo,
   wantedStage, stagedScene, watchFrame, cameraRect, stageCamera, answerCamera, cardSpot,
   nameSpecific, ruleRefs, repSpeaker, repWords, mentionsSideline, touchlineBy, bestSpotPlace,
+  kidScore, recordOf, repArea, areaOf, zoneOf, zoneMarker, insideOutline, nearestOnOutline, zoneArrowEnd, levelAt, revealNote, keyFix, keyCue, angleVars,
 } from '../js/ui/player/play.js';
+import { kidStars, KID_LEVELS, KID_DEFAULTS } from '../js/engine/kidscore.js';
 import { STAGES, bestStage, reduceFrame } from '../js/engine/cast.js';
 import { CAMERA_MIN, BOARD_DEFAULTS, shirtNumberOf } from '../js/ui/board.js';
 import { buildContext } from '../js/engine/context.js';
 import { judgeSpot } from '../js/engine/analyse.js';
+import { RULES_BY_ID } from '../js/engine/rules/index.js';
 import { frameAt, timing } from '../js/engine/timeline.js';
 import { LENGTH, WIDTH } from '../js/engine/pitch.js';
 import { mirrorScenario } from '../js/engine/scenario.js';
@@ -23,7 +26,7 @@ import { STRINGS as REVEAL, REVEAL_DEFAULTS, whyModel, revealWordCount, burstFor
 import {
   STRINGS as FULLTIME, FULLTIME_DEFAULTS, sentenceCase, addToday, minutesOn, breakDue, fullTimeModel, earnedItems, bestMoveName, TODAY_KEY,
 } from '../js/ui/player/fulltime.js';
-import { STRINGS as MATCHDAY, MATCHDAY_DEFAULTS, heatFor, bestHotStreak, hardestMoment } from '../js/ui/player/matchday.js';
+import { STRINGS as MATCHDAY, MATCHDAY_DEFAULTS, heatFor, heatForStars, hotShare, runStars, bestHotStreak, hardestMoment } from '../js/ui/player/matchday.js';
 import { PLAYER_CELEBRATE, playerStarPlan, playerAckMs, createBurstBudget, playerMilestone } from '../js/ui/celebrate.js';
 import { SOUND_NAMES } from '../js/ui/sound.js';
 import { ROLES } from '../js/engine/roles.js';
@@ -140,9 +143,19 @@ test('player play: the reveal line is the top fix after a miss, the praise on a 
   assert.equal(pickLine({ feedback, stars: 1, misconception: "Don't chase the ball." }), "Don't chase the ball.", 'a miss you made names it');
   assert.equal(pickLine({ feedback, stars: 2, misconception: "Don't chase the ball." }), 'Get between their striker and our goal.', 'a near miss gets the fix');
   assert.equal(pickLine({ feedback, stars: 3 }), 'Great, you are between your player and our goal.');
-  assert.equal(pickLine({ feedback: { reasons: [], praise: [] }, stars: 3 }), PLAY.lineBest);
-  assert.equal(pickLine({ feedback: { reasons: [{ text: 'Step back 4 m, level with their last defender.' }] }, stars: 0 }), PLAY.lineFix);
-  for (const s of [PLAY.lineBest, PLAY.lineFix, PLAY.missNote]) assert.ok(words(s) <= 14);
+  // With nothing that fits, the words point at the green (Player mode judges the right area, drawn green).
+  assert.equal(pickLine({ feedback: { reasons: [], praise: [] }, stars: 3 }), PLAY.lineInGreen);
+  assert.equal(pickLine({ feedback: { reasons: [], praise: [] }, stars: 2 }), PLAY.lineNear);
+  assert.equal(pickLine({ feedback: { reasons: [{ text: 'Step back 4 m, level with their last defender.' }] }, stars: 0 }), PLAY.lineClose);
+  // A key the spot broke (offside, the wrong side of your man...) is said first, at 2 stars and after a miss.
+  const key = 'Step back so you are level with their last defender.';
+  assert.equal(pickLine({ feedback, stars: 1, key, misconception: "Don't chase the ball." }), key, 'the key before the drill\'s note');
+  assert.equal(pickLine({ feedback, stars: 2, key }), key);
+  assert.equal(pickLine({ feedback, stars: 3, key }), 'Great, you are between your player and our goal.', 'never at 3 stars');
+  assert.equal(pickLine({ feedback, stars: 1, key: 'Step back 3 m.' }), 'Get between their striker and our goal.', 'a key with metres is skipped');
+  // Locked in where you started: say so (the arrow and the green show where to go; Why? has the fixes).
+  assert.equal(pickLine({ feedback, stars: 0, still: true, key }), PLAY.lineStill);
+  for (const s of [PLAY.lineInGreen, PLAY.lineNear, PLAY.lineClose, PLAY.lineStill, PLAY.greenIsRight, PLAY.missNote]) assert.ok(words(s) <= 14 && usableText(s), s);
 });
 
 test('player play: the Why? sheet: the idea, its summary, 2 more reasons at most, what you did right, 60 words at most', () => {
@@ -324,6 +337,27 @@ test('player play: the best hot streak in seconds (a reaction moment after a pas
   assert.equal(hardestMoment(null), null);
 });
 
+test('player play: Match day judges the right area: Hot at 3 stars, the run\'s stars from the time Hot, the hardest moment a Cold one', () => {
+  assert.deepEqual([3, 2, 1, 0].map(heatForStars), ['hot', 'warm', 'cold', 'cold']);
+  assert.equal(MATCHDAY_DEFAULTS.liveMemory, KID_DEFAULTS.liveMemory, 'the memory of best spots is the engine\'s');
+  assert.equal(MATCHDAY_DEFAULTS.hotAt, KID_DEFAULTS.liveCoachFloor.hot, 'never colder than Coach mode\'s heat: the same bands');
+  assert.equal(MATCHDAY_DEFAULTS.warmAt, KID_DEFAULTS.liveCoachFloor.warm);
+  // A run: the share of scored time Hot (a reaction moment after a pass is not scored) gives its stars (75/50/30 %).
+  const run = (hot, n = 100, extra = []) => [...Array.from({ length: n }, (_, i) => ({ t: i / 10, score: 60, stars: i < hot ? 3 : 1 })), ...extra];
+  approx(hotShare(run(60)), 0.6, 1e-9);
+  approx(hotShare(run(60, 100, [{ t: 11, score: 20, stars: 3, grace: true }])), 0.6, 1e-9, 'grace samples do not count');
+  assert.deepEqual([80, 75, 60, 50, 40, 30, 10, 0].map((h) => runStars(run(h))), [3, 3, 2, 2, 1, 1, 0, 0]);
+  assert.equal(runStars([]), 0);
+  // Stars rule over the score: a 60 in the green is Hot, a 95 past a key line is not.
+  assert.equal(bestHotStreak([...Array.from({ length: 30 }, (_, i) => ({ t: i / 10, score: 60, stars: 3 }))]), 3);
+  assert.equal(bestHotStreak([...Array.from({ length: 30 }, (_, i) => ({ t: i / 10, score: 95, stars: 1 }))]), 0);
+  // The hardest moment: the lowest-scoring of the worst moments the ring showed Cold (else the lowest).
+  const worst = { worst: [{ t: 3, score: 40 }, { t: 9, score: 22 }, { t: 20, score: 35 }] };
+  assert.deepEqual(hardestMoment(worst, [{ t: 3, stars: 1 }, { t: 9, stars: 2 }, { t: 20, stars: 0 }]), { t: 20, score: 35 }, 'the 22 was Warm');
+  assert.deepEqual(hardestMoment(worst, [{ t: 3, stars: 3 }, { t: 9, stars: 2 }, { t: 20, stars: 2 }]), { t: 9, score: 22 }, 'none Cold: the lowest');
+  assert.equal(MATCHDAY.lead, 'Keep moving. Stay in the right area.');
+});
+
 // ---------------------------------------------------------------- celebrations and sound (Player-mode rules)
 
 test('player play: a rep\'s stars pop and tick in under 0.6 s; a big celebration at most once a set', () => {
@@ -478,9 +512,9 @@ test('player play: the reveal\'s words match the stars: praise only at 3 stars, 
   assert.ok(drills.length >= 8, `${drills.length} first-set drills`);
   drills.push(...authored);
   const offsets = [[0, 0], [1.5, 0], [-1.5, 0], [0, 1.5], [0, -1.5], [2.5, 2.5], [-3, 0], [0, 4], [-5, 3], [6, -2]];
-  const seen = { 3: 0, 2: 0, low: 0 };
+  const seen = { 3: 0, 2: 0, low: 0, still: 0, key: 0, angle: 0 };
   for (const s of drills) {
-    const scene = repScene(s, { formations });
+    const scene = repScene(s, { formations, catalogue });
     const own = s.principles ?? [];
     for (const spot of [...offsets.map(([dx, dy]) => ({ x: scene.ghost.spot.x + dx, y: scene.ghost.spot.y + dy })), scene.start]) {
       const r = revealFor(s, scene, spot, { principles: byId });
@@ -497,6 +531,26 @@ test('player play: the reveal\'s words match the stars: praise only at 3 stars, 
         assert.ok(shown.length <= 1, `${where}: ${shown.length} fixes`);
       } else {
         seen.low++;
+        // Locked in where you started: it says so (Why? has the fixes, the drill's own idea first).
+        if (r.still) { seen.still++; assert.equal(r.line, PLAY.lineStill, where); continue; }
+        // A key the spot broke (a side, an order, a line) says its fix first, when it can be said.
+        if (r.keyRule) {
+          seen.key++;
+          // A key about an angle (a D2 press shown the wrong way, a D5 mark not between) says which side, in the rule's
+          // words where the key was judged, never "get closer" at YOUR distance.
+          const v = angleVars(r.kid.keys[r.kid.broken.indexOf(r.keyRule)], r.keyRule, { ctx: scene.ctx, spot, area: r.area, rules: r.judgement.result.rules });
+          if (v) {
+            seen.angle++;
+            assert.ok(!['far', 'close', 'loose', 'tight'].includes(v.issue), `${where}: the ${r.keyRule} key is about the side (${v.issue})`);
+            const a = keyFix(r.keyRule, { rules: r.judgement.result.rules, who: r.who, spot, vars: v });
+            if (a && usableText(a.text, PLAY_DEFAULTS.lineMaxWords)) assert.equal(r.line, a.text, `${where}: the ${r.keyRule} key's side first`);
+            continue;
+          }
+          const k = (r.more.reasons ?? []).find((x) => x.ruleId === r.keyRule);
+          const said = k ? r.who.rule(k.text, k.ruleId, r.judgement.result.rules, spot) : null;
+          if (said && usableText(said, PLAY_DEFAULTS.lineMaxWords)) assert.equal(r.line, said, `${where}: the key's fix (${r.keyRule}) first`);
+          continue;
+        }
         // After a miss: the drill's note on your mistake, else a reason about the drill's own ideas when there is one.
         const about = (r.more.reasons ?? []).filter((x) => ideasOf(x).some((id) => own.includes(id)) && usableText(x.text, PLAY_DEFAULTS.lineMaxWords));
         // (Its words as shown: the player it means by number where the game shows two of the group, repSpeaker.)
@@ -505,19 +559,26 @@ test('player play: the reveal\'s words match the stars: praise only at 3 stars, 
       }
     }
   }
-  assert.ok(seen[3] > 20 && seen[2] > 5 && seen.low > 20, JSON.stringify(seen));
+  assert.ok(seen[3] > 20 && seen[2] > 5 && seen.low > 20 && seen.still > 20 && seen.key > 10 && seen.angle > 0, JSON.stringify(seen));
   // The play-test's cases.
   const m104 = authored.find((s) => s.id === 'm1-04-d5-rcb');
-  const at = (s, spot) => revealFor(s, repScene(s, { formations }), spot, { principles: byId });
-  assert.equal(at(m104, repScene(m104, { formations }).start).line, 'Get between their striker and our goal.', 'm1-04 from the start: goal-side (D5), not the line of defenders');
+  const at = (s, spot) => revealFor(s, repScene(s, { formations, catalogue }), spot, { principles: byId });
+  const still = at(m104, repScene(m104, { formations }).start);
+  assert.equal(still.stars, 0, 'standing still is never right');
+  assert.equal(still.line, PLAY.lineStill);
+  assert.equal(still.why.reasons[0], 'Get between their striker and our goal.', 'm1-04 from the start: Why? says goal-side (D5) first, not the line of defenders');
   const m106 = authored.find((s) => s.id === 'm1-06-t3-rw');
   const g106 = repScene(m106, { formations }).ghost.spot;
-  const missAt = { x: g106.x - 5, y: g106.y + 3 };
+  const missAt = { x: g106.x - 7, y: g106.y + 4 };
   const miss = at(m106, missAt);
-  assert.ok(miss.stars <= 1);
+  assert.ok(miss.stars <= 1, `${miss.stars} stars`);
   assert.notEqual(miss.line, 'Stay a little further in front of your midfielders.', '"Their defender runs past you": the goal-side fix, not the shape');
   assert.ok((miss.more.reasons ?? []).some((x) => miss.who.rule(x.text, x.ruleId, miss.judgement.result.rules, missAt) === miss.line && ideasOf(x).includes('D5')), miss.line);
   assert.equal(miss.line, 'Get closer to their number 3.', 'the full match shows four of their defenders: the one it means, by number');
+  // 5 m off the same way is just outside the green now: Great, with the same fix (the old 1-star miss).
+  const near = at(m106, { x: g106.x - 5, y: g106.y + 3 });
+  assert.equal(near.stars, 2);
+  assert.equal(near.line, 'Get closer to their number 3.');
 });
 
 test('player play: praise knows its idea; "Best move" says what you did; a miss\'s lesson can be the drill\'s takeaway', () => {
@@ -712,8 +773,7 @@ test('player play: a staged rep is watched, frozen and judged on the reduced fra
       const a = revealFor(s, scene, spot, { principles: byId });
       const b = judgeSpot({ ctx, ghost: scene.ghost }, spot, { wording: 'kid', principles: byId });
       assert.equal(a.judgement.result.score, b.result.score, `${tag}: the score at ${spot.x.toFixed(1)}, ${spot.y.toFixed(1)}`);
-      const cue = a.judgement.feedback.cue?.highlight;
-      if (cue?.type === 'player') assert.ok(ids.has(cue.id), `${tag}: the cue ${cue.id} is in the cast`);
+      for (const cue of [a.judgement.feedback.cue?.highlight, a.cue?.highlight]) if (cue?.type === 'player') assert.ok(ids.has(cue.id), `${tag}: the cue ${cue.id} is in the cast`);
     }
     // The best spot is a 3-star answer, with the full game's line.
     const best = revealFor(s, scene, scene.ghost.spot, { principles: byId });
@@ -749,7 +809,7 @@ test('player play: whatever a staged rep says (the line, Why?, the cue), the gro
       for (const r of [4, 10]) for (let a = 0; a < 8; a++) spots.push({ x: Math.max(1, Math.min(104, g.x + r * Math.cos(a * Math.PI / 4))), y: Math.max(1, Math.min(67, g.y + r * Math.sin(a * Math.PI / 4))) });
       for (const spot of spots) {
         const rv = revealFor(s, scene, spot, { principles: byId });
-        const cue = cueMarker(rv.judgement.feedback.cue, { rules: rv.judgement.result.rules, ball: scene.freezeFrame.ball });
+        const cue = cueMarker(rv.cue, { rules: rv.judgement.result.rules, ball: scene.freezeFrame.ball }); // (the one the reveal draws)
         const texts = [rv.line, rv.why?.summary, ...(rv.why?.reasons ?? []), ...(rv.why?.praise ?? []), cue?.label].filter((t) => typeof t === 'string');
         const tag = `${s.id} ${st.stage} ${st.cast.label} at ${spot.x.toFixed(1)}, ${spot.y.toFixed(1)}`;
         for (const t of texts) for (const [re, ok] of GROUPS) if (re.test(t)) assert.ok(ok(ids, skip), `${tag}: "${t}" names players the game does not show`);
@@ -783,6 +843,149 @@ test('player play: the full match plays as before (the staged full scene judges 
     assert.equal(stageCamera(s, scene, { formations }), null, `${s.id}: the full match keeps the focus crop and the spotlight`);
     assert.equal(watchFrame(s, scene, 0.5, scene.start, { formations }).players.length, 22);
   }
+});
+
+// ---------------------------------------------------------------- the right area (Player mode's judgement)
+
+test('player play: the stars shown stand for a score in their band: Elo and the rewards follow the right area (kidScore, recordOf)', () => {
+  for (let n = 0; n <= 3; n++) for (let x = 0; x <= 100; x += 1) assert.equal(starsForScore(kidScore(n, x)), n, `${n} stars, Coach mode ${x}`);
+  assert.equal(kidScore(3, 80), 90, 'in the green, Coach mode\'s 80 counts as a 3-star 90');
+  assert.equal(kidScore(3, 97), 97, 'a better spot keeps its score');
+  assert.equal(kidScore(1, 80), 74, 'past a key line, Coach mode\'s 80 is held to 1 star');
+  assert.equal(kidScore(0, 70), 54);
+  assert.equal(kidScore(2, NaN), 75, 'no score: the bottom of the band');
+  assert.equal(kidScore(9, 50), 90, 'stars clamped');
+  const s = { id: 'm1-02-d3-lcb-m', mirrorOf: 'm1-02-d3-lcb', learner: { role: 'RCB' } };
+  const r = recordOf(s, { stars: 3, judgement: { result: { score: 81, grade: 'A' } } });
+  assert.deepEqual(r, { id: 'm1-02-d3-lcb', stars: 3, score: 90, score01: 0.9, event: { type: 'rep', scenarioId: 'm1-02-d3-lcb', role: 'RCB', score: 90, stars: 3 } });
+  assert.ok(!('grade' in r.event), 'no grade: the kid never sees one');
+  assert.equal(recordOf(s, { stars: 1, judgement: { result: { score: 92 } } }).score01, 0.74, 'Elo learns the 1 star the kid saw, not the 92');
+});
+
+test('player play: the green: a closed outline, the arrow after a miss ends just inside its nearest edge', () => {
+  const sq = [{ x: 10, y: 10 }, { x: 20, y: 10 }, { x: 20, y: 20 }, { x: 10, y: 20 }];
+  assert.equal(insideOutline(sq, { x: 15, y: 15 }), true);
+  assert.equal(insideOutline(sq, { x: 25, y: 15 }), false);
+  assert.equal(insideOutline(sq.slice(0, 2), { x: 15, y: 10 }), false, 'no area');
+  assert.deepEqual(nearestOnOutline(sq, { x: 30, y: 14 }), { x: 20, y: 14 });
+  assert.deepEqual(nearestOnOutline(sq, { x: 5, y: 5 }), { x: 10, y: 10 });
+  assert.equal(nearestOnOutline([], { x: 0, y: 0 }), null);
+  const best = { x: 15, y: 15 };
+  const end = zoneArrowEnd(sq, { x: 30, y: 15 }, best);
+  approx(end.x, 20 - PLAY_DEFAULTS.zoneArrowIn, 1e-9, 'into the green, past its edge');
+  approx(end.y, 15, 1e-9);
+  assert.deepEqual(zoneArrowEnd(sq, { x: 12, y: 12 }, best), best, 'inside the drawn green (a key broke it): to the best spot');
+  assert.deepEqual(zoneArrowEnd([], { x: 30, y: 15 }, best), best, 'no green: to the best spot');
+  assert.deepEqual(zoneMarker(sq), { type: 'zone', points: sq, tone: 'good' });
+  assert.equal(zoneMarker(sq.slice(0, 2)), null);
+  assert.equal(zoneMarker(null), null);
+});
+
+test('player play: the set\'s first reveal says the green is the answer; practice says so first; "Hard one" still comes once', () => {
+  let t = createTally(5);
+  let r = revealNote(t, { stars: 0 });
+  assert.equal(r.note, PLAY.greenIsRight, 'the first reveal: what the green is (even after a miss)');
+  t = r.tally;
+  r = revealNote(t, { stars: 3 });
+  assert.equal(r.note, '');
+  r = revealNote(r.tally, { stars: 1 });
+  assert.equal(r.note, PLAY.missNote, 'the miss note waits for the next miss');
+  assert.equal(revealNote(r.tally, { stars: 0 }).note, '', 'once a set');
+  assert.equal(revealNote(createTally(5), { stars: 0, practice: true }).note, PLAY.practiceNote, 'Try again says it is practice');
+  assert.equal(revealNote(createTally(5), { stars: 0, practice: true }).tally.greenTold, false, 'and keeps the green tip for a first try');
+});
+
+test('player play: every staged rep\'s right area: the best spot is 3 stars, standing still 0, 3 m off 3 stars most ways; the green never reaches the start', () => {
+  let n = 0, three = 0, reps = 0;
+  for (const s of authored.flatMap((d) => [d, mirrorScenario(d)])) {
+    for (const stage of STAGES) {
+      const st = bestStage(s, stage, { formations, principles: catalogue });
+      if (st.stage !== stage) continue;
+      reps++;
+      const scene = stagedScene(s, st);
+      const tag = `${s.id} (${stage})`;
+      assert.ok(scene.area && areaOf(s, scene) === scene.area, `${tag}: the scene has its area`);
+      assert.equal(scene.area.stage, stage, `${tag}: judged at its stage`);
+      const best = revealFor(s, scene, scene.ghost.spot, { principles: byId });
+      assert.equal(best.stars, 3, `${tag}: the best spot`);
+      assert.equal(levelAt(scene, scene.area, scene.ghost.spot), 'hot', `${tag}: the glow is hot there`);
+      if (!s.answer?.hold) {
+        const still = revealFor(s, scene, scene.start, { principles: byId });
+        assert.equal(still.stars, 0, `${tag}: standing still`);
+        assert.equal(still.line, PLAY.lineStill, `${tag}: it says so`);
+        assert.equal(levelAt(scene, scene.area, scene.start), 'cold', `${tag}: the glow is cold at the start`);
+      }
+      const G = scene.ghost.spot;
+      for (let k = 0; k < 16; k++) {
+        const p = { x: G.x + 3 * Math.cos((k * Math.PI) / 8), y: G.y + 3 * Math.sin((k * Math.PI) / 8) };
+        if (p.x < 0 || p.x > LENGTH || p.y < 0 || p.y > WIDTH) continue;
+        n++;
+        if (kidStars(scene.ctx, p, scene.area).stars === 3) three++;
+      }
+      if (stage !== 'full') continue; // (the green, traced, on the full match of each: the slowest part)
+      const zone = zoneOf(s, scene);
+      assert.ok(zone.length >= 24, `${tag}: a green to draw`);
+      assert.equal(zoneOf(s, scene), zone, 'traced once');
+      if (!s.answer?.hold) assert.ok(!insideOutline(zone, scene.start), `${tag}: the green never reaches YOUR start`);
+      // What is drawn green is 3 stars (a vertex a hair inside, toward the best spot).
+      for (const v of zone.filter((_, i) => i % 6 === 0)) {
+        const d = Math.hypot(v.x - G.x, v.y - G.y);
+        if (d < 0.3) continue;
+        const q = { x: G.x + (v.x - G.x) * (d - 0.15) / d, y: G.y + (v.y - G.y) * (d - 0.15) / d };
+        assert.equal(kidStars(scene.ctx, q, scene.area).stars, 3, `${tag}: drawn green at (${q.x.toFixed(1)}, ${q.y.toFixed(1)})`);
+      }
+    }
+  }
+  assert.ok(reps >= 150, `${reps} staged reps`);
+  // The owner's play-test: 3 m off the best spot was 3 stars 40 % of the time; the right area forgives it (the rest
+  // are key lines no distance forgives, and the start cap).
+  assert.ok(three / n >= 0.75, `3 m off: 3 stars ${(100 * three / n).toFixed(1)} % of ${n}`);
+});
+
+test('player play: a key the spot broke says its fix first; its rule\'s own words when explain gave none (keyFix)', () => {
+  const rules = [{ id: 'offside', weight: 3, s: 0.1, critical: false, vars: { line: 60, beyond: 2, pass: false, by: 'defender', nearLine: true } }];
+  assert.deepEqual(keyFix('offside', { rules }), { ruleId: 'offside', principleId: 'F4', principles: ['F4'], text: 'Step back so you are level with their last defender.' });
+  const reason = { ruleId: 'offside', principleId: 'F4', text: 'Stay level.' };
+  assert.equal(keyFix('offside', { reasons: [reason], rules }), reason, 'explain\'s reason first');
+  assert.equal(keyFix('nope', { rules }), null);
+  // A key about an angle speaks the rule's words at that angle (angleVars), before explain's distance fix at YOUR spot.
+  const press = [{ id: 'press', weight: 3, s: 0.2, critical: false, vars: { whoKid: 'their number 10', issue: 'far', principle: 'D1' } }];
+  const far = { ruleId: 'press', principleId: 'D1', text: 'Get closer to their number 10, about two steps away.' };
+  assert.equal(keyFix('press', { reasons: [far], rules: press }), far, 'no angle: the fix at YOUR spot');
+  const side = keyFix('press', { reasons: [far], rules: press, vars: { whoKid: 'their number 10', issue: 'inside', principle: 'D2' } });
+  assert.deepEqual([side.text, side.principleId], ['Come from the middle side of their number 10, so they have to go wide.', 'D2']);
+  assert.equal(angleVars('wrong-side', 'press', { ctx: {}, spot: { x: 0, y: 0 } }), null, 'only the angle keys');
+  assert.equal(angleVars('not-between', 'between-lines', { ctx: {}, spot: { x: 0, y: 0 } }), null);
+});
+
+test('player play: after a miss the one cue shows the key the spot broke (keyCue), else the rule the line talks about, else Coach mode\'s top cue; none at 3 stars', () => {
+  const fallback = { text: 'Who is your player?', ruleId: 'compact', highlight: { type: 'line-x', x: 30 } };
+  assert.equal(keyCue(null, { fallback }), fallback, 'no key: Coach mode\'s cue');
+  assert.equal(keyCue('compact', { fallback }), fallback, 'the same rule: its own cue');
+  assert.equal(keyCue('nope', { ctx: {}, fallback }), fallback, 'a rule with no cue');
+  assert.equal(keyCue('goal-side', { fallback }), fallback, 'no context to ask');
+  let keyed = 0, said = 0, other = 0;
+  for (const s of authored.slice(0, 18)) {
+    const scene = repScene(s, { formations, catalogue });
+    const G = scene.ghost.spot;
+    for (let k = 0; k < 16; k++) {
+      for (const r of [2, 4, 6, 9]) {
+        const spot = { x: Math.max(1, Math.min(104, G.x + r * Math.cos((k * Math.PI) / 8))), y: Math.max(1, Math.min(67, G.y + r * Math.sin((k * Math.PI) / 8))) };
+        const rv = revealFor(s, scene, spot, { principles: byId });
+        if (rv.stars >= 3) { assert.equal(rv.cue, null, `${s.id}: no cue in the green`); continue; }
+        const at = `${s.id} at ${spot.x.toFixed(1)}, ${spot.y.toFixed(1)} ("${rv.line}")`;
+        // The line's rule: the key's, else the reason's whose words are the line.
+        if (rv.keyRule) assert.equal(rv.lineRule, rv.keyRule, at);
+        else if (rv.lineRule) assert.ok((rv.more.reasons ?? []).some((x) => x.ruleId === rv.lineRule), `${at}: ${rv.lineRule} is a reason`);
+        const own = rv.lineRule ? RULES_BY_ID[rv.lineRule]?.cue?.(scene.ctx, spot) : null;
+        if (own) {
+          if (rv.keyRule) keyed++; else said++;
+          assert.equal(rv.cue?.ruleId, rv.lineRule, `${at}: the cue is the ${rv.lineRule} rule's, as the line`);
+        } else { other++; assert.equal(rv.cue, rv.judgement.feedback.cue, at); }
+      }
+    }
+  }
+  assert.ok(keyed >= 20 && said >= 20 && other >= 5, `${keyed} key cues, ${said} of the line's rule, ${other} of Coach mode's`);
 });
 
 test('player play: a small game\'s camera is one rect for the whole clip: the cast, the ball, YOUR start and the best spot', () => {
@@ -935,7 +1138,7 @@ test('player play: whatever a rep says (the question, the line, Why?, the cue), 
       for (const spot of spots) {
         const rv = revealFor(s, scene, spot, { principles: byId });
         const rules = rv.judgement.result.rules;
-        const cue = cueMarker(rv.judgement.feedback.cue, { rules, ball: scene.freezeFrame.ball, name: (t, id) => rv.who.rule(t, id, rules, spot) });
+        const cue = cueMarker(rv.cue, { rules, ball: scene.freezeFrame.ball, name: (t, id) => rv.who.rule(t, id, rules, spot) });
         texts.push(rv.line, ...(rv.why?.reasons ?? []), ...(rv.why?.praise ?? []), rv.why?.summary, cue?.label);
         assert.ok(usableText(rv.line, PLAY_DEFAULTS.lineMaxWords), `${s.id} ${stage}: "${rv.line}" fits`);
       }
@@ -1092,14 +1295,18 @@ test('player play: mounted, a whole set draws, freezes, judges and replays only 
   page.doc.body.append(root);
   const phaseOf = () => root.querySelector('.pl')?.dataset.phase ?? null;
   const cardOf = () => `${root.querySelector('.pl-card-text')?.textContent ?? ''}|${root.querySelector('.pl-card-stage')?.textContent ?? ''}`;
-  let board = null;
+  let board = null, ghostAt = null;
   const app = {
     data: {
       formations, principles: normalizePrinciples(catalogue), road: roadData,
       scenarios: createScenarioStore(normalizeScenarioIndex(scenarioIndex), (path) => loadJSON(path)),
     },
     store, settings: { mode: 'player', sound: false }, sound: { play() {} }, celebrate: { show() {} }, navigate() {},
-    createBoard: () => (board = recordingBoard(page, phaseOf, cardOf)),
+    createBoard: () => {
+      board = recordingBoard(page, phaseOf, cardOf);
+      board.setGhost = (p) => { ghostAt = p ? { x: p.x, y: p.y } : null; }; // (the best-spot ring: where the green is round)
+      return board;
+    },
   };
   const warn = console.warn, info = console.info;
   const warnings = [];
@@ -1135,7 +1342,7 @@ test('player play: mounted, a whole set draws, freezes, judges and replays only 
       handled.set(key, h);
       if (!h.seen) {
         h.seen = true; reveals++;
-        answers.push({ stars: STAR_WORDS.indexOf(root.querySelector('.pr-word')?.textContent ?? ''), marks: board.log.markers.at(-1)?.list ?? [] });
+        answers.push({ stars: STAR_WORDS.indexOf(root.querySelector('.pr-word')?.textContent ?? ''), marks: board.log.markers.at(-1)?.list ?? [], ghost: ghostAt, note: root.querySelector('.pr-note')?.textContent ?? '' });
       }
       if (!h.replayed) { h.replayed = true; replays++; click('.pr-replay'); await page.clock.until(() => phaseOf() === 'replay'); continue; }
       if (!h.retried && root.querySelector('.pr-retry')) { h.retried = true; retries++; click('.pr-retry'); await page.clock.until(() => phaseOf() === 'set'); continue; }
@@ -1158,7 +1365,19 @@ test('player play: mounted, a whole set draws, freezes, judges and replays only 
       assert.ok(a.stars >= 0, `reveal ${i + 1}: its word`);
       const label = a.marks.find((m) => m.type === 'label' && m.text === PLAY.bestSpot);
       if (a.stars < 3) assert.ok(label, `reveal ${i + 1} (${a.stars} stars): "Best spot" on the ring`);
+      // The right area: every reveal draws the green round the best-spot ring; after a miss the arrow points into it.
+      const zone = a.marks.find((m) => m.type === 'zone');
+      assert.ok(zone && zone.points.length >= 24 && a.ghost && insideOutline(zone.points, a.ghost), `reveal ${i + 1}: the green, with the best spot inside it`);
+      const arrow = a.marks.find((m) => m.type === 'arrow');
+      if (a.stars < 3 && arrow) {
+        const edge = nearestOnOutline(zone.points, arrow.to);
+        assert.ok(insideOutline(zone.points, arrow.to) && Math.hypot(edge.x - arrow.to.x, edge.y - arrow.to.y) <= PLAY_DEFAULTS.zoneArrowIn + 0.01, `reveal ${i + 1}: the arrow ends just inside the green's edge`);
+      }
+      if (a.stars === 3) assert.ok(!arrow && !label, `reveal ${i + 1}: in the green nothing more (no arrow, no words)`);
     }
+    // Locked in at the start (this test never moves YOU): 0 stars every time, and the set's first reveal says what the green is.
+    assert.ok(answers.every((a) => a.stars === 0), `standing still is never right: ${answers.map((a) => a.stars).join(', ')}`);
+    assert.equal(answers[0].note, PLAY.greenIsRight);
 
     // One segment of renders per rep played (a first try or its twin), from its role card to the next.
     const segs = [];
@@ -1213,4 +1432,98 @@ test('player play: mounted, a whole set draws, freezes, judges and replays only 
     try { unmount?.(); } catch { /* gone */ }
     page.restore();
   }
+});
+
+/**
+ * The first set's worked example mounted on a fake page (Node): the green round the ring, the glow told by the right
+ * area, then YOU put 3 m off the best spot the way the green reaches furthest and locked in. `reduced`: under reduced
+ * motion there is no hand, and the tip says the green is right at once.
+ */
+async function workedExample({ reduced = false } = {}) {
+  const page = fakePage();
+  const { normalizePrinciples, normalizeScenarioIndex, createScenarioStore } = await import('../js/data.js');
+  const { mount } = await import('../js/ui/player/play.js');
+  const mem = new Map();
+  const store = { get: (k, f = null) => (mem.has(k) ? JSON.parse(mem.get(k)) : f), set: (k, v) => { mem.set(k, JSON.stringify(v)); return true; }, remove: (k) => mem.delete(k) };
+  store.set('player', { version: 1, group: 'MID', role: 'LCM', onboarded: true, road: {} });
+  const roadData = Road.normalizeRoad(await loadJSON('data/road.json'));
+  const root = page.doc.createElement('div');
+  page.doc.body.append(root);
+  const phaseOf = () => root.querySelector('.pl')?.dataset.phase ?? null;
+  let board = null, ghostAt = null, drag = null, aid = null, hand = 0;
+  const app = {
+    data: {
+      formations, principles: normalizePrinciples(catalogue), road: roadData,
+      scenarios: createScenarioStore(normalizeScenarioIndex(scenarioIndex), (path) => loadJSON(path)),
+    },
+    store, settings: { mode: 'player', sound: false, reducedMotion: reduced }, sound: { play() {} }, celebrate: { show() {} }, navigate() {},
+    createBoard: () => {
+      board = recordingBoard(page, phaseOf);
+      board.setGhost = (p) => { ghostAt = p ? { x: p.x, y: p.y } : null; };
+      const en = board.enableDrag;
+      board.enableDrag = (o) => { drag = o; en(o); };
+      board.setAid = (a) => { aid = a; };
+      board.showHintHand = () => { hand++; return Promise.resolve(); };
+      return board;
+    },
+  };
+  const warn = console.warn, info = console.info;
+  const warnings = [];
+  console.warn = (...a) => warnings.push(a.join(' '));
+  console.info = () => {};
+  let unmount = null;
+  try {
+    mount(root, app, ['first']).then((u) => { unmount = u; });
+    assert.ok(await page.clock.until(() => unmount !== null && phaseOf() === 'place'), 'the worked example reaches the place');
+    // The worked example: the green round the ring and an arrow from YOUR start to it; after the hand "Your turn", with
+    // no hand (reduced motion) "Anywhere in the green is right. Move YOU there."
+    assert.equal(hand, reduced ? 0 : 1, 'the hand drags YOU once (none under reduced motion)');
+    const shown = board.log.markers.at(-1)?.list ?? [];
+    const zone = shown.find((m) => m.type === 'zone');
+    assert.ok(zone && ghostAt && insideOutline(zone.points, ghostAt), 'the worked example draws the green with the ring inside');
+    assert.ok(shown.some((m) => m.type === 'arrow'), 'and the arrow');
+    assert.equal(root.querySelector('.pl-tip')?.textContent, reduced ? PLAY.ringIsBest : PLAY.yourTurnHint);
+    // The glow (the first set's aid) is told its level by the right area: hot on the ring, cold where YOU started.
+    const learner = board.log.renders.at(-1).learner;
+    const start = board.log.renders.at(-1).at[learner];
+    assert.equal(aid?.kind, 'glow');
+    assert.equal(typeof aid.levelAt, 'function');
+    assert.equal(aid.levelAt(ghostAt), 'hot');
+    assert.equal(aid.levelAt(start), 'cold');
+    // YOU 3 m from the best spot, the way the green reaches furthest (inside it), then Lock it.
+    const far = zone.points.map((v) => ({ v, d: Math.hypot(v.x - ghostAt.x, v.y - ghostAt.y) })).sort((a, b) => b.d - a.d)[0];
+    assert.ok(far.d >= 3.3, `the green reaches ${far.d.toFixed(1)} m from the best spot`);
+    const spot = { x: ghostAt.x + ((far.v.x - ghostAt.x) * 3) / far.d, y: ghostAt.y + ((far.v.y - ghostAt.y) * 3) / far.d };
+    assert.ok(insideOutline(zone.points, spot));
+    drag.onEnd(learner, spot);
+    await page.clock.step();
+    assert.equal((board.log.markers.at(-1)?.list ?? []).length, 0, 'moved: the worked example\'s answer goes');
+    assert.equal(aid.levelAt(spot), 'hot', 'the glow is hot there');
+    root.querySelector('.pl-lock').click();
+    assert.ok(await page.clock.until(() => phaseOf() === 'reveal' && !!root.querySelector('.pr-word')), 'the reveal');
+    await page.clock.until(() => false, { maxMs: 400 }); // (the markers placed again once the camera has landed)
+    assert.equal(root.querySelector('.pr-word').textContent, 'Spot on', `3 m off, in the green: ${root.querySelector('.pr-line')?.textContent}`);
+    const marks = board.log.markers.at(-1)?.list ?? [];
+    const green = marks.find((m) => m.type === 'zone');
+    assert.ok(green && insideOutline(green.points, spot) && insideOutline(green.points, ghostAt), 'the green is drawn, YOU and the ring in it');
+    assert.ok(!marks.some((m) => m.type === 'arrow'), 'no arrow in the green');
+    assert.ok(!marks.some((m) => m.type === 'label' && m.text === PLAY.bestSpot), 'no "Best spot" words: the stars say it');
+    assert.equal(root.querySelector('.pr-note')?.textContent, PLAY.greenIsRight, 'the set\'s first reveal: "Anywhere in the green is right."');
+    assert.ok(warnings.every((w) => !/could not|not valid|stopped|no green/.test(w)), `no failures: ${warnings.join(' / ')}`);
+  } finally {
+    console.warn = warn;
+    console.info = info;
+    try { unmount?.(); } catch { /* gone */ }
+    page.restore();
+  }
+}
+
+test('player play: mounted, the worked example shows the green, and YOU placed 3 m off the best spot inside it gets 3 stars and the green', async () => {
+  if (!isNode) return; // (a fake page in Node, as above)
+  await workedExample();
+});
+
+test('player play: mounted under reduced motion, the worked example has no hand and says the green is right at once', async () => {
+  if (!isNode) return;
+  await workedExample({ reduced: true });
 });

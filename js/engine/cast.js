@@ -16,6 +16,7 @@
 //                                    rep's smaller games take the most compact cast that passes (castExtent: the camera
 //                                    zooms in on it, so the figures are big)
 //   bestStage(item, wanted, opts)    the wanted stage, else the next bigger one that passes (the full match always does)
+//   lessonOf(principles, result, catalogue)   the rule a staged rep is held to (also Player mode's lesson keys, kidscore.js)
 //   stagesOf(item, opts)             every stage at once (npm run check's report)
 //
 // PURE and deterministic: no DOM, no clock, no randomness.
@@ -34,6 +35,7 @@ import { RULES, RULES_BY_ID } from './rules/index.js';
 import { rateOptions, gradePass, PASS_DEFAULTS } from './passing.js';
 import { passDrillFrame, passDrillRating, passLessons } from './passdrill.js';
 import { optionsByReceiver, passTargets, PASS_TARGET_DEFAULTS } from './passtargets.js';
+import { kidArea, kidStars } from './kidscore.js';
 
 /** The stages, smallest first: a small game (3-6 players), a bigger game (6-12), the full match (all 22). */
 export const STAGES = Object.freeze(['small', 'medium', 'full']);
@@ -712,10 +714,15 @@ function ruleIdsOf(principle, catalogue) {
  * drill's next idea that has a rule met at the full game's ghost, else the heaviest rule met there (primary false). A
  * primary whose rules are not met at all at the full game's answer is `unmet` (npm run check reports it). null: nothing
  * to hold. Every staged rep is also held to the full game's praise at the answer (praiseOf), so the kid hears the same
- * lesson whichever rule is held.
+ * lesson whichever rule is held. Player mode's right area (kidscore.js kidArea's `lesson`) reads the same lesson for its
+ * lesson keys: play.js takes it from the staged rep (`.lesson`), or calls this for a rep it judges on the full game.
+ * @param {string[]} principles  the drill's principles (first = primary)
+ * @param {object} result  evaluate() at the full game's best spot (ghost.result)
+ * @param {object} [catalogue]  data/principles.json (any form validateScenario accepts); default: the rule registry
+ * @param {object} [P]  CAST_DEFAULTS (or overrides)
  * @returns {null | { principle, rules, primary: boolean, minWeight: number, unmet?: true }}
  */
-function lessonOf(principles, result, catalogue, P) {
+export function lessonOf(principles, result, catalogue, P = CAST_DEFAULTS) {
   const met = (r, w) => atLeast(r.weight, w) && atLeast(r.s, P.minRuleScore);
   const [primary] = principles ?? [];
   let unmet = false;
@@ -776,19 +783,29 @@ function prepareSpot(scenario, { formations, principles: catalogue, params } = {
 }
 
 /**
+ * Player mode's right area of a staged rep (kidscore.js kidArea, round its best spot on its reduced frame) and the stars
+ * it gives standing still and the best spot: { area, start, best } (a hold drill has no start cap: its start is not gated).
+ */
+function kidOf(prep, ctx, best, stage) {
+  const area = kidArea(ctx, { best, centre: prep.centre, tol: prep.tol, start: prep.start, hold: prep.hold, stage, lesson: prep.lesson, misconceptions: prep.s.misconceptions });
+  return { area, start: kidStars(ctx, prep.start, area).stars, best: kidStars(ctx, best, area).stars };
+}
+
+/**
  * The gate on one cast (§1, spot reps): on the reduced frame at the freeze, the learner has the full game's duty, first
  * defender and mark; the lesson's rule weighs its minWeight+ and scores 0.9+ at the ghost; standing still at the start
  * scores below stillMax (unless the drill is an authored "hold" drill); the ghost scores S and is within sameAnswer of
  * the full game's, and the full game's answer scores S here too (a 3-star answer in both games); and the kid is praised
- * at the answer for the same rules as in the full game (praiseDepth deep: the reveal's line and the Why? sheet). The
- * cheap checks come first (a failed try skips the ghost). Every comparison fails on NaN.
+ * at the answer for the same rules as in the full game (praiseDepth deep: the reveal's line and the Why? sheet); and in
+ * Player mode's right area (kidscore.js, round the staged best spot) standing still earns no stars (unless a hold drill)
+ * and the best spot 3. The cheap checks come first (a failed try skips the ghost). Every comparison fails on NaN.
  */
-function spotGate(prep, ids) {
+function spotGate(prep, ids, stage) {
   const { P, learnerId, base, centre, tol, lesson } = prep;
   const frame = reduceFrame(prep.frame, ids);
   const ctx = buildContext(frame, { learnerId, base });
   const failed = [];
-  const out = { ok: false, ghostScore: null, sameAnswer: null, rule: null, startScore: null, hold: prep.hold, fullAnswerScore: null, praise: null, failed, frame, ctx, ghost: null };
+  const out = { ok: false, ghostScore: null, sameAnswer: null, rule: null, startScore: null, hold: prep.hold, fullAnswerScore: null, praise: null, kidStart: null, kidBest: null, failed, frame, ctx, ghost: null, area: null };
   // The learner's job is the full game's: the same duty, the same first defender and the same player to mark.
   const who = (p) => p?.id ?? null;
   const job = [['duty', ctx.duty, prep.ctx.duty], ['first defender', who(ctx.firstDefender), who(prep.ctx.firstDefender)], ['mark', who(ctx.markTarget), who(prep.ctx.markTarget)]]
@@ -821,6 +838,10 @@ function spotGate(prep, ids) {
   if (!atLeast(out.fullAnswerScore, P.minGhostScore)) failed.push(`the full game's best spot scores ${out.fullAnswerScore} here (< ${P.minGhostScore})`);
   out.praise = praiseRuleOf(ghost.result, prep.s.principles, P.praiseDepth);
   if (out.praise !== prep.praise) failed.push(`the answer is praised for ${out.praise ?? 'nothing'} here, ${prep.praise ?? 'nothing'} in the full game`);
+  const kid = kidOf(prep, ctx, ghost.spot, stage);
+  out.area = kid.area; out.kidStart = kid.start; out.kidBest = kid.best;
+  if (!prep.hold && kid.start !== 0) failed.push(`standing still earns ${kid.start} stars in Player mode (not 0)`);
+  if (kid.best !== 3) failed.push(`the best spot earns ${kid.best} stars in Player mode (not 3)`);
   out.ok = !failed.length;
   return out;
 }
@@ -828,13 +849,18 @@ function spotGate(prep, ids) {
 /** The staged result of a prepared spot rep, or null (the cast grows one player at a time up to the stage's cap). */
 function stageSpot(prep, stage, trace) {
   const { P, s, t, learnerId, base, tol, centre, start, clipIds } = prep;
-  const shared = { kind: 'spot', base, tol, centre, t, start, learnerId, clipIds, keep: [...prep.keep.ids], lesson: prep.lesson, fullGhost: { spot: { ...prep.ghost.spot }, score: prep.ghost.score } };
+  const shared = { kind: 'spot', base, tol, centre, t, start, learnerId, clipIds, keep: [...prep.keep.ids], lesson: prep.lesson, hold: prep.hold,
+    misconceptions: s.misconceptions ?? [], fullGhost: { spot: { ...prep.ghost.spot }, score: prep.ghost.score } };
   if (stage === 'full') {
+    // The full match always passes; Player mode's stars at the start and the best spot are reported (npm run check fails
+    // an authored drill on them, spotdrill.js a generated one).
     const ids = prep.frame.players.map((p) => p.id);
     const r = prep.ghost.result.rules.filter((q) => prep.lesson?.rules.includes(q.id)).sort((a, b) => b.weight * b.s - a.weight * a.s)[0];
-    const gates = { ok: true, ghostScore: prep.ghost.score, sameAnswer: 0, startScore: prep.still, hold: prep.hold, fullAnswerScore: prep.ghost.score, praise: prep.praise, tries: 0, failed: [],
+    const kid = kidOf(prep, prep.ctx, prep.ghost.spot, 'full');
+    const gates = { ok: true, ghostScore: prep.ghost.score, sameAnswer: 0, startScore: prep.still, hold: prep.hold, fullAnswerScore: prep.ghost.score, praise: prep.praise,
+      kidStart: kid.start, kidBest: kid.best, tries: 0, failed: [],
       rule: r ? { id: r.id, principle: prep.lesson.principle, weight: r.weight, s: Math.round(r.s * 1000) / 1000 } : null };
-    return { stage, cast: { ids, ...castLabel(ids, 'full') }, ghost: prep.ghost, gates, frame: prep.frame, ctx: prep.ctx, ...shared };
+    return { stage, cast: { ids, ...castLabel(ids, 'full') }, ghost: prep.ghost, gates, frame: prep.frame, ctx: prep.ctx, area: kid.area, ...shared };
   }
   const cap = capOf(stage, P);
   if (!cap) throw new TypeError(`stageSpotDrill: unknown stage ${stage}`);
@@ -843,24 +869,25 @@ function stageSpot(prep, stage, trace) {
   if (overflows(order, stage, cap, trace)) return null;
   const seen = new Set();
   const limits = teamsOf(null, cap, P);
-  let found = grow(prep.frame, order, stage, cap, limits, P, (ids) => spotGate(prep, ids), trace, seen);
+  let found = grow(prep.frame, order, stage, cap, limits, P, (ids) => spotGate(prep, ids, stage), trace, seen);
   if (!found) {
     // The plain order failed: rank first the players the full game's answer depends on, and grow again.
     prep.decisive ??= decisiveIds(prep.frame, { learnerId, base, centre, tol, start, skip: new Set(order.must), ghost: prep.ghost.spot, still: prep.still }, P);
     // (From the stage's fewest players: the decisive players first may teach it in a smaller cast than the plain order;
     // with none, the plain order again from there, since a bigger game starts growing at its lesson's players.)
-    found = grow(prep.frame, orderOf(prep.decisive), stage, cap, limits, P, (ids) => spotGate(prep, ids), trace, seen, { from: minOf(stage, cap, P) });
+    found = grow(prep.frame, orderOf(prep.decisive), stage, cap, limits, P, (ids) => spotGate(prep, ids, stage), trace, seen, { from: minOf(stage, cap, P) });
   }
   if (!found && !prep.hold) {
     // Still failing: standing still may look fine in a smaller game (the teammates whose line or spacing the start
     // spoils are hidden). Rank first the players who bring it back below stillMax, and grow once more.
     const fix = stillIds(prep, [...order.must, ...order.lines], cap, P);
-    if (fix.length) found = grow(prep.frame, orderOf([...fix, ...(prep.decisive ?? [])]), stage, cap, limits, P, (ids) => spotGate(prep, ids), trace, seen, { from: minOf(stage, cap, P) });
+    if (fix.length) found = grow(prep.frame, orderOf([...fix, ...(prep.decisive ?? [])]), stage, cap, limits, P, (ids) => spotGate(prep, ids, stage), trace, seen, { from: minOf(stage, cap, P) });
   }
   if (!found) return null;
   const { ids, g, tries } = found;
-  const gates = { ok: true, ghostScore: g.ghostScore, sameAnswer: g.sameAnswer, rule: g.rule, startScore: g.startScore, hold: g.hold, fullAnswerScore: g.fullAnswerScore, praise: g.praise, tries, failed: [] };
-  return { stage, cast: { ids, ...castLabel(ids, stage) }, ghost: g.ghost, gates, frame: g.frame, ctx: g.ctx, ...shared };
+  const gates = { ok: true, ghostScore: g.ghostScore, sameAnswer: g.sameAnswer, rule: g.rule, startScore: g.startScore, hold: g.hold, fullAnswerScore: g.fullAnswerScore, praise: g.praise,
+    kidStart: g.kidStart, kidBest: g.kidBest, tries, failed: [] };
+  return { stage, cast: { ids, ...castLabel(ids, stage) }, ghost: g.ghost, gates, frame: g.frame, ctx: g.ctx, area: g.area, ...shared };
 }
 
 /**
@@ -872,13 +899,16 @@ function stageSpot(prep, stage, trace) {
  *   principles: the catalogue (data/principles.json, any form validateScenario accepts) for each idea's ruleIds (default:
  *   the rule registry's); params: CAST_DEFAULTS overrides; trace: collects { stage, size, ids, failed } for every cast tried
  * @returns {null | { stage, kind: 'spot', cast: { ids, label, ours, theirs }, ghost, base, tol, centre, gates, frame, ctx,
- *   t, start, learnerId, clipIds, keep, lesson: { principle, rules, primary, minWeight, unmet? } | null, fullGhost: { spot, score } }}
+ *   t, start, learnerId, clipIds, keep, lesson: { principle, rules, primary, minWeight, unmet? } | null, hold, misconceptions,
+ *   area, fullGhost: { spot, score } }}
  *   ghost: computeGhost on the reduced frame (round `centre`: the base, or answer.ideal in authored mode); frame and ctx:
  *   the reduced freeze frame and its context (drop-in for play.js repScene's freezeFrame and ctx: judgeSpot({ ctx, ghost },
  *   spot) judges on the cast only); keep: the players the drill scripts or names (always in the cast); gates: { ok,
  *   ghostScore, sameAnswer (m from the full game's ghost), rule: { id, principle, weight, s } | null, startScore, hold,
- *   fullAnswerScore (the full game's best spot, scored here), praise (the rules praised at the answer, space-separated: the line and the Why?), tries, failed: [] };
- *   lesson: the rule the gate holds (lessonOf)
+ *   fullAnswerScore (the full game's best spot, scored here), praise (the rules praised at the answer, space-separated: the line and the Why?),
+ *   kidStart, kidBest (Player mode's stars standing still and at the best spot: 0 and 3 for a staged game; reported for the full match), tries, failed: [] };
+ *   lesson: the rule the gate holds (lessonOf); hold: answer.hold; misconceptions: the scenario's; area: Player mode's right
+ *   area round the staged best spot (kidscore.js kidArea with the defaults, this stage's scale)
  */
 export function stageSpotDrill(scenario, stage, opts = {}) {
   return stageSpot(prepareSpot(scenario, opts), stage, opts.trace);

@@ -7,8 +7,9 @@ import {
   CAMERA_MIN, cameraViewBox, figureScale, ballScale, ballPx, boardScales, facingToward, carrierTarget, carriedBallAt,
   carryReach, carryWeight, stepToward, isRunning, motionPlan, ballTrail, contrastRatio, relLuminance, baseScale, tagPlacement,
   ghostFit, discBallAt, discCarry, discCarryDir, standHeight, figureParts, figureOcclusion, pairCover, declutter, carrySpot,
-  shownBox, TAG_FORMS, discTagPlacement,
+  shownBox, TAG_FORMS, discTagPlacement, glowAt, zonePoints, AID_LEVELS,
 } from '../js/ui/board.js';
+import { KID_LEVELS } from '../js/engine/kidscore.js';
 import { FIGURE, FIGURE_BOXES, FIGURE_DEFAULTS, numberFontSize } from '../js/ui/figures.js';
 import { frameAt } from '../js/engine/timeline.js';
 import { createFormation } from '../js/engine/formation.js';
@@ -396,6 +397,60 @@ test('board: the glow aid warms and brightens as YOU nears its target', () => {
   assert.equal(ks[0], 1);
   assert.equal(ks.at(-1), 0);
   assert.ok(ks.every((k, i) => i === 0 || k <= ks[i - 1]), 'never brighter further away');
+});
+
+test('board: a glow told its level by the screen (Player mode\'s right area) shows that level; without one, the distance', () => {
+  assert.deepEqual([...AID_LEVELS], [...KID_LEVELS], 'the levels for 0-3 stars are the engine\'s');
+  const target = { x: 50, y: 30 };
+  // No levelAt: metres to the target, as before.
+  for (const d of [0, 2, 4, 8, 20]) assert.deepEqual(glowAt({ x: 50 + d, y: 30 }, { target }), { level: aidLevel(d), k: aidStrength(d) });
+  // levelAt: its level at YOUR spot, at that level's brightness, whatever the distance (hot anywhere in the green).
+  const inGreen = (p) => (Math.abs(p.x - 50) <= 4 ? 'hot' : Math.abs(p.x - 50) <= 6 ? 'warm' : 'cold');
+  assert.deepEqual(glowAt({ x: 54, y: 30 }, { target, levelAt: inGreen }), { level: 'hot', k: BOARD_DEFAULTS.aidLevelK.hot });
+  assert.deepEqual(glowAt({ x: 55.5, y: 30 }, { target, levelAt: inGreen }), { level: 'warm', k: BOARD_DEFAULTS.aidLevelK.warm });
+  assert.deepEqual(glowAt({ x: 50, y: 30 }, { target, levelAt: () => 'cold' }), { level: 'cold', k: BOARD_DEFAULTS.aidLevelK.cold }, 'the start: cold on the ring too');
+  const ks = AID_LEVELS.map((l) => BOARD_DEFAULTS.aidLevelK[l]);
+  assert.ok(ks.every((k, i) => i === 0 || k > ks[i - 1]), 'hotter is brighter');
+  // A levelAt that throws or says something else: the distance.
+  assert.deepEqual(glowAt({ x: 52, y: 30 }, { target, levelAt: () => { throw new Error('x'); } }), { level: aidLevel(2), k: aidStrength(2) });
+  assert.deepEqual(glowAt({ x: 52, y: 30 }, { target, levelAt: () => 'lava' }), { level: aidLevel(2), k: aidStrength(2) });
+});
+
+test('board: a zone marker (Player mode\'s right area) is a polygon on the grass, under the aid ring, the markers and the figures', () => {
+  assert.equal(zonePoints([{ x: 1, y: 2 }, { x: 3.12345, y: 4 }, { x: 5, y: 6 }]), '1,2 3.123,4 5,6');
+  assert.equal(zonePoints([{ x: 1, y: 2 }, { x: NaN, y: 4 }, { x: 5, y: 6 }]), '', 'fewer than 3 real points: nothing');
+  assert.equal(zonePoints(null), '');
+  const { container } = fakeDom();
+  const board = createBoard(container, { orientation: 'vertical', labels: 'number', figures: true });
+  try {
+    board.render(scene(), { learnerId: LEARNER });
+    const zone = [{ x: 20, y: 60 }, { x: 26, y: 60 }, { x: 26, y: 66 }, { x: 20, y: 66 }];
+    board.setMarkers([{ type: 'zone', points: zone, tone: 'good' }, { type: 'arrow', from: { x: 10, y: 50 }, to: { x: 21, y: 61 }, tone: 'fix' }]);
+    const world = board.el.querySelector('g.board-world');
+    const layer = board.el.querySelector('g.board-zones');
+    const poly = layer.querySelectorAll('polygon');
+    assert.equal(poly.length, 1, 'one green');
+    assert.ok(poly[0].classList.contains('mk-zone') && poly[0].classList.contains('tone-good'));
+    assert.equal(poly[0].getAttribute('points'), '20,60 26,60 26,66 20,66');
+    const at = (sel) => world.children.indexOf(board.el.querySelector(sel));
+    assert.ok(at('g.board-zones') >= 0 && at('g.board-zones') < at('g.board-aid-layer') && at('g.board-aid-layer') < at('g.board-markers'), 'the green under the aid ring and every other marker');
+    assert.equal(board.el.querySelector('g.board-markers').querySelectorAll('polygon.mk-zone').length, 0, 'not among the other markers');
+    assert.ok(!world.children.includes(board.el.querySelector('g.board-tokens')), 'the figures are drawn over the world');
+    board.setMarkers([]);
+    assert.equal(layer.querySelectorAll('polygon').length, 0, 'setMarkers clears the green with the rest');
+    board.setMarkers([{ type: 'zone', points: zone.slice(0, 2) }]);
+    assert.equal(layer.querySelectorAll('polygon').length, 0, 'no area: nothing drawn');
+    // The glow ring on YOU follows the screen's level (levelAt), re-asked at every render.
+    let level = 'cold';
+    board.setAid({ kind: 'glow', target: { x: 23, y: 63 }, levelAt: () => level });
+    const ring = board.el.querySelector('circle.board-aid');
+    assert.ok(ring.classList.contains('aid-cold'));
+    level = 'hot';
+    board.render(moved(0.5), { learnerId: LEARNER });
+    assert.ok(ring.classList.contains('aid-hot'), 'hot where the screen says');
+    board.setAid(null);
+    assert.equal(ring.getAttribute('display'), 'none');
+  } finally { board.destroy(); }
 });
 
 test('board: the worked-example hand drags YOU to the best spot, holds, and YOU snaps back', () => {

@@ -22,6 +22,9 @@
   --pl-cold-ink: #1b56a6;
   --pl-hand: #ffffff;
   --pl-hand-edge: #0d1410;
+  /* the right area ("Anywhere in the green is right"): a lit patch of bright green on the grass, with a light edge */
+  --pl-zone-fill: rgb(176 255 92 / 0.34);
+  --pl-zone-edge: #eaffc2;
   /* a reward shown big at Full time */
   --pl-item-bg: #1f2c25;
   --pl-item-edge: transparent;
@@ -30,11 +33,13 @@
   :root:not([data-theme="light"]) {
     --pl-hot-ink: #ff9d63; --pl-warm-ink: #ffd65c; --pl-cold-ink: #8fc4ff;
     --pl-star-off: #56685e; --pl-item-bg: #22332a; --pl-item-edge: #3a5246;
+    --pl-zone-fill: rgb(150 240 80 / 0.26); --pl-zone-edge: #c6f79a;
   }
 }
 :root[data-theme="dark"] {
   --pl-hot-ink: #ff9d63; --pl-warm-ink: #ffd65c; --pl-cold-ink: #8fc4ff;
   --pl-star-off: #56685e; --pl-item-bg: #22332a; --pl-item-edge: #3a5246;
+  --pl-zone-fill: rgb(150 240 80 / 0.26); --pl-zone-edge: #c6f79a;
 }
 
 /* ------------------------------------------------------------------ the board's Player-mode extras */
@@ -56,6 +61,12 @@
 .board-aid.aid-cold { stroke: var(--pl-cold); stroke-dasharray: 0.05 0.75; }
 .board-aid.aid-heat { stroke-width: 0.8px; opacity: 1; }
 .board-aid.aid-heat.aid-hot { stroke-width: 1px; }
+
+/* The right area (play.js zoneMarker, board.js 'zone' markers): where the reveal gives 3 stars, a soft bright-green
+   patch under the figures with a lighter solid edge that stays the same width at every zoom. Colour is never alone:
+   the edge, the best-spot ring inside it and the words ("Anywhere in the green is right.") say what it is. */
+.board-zones { pointer-events: none; }
+.mk-zone { fill: var(--pl-zone-fill); stroke: var(--pl-zone-edge); stroke-width: 2.5px; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 
 /* Tap targets ("Who's open?"): a dashed ring round each teammate you can pick; the previewed one solid and cyan. */
 .board-target { cursor: pointer; outline: none; }
