@@ -115,7 +115,9 @@ export const unitsOf = perContext((ctx) => {
  * centre-back nearest the ball who is not pressing. If the learner is that
  * centre-back, the median x of the other back-liners (they align to you).
  * Everyone at base; the first defender is ignored.
- * @returns {{ x:number, setter: object|null, learnerSets: boolean }|null} null if there is no back line.
+ * @returns {{ x:number, setter: object|null, learnerSets: boolean }|null} null if there is no back line: nobody but
+ *   the first defender and the learner in it (only a reduced frame, js/engine/cast.js: a small game without the rest
+ *   of the back line has no line to hold, and "in line with your other defenders" would name players nobody sees)
  */
 export const backLineRef = perContext((ctx) => {
   const fdId = ctx.firstDefender?.id;
@@ -130,8 +132,8 @@ export const backLineRef = perContext((ctx) => {
   const learnerSets = isLearner(ctx, setter);
   if (setter && !learnerSets) return { x: setter.x, setter, learnerSets };
   const others = line.filter((p) => !isLearner(ctx, p));
-  const x = others.length ? median(others.map((p) => p.x)) : ctx.learner.base.x;
-  return { x, setter, learnerSets };
+  if (!others.length) return null;
+  return { x: median(others.map((p) => p.x)), setter, learnerSets };
 });
 
 /**

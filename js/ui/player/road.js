@@ -13,7 +13,8 @@
 //     borrowed: played in another position; spare: past maxBorrowed, as nothing else in yours was left
 //     given the `app`, the set counts as started: startSet(app, nodeId, reps)
 //   startSet(app, nodeId, reps) → attempt     nodeAttempt(profile, id)   (the node's start counter; the last set's reps)
-//   buildFirstSet({ profile, index, load, seed, formations, catalogue, generators }) → Promise<rep[]>   the onboarding set (§4.1)
+//   buildFirstSet({ profile, index, load, seed, formations, catalogue, generators, app }) → Promise<rep[]>   the onboarding set
+//     (§4.1); given the `app`, its reps become the profile's last set (startSet(app, FIRST_SET, reps): nothing counted)
 //   buildQuickPassSet({ road, profile, seed, formations, catalogue, generators }) → Promise<rep[]>   '#/pass': the free
 //     player mixed with playing forward (road.json `quickPass`)
 //   setStarsFor(repStars) → 0..3            recordSet(app, nodeId, repStars) → { before, after, setStars, plays, unlocked, matchday }
@@ -24,7 +25,8 @@
 // `onboarded` turns true when the player picks a position on the kick-off screen: from then on '#/' is the Player home.
 // `plays` counts finished sets (recordSet); `starts` counts sets begun (startSet), and a set's seed takes it in, so
 // leaving or reloading in the middle of a set never deals the same reps again (no replaying known answers for XP);
-// `last` is the last set's reps, which the next set's recall rep never repeats.
+// `last` is the last set's reps (the onboarding set's too, nodeId 'first'): the next set deals them only when nothing
+// else is left, and its recall rep never repeats one.
 //
 // Next up (nextNode): your group's lead chapter first (data/road.json `lead`: "Help the ball" for everyone but
 // defenders, so attackers get attacking plays early), then the Road's order; the first open node under 2 stars, so a
@@ -78,6 +80,10 @@ export const ROAD_DEFAULTS = Object.freeze({
   maxBorrowed: 2, // [S] play-test: at most this many reps of a set played in another position ("Now you're ..."),
   //                  unless nothing else in yours is left (the rep is then `spare`)
   lastIds: 10, // [D] the last set's rep ids kept in the profile (a set is 5; room for a longer one)
+  stageLook: 2, // [D] a set still short of reps that can be played small (or in the bigger game) looks at up to this many
+  //               more drills for a rep before it takes one that cannot (docs/PROGRESSIVE_FIELD.md §2: small slots are
+  //               not all quietly played bigger)...
+  stageBudget: 6, // [D] ...and makes at most this many extra generator calls a set for it (each one costs 5-150 ms)
 });
 
 /** Store key of the player profile (js/store.js adds the 'fotbol:' prefix). */
@@ -126,6 +132,111 @@ export function seededRandom(seed) {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+// ---------------------------------------------------------------- stages: a small game → a bigger game → the full match (pure)
+
+/** The stages, smallest first (= js/engine/cast.js STAGES, tested; a copy, so the engine loads only when a set is built). */
+export const STAGES = Object.freeze(['small', 'medium', 'full']);
+
+/** docs/PROGRESSIVE_FIELD.md §2: the stage of each of a Road set's 5 reps, by the node's stars before the set (row = stars). */
+export const STAGE_PLANS = Object.freeze([
+  Object.freeze(['small', 'small', 'small', 'medium', 'medium']),
+  Object.freeze(['small', 'small', 'medium', 'medium', 'full']),
+  Object.freeze(['small', 'medium', 'medium', 'full', 'full']),
+  Object.freeze(['medium', 'full', 'full', 'full', 'full']),
+]);
+
+/**
+ * The stage each rep of a set wants (docs/PROGRESSIVE_FIELD.md §2), from the node's stars before the set: 0 stars small,
+ * small, small, medium, medium; 1 star small, small, medium, medium, full; 2 stars small, medium, medium, full, full;
+ * 3 stars medium, then full. The onboarding set (`first`) is all small; the quick "Who's open?" set takes the 1-star plan.
+ * A set of another length takes the plan's steps in proportion (rep i of n: the plan's floor(i × 5 / n)), so it still
+ * builds up.
+ * @param {number} nodeStars  0-3 (clamped; not a number: 0)
+ * @param {{ first?: boolean, count?: number }} [opts]
+ * @returns {('small'|'medium'|'full')[]}
+ */
+export function stagePlan(nodeStars, { first = false, count = ROAD_DEFAULTS.reps } = {}) {
+  const n = Number.isFinite(Number(count)) ? Math.max(0, Math.round(Number(count))) : ROAD_DEFAULTS.reps;
+  if (first) return Array.from({ length: n }, () => 'small');
+  const row = STAGE_PLANS[int(nodeStars, 0, ROAD_DEFAULTS.maxStars)];
+  return Array.from({ length: n }, (_, i) => row[Math.min(row.length - 1, Math.floor((i * row.length) / n))]);
+}
+
+/**
+ * The stage a rep is played at when it wants `wanted` (as cast.js bestStage picks it): `wanted`, else the next bigger
+ * stage it can be played at. `caps` says which it can: { small, medium } false for a stage whose gate fails, true (or
+ * unknown: null, or no caps at all) for one that passes; the full match always does.
+ * @returns {'small'|'medium'|'full'}
+ */
+export function stageFor(caps, wanted) {
+  let k = STAGES.indexOf(wanted);
+  if (k < 0) return 'full';
+  while (k < STAGES.length - 1 && caps?.[STAGES[k]] === false) k++;
+  return STAGES[k];
+}
+
+/** How many stages bigger than `wanted` a rep with these caps is played at (stageFor). An unknown `wanted`: 0. */
+export function stagePromotion(caps, wanted) {
+  const k = STAGES.indexOf(wanted);
+  return k < 0 ? 0 : STAGES.indexOf(stageFor(caps, wanted)) - k;
+}
+
+/**
+ * Which rep plays which slot of a set (pure): the order that plays the reps at their slots' planned stages with the
+ * fewest steps up (stagePromotion); among those, the one whose stages as played only grow (a small game, then a bigger
+ * one: a rep that can only be played bigger goes later in the set, never first); then the one that moves the reps least
+ * from the order the set was built in (so the recall rep stays first, and the builder's order is kept whenever nothing
+ * is gained). Up to 7 reps every order is weighed; a longer set takes, slot by slot, the first rep left that needs the
+ * fewest steps up.
+ * @param {({ small?: boolean|null, medium?: boolean|null }|null)[]} caps  per rep, in the built order (null: unknown)
+ * @param {string[]} plan  per slot (stagePlan); as long as caps
+ * @returns {number[]} for each slot, the index (in the built order) of the rep that plays it
+ */
+export function assignStages(caps, plan) {
+  const n = Math.min(caps?.length ?? 0, plan?.length ?? 0);
+  const cost = (i, j) => stagePromotion(caps[i], plan[j]);
+  const played = (i, j) => STAGES.indexOf(stageFor(caps[i], plan[j]));
+  if (n > 7) {
+    const left = Array.from({ length: n }, (_, i) => i);
+    return Array.from({ length: n }, (_, j) => {
+      let pick = 0;
+      for (let k = 1; k < left.length; k++) if (cost(left[k], j) < cost(left[pick], j)) pick = k;
+      return left.splice(pick, 1)[0];
+    });
+  }
+  const worse = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]; // > 0: a is worse than b
+  let best = null, bestCost = [Infinity, Infinity, Infinity];
+  const order = [], used = new Array(n).fill(false);
+  const walk = (j, c, prev) => {
+    if (worse(c, bestCost) >= 0) return; // every term only grows: no better order down here (the first found wins a tie)
+    if (j === n) { best = [...order]; bestCost = c; return; }
+    for (let i = 0; i < n; i++) {
+      if (used[i]) continue;
+      const k = played(i, j);
+      used[i] = true; order.push(i);
+      walk(j + 1, [c[0] + cost(i, j), c[1] + (k < prev ? 1 : 0), c[2] + Math.abs(i - j)], k);
+      used[i] = false; order.pop();
+    }
+  };
+  walk(0, [0, 0, 0], 0);
+  return best ?? [];
+}
+
+/**
+ * Tally a set's stages (the sweep's report, pure): for each planned stage, how many slots wanted it and how many are
+ * played at it. @param {{ stage: string, played?: string }[]} reps  played: the stage it plays at (stageFor)
+ * @returns {{ small: { wanted, played }, medium: { wanted, played }, full: { wanted, played } }}
+ */
+export function stageTally(reps = []) {
+  const out = Object.fromEntries(STAGES.map((s) => [s, { wanted: 0, played: 0 }]));
+  for (const r of reps) {
+    if (!out[r?.stage]) continue;
+    out[r.stage].wanted++;
+    if ((r.played ?? r.stage) === r.stage) out[r.stage].played++;
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- the road (pure)
@@ -382,20 +493,31 @@ export function recordSet(app, nodeId, repStars = []) {
 /**
  * A set of a node begins: its start counter goes up (the next set's seed takes it in, so a reload or a quit in the
  * middle deals fresh reps rather than the ones you have seen) and its reps become the profile's last set (the next
- * recall rep never repeats one). buildSet calls it when it is given the app. The onboarding set ('first') and ids the
- * loaded road does not know are not counted.
+ * set deals them only when nothing else is left, and its recall rep never repeats one). buildSet calls it when it is
+ * given the app. The onboarding set ('first'; buildFirstSet calls it) is not a Road node: nothing is counted, but its
+ * reps become the last set too, so the first node's set, a minute after the tutorial, does not deal the tutorial's
+ * drills again (the worked example's answer was just shown; play-test: 2 of the 3 came straight back for a defender
+ * and a striker). Ids the loaded road does not know are not counted.
  * @returns {number} the attempt this set was (0 for a node's first), or -1 when nothing was counted
  */
 export function startSet(app, nodeId, reps = []) {
   const id = String(nodeId ?? '');
   const loaded = app?.data?.road ?? bound.app?.data?.road ?? null;
   const road = loaded?.chapters?.length ? loaded : null;
-  if (!ID_RE.test(id) || id === FIRST_SET || (road && !nodeById(road, id))) return -1;
+  const ids = [...new Set((Array.isArray(reps) ? reps : []).map(repId).filter(Boolean))].slice(0, ROAD_DEFAULTS.lastIds);
+  if (id === FIRST_SET) {
+    if (ids.length) saveProfile(app, { ...loadProfile(app), last: { nodeId: FIRST_SET, ids } });
+    return -1;
+  }
+  if (!ID_RE.test(id) || (road && !nodeById(road, id))) return -1;
   const profile = loadProfile(app);
   const attempt = nodeAttempt(profile, id);
-  const ids = [...new Set((Array.isArray(reps) ? reps : []).map(repId).filter(Boolean))].slice(0, ROAD_DEFAULTS.lastIds);
   const rec = { stars: nodeStars(profile, id), plays: nodePlays(profile, id), starts: attempt + 1 };
-  saveProfile(app, { ...profile, road: { ...profile.road, [id]: rec }, last: { nodeId: id, ids } });
+  // The onboarding set's reps stay in the last set through the first Road set too: the set after it (the next node's,
+  // or this one begun again) does not bring the tutorial back either (its recall rep was the worked example).
+  const carry = profile.last?.nodeId === FIRST_SET ? profile.last.ids : [];
+  const kept = [...new Set([...ids, ...carry])].slice(0, ROAD_DEFAULTS.lastIds);
+  saveProfile(app, { ...profile, road: { ...profile.road, [id]: rec }, last: { nodeId: id, ids: kept } });
   return attempt;
 }
 
@@ -442,8 +564,8 @@ async function fetchRoad(fetchImpl) {
 
 // ---------------------------------------------------------------- building a set
 
-const engines = {}; // kind → Promise<module|null>: the lazily imported generator modules
-const ENGINE = Object.freeze({ spot: '../../engine/spotdrill.js', pass: '../../engine/passdrill.js' });
+const engines = {}; // kind → Promise<module|null>: the lazily imported generator modules (and the stager, cast.js)
+const ENGINE = Object.freeze({ spot: '../../engine/spotdrill.js', pass: '../../engine/passdrill.js', cast: '../../engine/cast.js' });
 const GENERATOR = Object.freeze({ spot: 'generateSpotDrill', pass: 'generatePassDrill' });
 
 function engineModule(kind) {
@@ -503,6 +625,109 @@ async function feasibleFor(ctx) {
     if (typeof f !== 'function' || !principles?.length) return true;
     try { return f(role, [...principles], kind === 'pass' ? { direction } : undefined) !== false; } catch { return true; }
   };
+}
+
+// ---------------------------------------------------------------- what a rep can be played at (js/engine/cast.js)
+
+/** Every stage of a drill (cast.js stagesOf: { small, medium, full }), per drill object and the formations it was staged with. */
+const STAGED = new WeakMap();
+
+const stageItem = (rep) => (rep?.kind === 'pass' ? rep.drill : rep?.scenario) ?? null;
+
+function stagesFor(rep, cast, { formations, catalogue }) {
+  const item = stageItem(rep);
+  if (!isObj(item)) return null;
+  const had = STAGED.get(item);
+  if (had && had.formations === formations && had.catalogue === catalogue) return had.all;
+  let all = null;
+  try { all = cast.stagesOf(item, { formations, ...(catalogue ? { principles: catalogue } : {}) }); } catch { all = null; }
+  STAGED.set(item, { formations, catalogue, all });
+  return all;
+}
+
+/**
+ * The set's stager: rep → { small, medium } (can it be played in a small game, in the bigger game?), or null when that
+ * is unknown. The caller's (opts.stager, the same shape; null: none), else js/engine/cast.js stagesOf with the set's
+ * formations and catalogue (imported when first needed; no formations: unknown), cached per drill.
+ * @returns {Promise<(rep) => ({ small: boolean, medium: boolean } | null)>}
+ */
+async function stagerFor(opts, ctx) {
+  if (opts.stager !== undefined) {
+    const f = opts.stager;
+    return (rep) => {
+      if (typeof f !== 'function') return null;
+      try { return f(rep) ?? null; } catch { return null; }
+    };
+  }
+  if (!ctx.formations?.us) return () => null;
+  const cast = await engineModule('cast');
+  if (typeof cast?.stagesOf !== 'function') return () => null;
+  return (rep) => {
+    const all = stagesFor(rep, cast, ctx);
+    return all ? { small: !!all.small, medium: !!all.medium } : null;
+  };
+}
+
+/**
+ * A rep staged at `wanted` as js/engine/cast.js bestStage stages it (`wanted`, else the next bigger stage that passes,
+ * with `wanted` on the result), from the stages its set's builder worked out already; null when the builder staged it
+ * with other formations or not at all (stage it with bestStage then). Saves the screens staging a rep twice.
+ * @param {object} rep  a rep of buildSet, buildQuickPassSet or buildFirstSet
+ * @param {'small'|'medium'|'full'} wanted
+ * @param {{ formations?: object }} [opts]
+ */
+export function stagedRep(rep, wanted, { formations } = {}) {
+  const item = stageItem(rep);
+  const had = isObj(item) ? STAGED.get(item) : null;
+  if (!had?.all || (formations && had.formations !== formations)) return null;
+  const from = STAGES.includes(wanted) ? STAGES.indexOf(wanted) : STAGES.length - 1;
+  for (const s of STAGES.slice(from)) if (had.all[s]) return { ...had.all[s], wanted: STAGES[from] };
+  return null;
+}
+
+/**
+ * A built set at its planned stages (PROGRESSIVE_FIELD §2): the order that plays the most reps at their slot's stage
+ * (assignStages on what each rep can be played at), each rep tagged with its slot's `stage` (the stage it wants; the
+ * screens stage it with cast.js bestStage, which plays it bigger only when that stage cannot teach it).
+ */
+function planSet(reps, plan, stager) {
+  const caps = reps.map((r) => stager(r));
+  return assignStages(caps, plan).map((i, j) => ({ ...reps[i], stage: plan[j] }));
+}
+
+/**
+ * What a set still needs to play its plan (PROGRESSIVE_FIELD §2: small slots are not all quietly played bigger): how
+ * many reps that can be played small it lacks, and how many that can be played small or in the bigger game. A
+ * candidate `helps` when it can be played at a stage still short. Unknown caps (no stager) never ask for more.
+ */
+function stageNeeds(plan, stager) {
+  const need = { small: plan.filter((s) => s === 'small').length, medium: plan.filter((s) => s !== 'full').length };
+  const have = { small: 0, medium: 0 };
+  return {
+    /** Can this rep be played at the smallest stage the set is still short of (small first, then small or the bigger
+     *  game)? true when that is unknown, or when nothing is short. */
+    helps(rep) {
+      if (!this.short()) return true;
+      const c = stager(rep);
+      if (!c) return true;
+      if (have.small < need.small) return c.small !== false;
+      return c.small !== false || c.medium !== false;
+    },
+    short() { return have.small < need.small || have.medium < need.medium; },
+    take(rep) {
+      const c = stager(rep);
+      if (!c || c.small !== false) have.small++;
+      if (!c || c.small !== false || c.medium !== false) have.medium++;
+    },
+  };
+}
+
+/** The set's stager, what its plan still needs, and the extra generator calls it may make for that (ctx.stager, ctx.needs). */
+async function withStages(ctx, opts, plan) {
+  ctx.stager = await stagerFor(opts, ctx);
+  ctx.needs = stageNeeds(plan, ctx.stager);
+  ctx.stageBudget = ROAD_DEFAULTS.stageBudget;
+  return ctx;
 }
 
 /** A breath for the page between generator calls (each takes 5-200 ms), so the loading screen stays alive. */
@@ -604,7 +829,7 @@ export function carrierAtFreeze(s) {
  * back empty generatorNulls times more often than it gave one is not asked again (each call already tries 30-40
  * scenes, so that position rarely gets those ideas).
  */
-function setState() {
+function setState(needs = null) {
   const nulls = new Map(), hits = new Map();
   const add = (m, key) => m.set(key, (m.get(key) ?? 0) + 1);
   return {
@@ -634,6 +859,7 @@ function setState() {
     },
     take(id, rep) {
       this.used.add(id);
+      needs?.take(rep);
       const pic = repPicture(rep);
       if (pic) this.pictures.push(pic);
       for (const k of repLooks(rep)) this.looks.add(k);
@@ -724,14 +950,46 @@ function authoredRefs(index, principles, ctx, salt) {
 }
 
 async function loadRef(ref, ctx) {
-  try {
-    const s = await ctx.load(ref.id);
-    if (!isScenario(s)) return null;
-    return { kind: 'spot', scenario: ref.mirror ? mirrorScenario(s) : s, mirrored: ref.mirror };
-  } catch (err) {
-    console.warn(`[fotbol] road: scenario ${ref.id} did not load (${err?.message ?? err})`);
-    return null;
-  }
+  // One object per drill a set looks at (a rep it passes over for its stage may be taken later: staged once, cached).
+  const key = `${ref.id}|${ref.mirror ? 'm' : ''}`;
+  ctx.loaded ??= new Map();
+  if (!ctx.loaded.has(key)) ctx.loaded.set(key, (async () => {
+    try {
+      const s = await ctx.load(ref.id);
+      if (!isScenario(s)) return null;
+      return { kind: 'spot', scenario: ref.mirror ? mirrorScenario(s) : s, mirrored: ref.mirror };
+    } catch (err) {
+      console.warn(`[fotbol] road: scenario ${ref.id} did not load (${err?.message ?? err})`);
+      return null;
+    }
+  })());
+  return ctx.loaded.get(key);
+}
+
+/**
+ * Stage preference (PROGRESSIVE_FIELD §2): while the set is short of reps its plan can play small (or in the bigger
+ * game), a candidate that cannot help is kept as the fallback and up to stageLook more are looked at; the first that
+ * helps is taken, else the fallback. `extra()` says whether one more candidate may be looked at (and counts it).
+ */
+function stagePick(ctx, { generated = false } = {}) {
+  let fallback = null, looked = 0;
+  return {
+    /** A fresh candidate: true when it is the one (it helps, or the set needs nothing); false to keep looking. */
+    offer(id, rep) {
+      if (!ctx.needs || ctx.needs.helps(rep)) return true;
+      fallback ??= { id, rep };
+      return false;
+    },
+    /** Another look allowed? Only after a candidate was passed over, up to stageLook (and, generated, the set's budget). */
+    more() {
+      if (!fallback) return true;
+      if (looked >= ROAD_DEFAULTS.stageLook || (generated && !(ctx.stageBudget > 0))) return false;
+      looked++;
+      if (generated) ctx.stageBudget--;
+      return true;
+    },
+    get fallback() { return fallback; },
+  };
 }
 
 /**
@@ -758,25 +1016,30 @@ function spotQueue(target, ctx, set, salt, { nodeId = target.id, extra = false, 
   let tries = 0;
   const maxTries = ctx.reps * ROAD_DEFAULTS.generatorTries;
   const fromRefs = async (list) => {
+    const pick = stagePick(ctx);
+    let chosen = null;
     for (const ref of list) {
       const id = baseId(ref.id);
       if (set.used.has(id)) continue;
       const borrowed = ref.role !== ctx.role;
-      if (borrowed && !set.canBorrow()) return null;
-      set.used.add(id);
+      if (borrowed && !set.canBorrow()) break;
+      if (!pick.more()) break;
       const rep = await loadRef(ref, ctx);
-      if (rep) {
-        const r = borrowed ? { ...rep, ...set.lend() } : rep;
-        set.take(id, r);
-        return tag(r);
-      }
+      if (!rep) { set.used.add(id); continue; } // (it did not load: never asked again)
+      const r = borrowed ? { ...rep, ...set.lend() } : rep;
+      if (pick.offer(id, r)) { chosen = { id, rep: r }; break; }
     }
-    return null;
+    chosen ??= pick.fallback;
+    if (!chosen) return null;
+    set.take(chosen.id, chosen.rep);
+    return tag(chosen.rep);
   };
   const generated = async () => {
     const gen = await generatorFor(ctx, 'spot');
     if (!gen || !(await ctx.feasible)('spot', ctx.role, target.principles)) return null;
-    while (tries < maxTries && !set.dry(key)) {
+    const pick = stagePick(ctx, { generated: true });
+    let chosen = null;
+    while (tries < maxTries && !set.dry(key) && pick.more()) {
       const seed = seedFor(ctx, target.id, salt, 'gen', tries++);
       // The questions the set asks already: the engine words the drill with another question that fits it
       // (spotdrill.js avoidTemplates changes only the words), so a good drill is not dropped and regenerated for
@@ -794,14 +1057,16 @@ function spotQueue(target, ctx, set, salt, { nodeId = target.id, extra = false, 
       const id = String(s.id ?? `gen-${seed}`);
       const rep = { kind: 'spot', scenario: s, mirrored: false, generated: true };
       if (set.used.has(id) || skip?.has(id) || !set.fresh(rep)) continue;
-      set.take(id, rep);
-      return tag(rep);
+      if (pick.offer(id, rep)) { chosen = { id, rep }; break; }
     }
-    return null;
+    chosen ??= pick.fallback;
+    if (!chosen) return null;
+    set.take(chosen.id, chosen.rep);
+    return tag(chosen.rep);
   };
   return {
     async next() {
-      return (await fromRefs(own)) ?? (await fromRefs(group)) ?? (await generated()) ?? (await fromRefs(others)) ?? (await fromRefs(again));
+      return (await fromRefs(own)) ?? (await fromRefs(group)) ?? (await generated()) ?? (await fromRefs(others)) ?? (ctx.holdLast ? null : await fromRefs(again));
     },
   };
 }
@@ -857,8 +1122,12 @@ export function recallSources(road, profile, node) {
 async function spotSet(node, ctx) {
   const n = ctx.reps;
   const rng = seededRandom(`${ctx.seed}|${node.id}|order`);
-  const set = setState();
+  const set = setState(ctx.needs);
   const out = [];
+  // Right after the onboarding set (your last set), its drills wait longer than a Road set's: behind the chapter's
+  // other ideas and more reps in other positions too (a defender's first set once dealt the tutorial's left-back drill
+  // again at rep 5, as the left back's own drills on the idea are the two the tutorial had just used).
+  ctx.holdLast = ctx.profile.last?.nodeId === FIRST_SET;
   if (node.kind !== 'mix' && ROAD_DEFAULTS.recall > 0 && n > 1) {
     // One recall rep: from another node you have played (never on this node's ideas), never a rep of your last set.
     const sources = recallSources(ctx.road, ctx.profile, node);
@@ -892,6 +1161,11 @@ async function spotSet(node, ctx) {
     await fill(queues, start);
     await fill(chapter);
   }
+  if (out.length < n && ctx.holdLast) {
+    ctx.holdLast = false;
+    await fill(queues, start);
+    await fill(chapter);
+  }
   return fillUp(out, n);
 }
 
@@ -922,7 +1196,7 @@ export function avoidReceivers(reps, max = ROAD_DEFAULTS.maxSameBest) {
 async function passSet(node, ctx) {
   const n = ctx.reps;
   const out = [];
-  const set = setState();
+  const set = setState(ctx.needs);
   const targets = node.kind === 'mix' || node.parts?.length ? mixParts(ctx.road, node, 'pass') : [node];
   const want = new Set(targets.flatMap((t) => t.principles));
   const rng = seededRandom(`${ctx.seed}|${node.id}|pass`);
@@ -976,7 +1250,9 @@ async function passSet(node, ctx) {
       if (role !== ctx.role && !set.canBorrow()) continue;
       if (!feasible('pass', role, principles, direction)) continue;
       const key = `pass|${role}|${principles.join(',')}|${direction}|${avoid.join(',')}`;
-      for (let k = 0; k < T && !rep && !set.dry(key); k++) {
+      const pick = stagePick(ctx, { generated: true }); // (a drill the plan cannot use: a few more seeds, then it)
+      let chosen = null;
+      for (let k = 0; !chosen && !set.dry(key) && (pick.fallback ? pick.more() : k < T); k++) {
         const seed = base + i + k * 1009 * n;
         let drill = null;
         try {
@@ -990,10 +1266,14 @@ async function passSet(node, ctx) {
         const id = String(drill.id ?? `pass-${role}-${seed}`);
         const r = { kind: 'pass', drill, nodeId: t.id, ...(role !== ctx.role ? set.lend() : {}), ...(principles !== t.principles ? { extra: true } : {}) };
         if (set.used.has(id) || !set.fresh(r)) continue;
-        set.take(id, r);
-        rep = r;
+        if (pick.offer(id, r)) chosen = { id, rep: r };
       }
-      if (rep) break;
+      chosen ??= pick.fallback;
+      if (chosen) {
+        set.take(chosen.id, chosen.rep);
+        rep = chosen.rep;
+        break;
+      }
     }
     return rep;
   };
@@ -1015,6 +1295,9 @@ export const QUICK_PASS = 'quick';
 /** The quick set's lessons when the road names none (road.json `quickPass`): Find the Free Player, then Play It Forward. */
 export const QUICK_PASS_NODES = Object.freeze(['free-player', 'play-forward']);
 
+/** The quick set is played at the 1-star plan (docs/PROGRESSIVE_FIELD.md §2): small, small, medium, medium, full. */
+export const QUICK_STARS = 1;
+
 /**
  * The quick passing set (§4.2's "Who's open?" tile): `count` generated pass drills for your position, built as a Road
  * pass set is (3 of 5 with a forward best, no near-duplicates, one per template, a teammate in your group when your
@@ -1030,7 +1313,9 @@ export async function buildQuickPassSet(opts = {}) {
   const ids = road?.quickPass?.length ? road.quickPass : QUICK_PASS_NODES;
   const parts = ids.map((id) => nodeById(road, id)).filter((n) => n?.kind === 'pass' && n.principles?.length);
   const node = { id: QUICK_PASS, kind: 'pass', principles: [...new Set(parts.flatMap((n) => n.principles))], chapter: null, ...(parts.length ? { parts } : {}) };
-  const reps = await passSet(node, ctx);
+  await withStages(ctx, opts, stagePlan(QUICK_STARS, { count: ctx.reps }));
+  const built = await passSet(node, ctx);
+  const reps = planSet(built, stagePlan(QUICK_STARS, { count: built.length }), ctx.stager);
   return reps.map((r) => ({ ...r, nodeId: QUICK_PASS, lesson: parts.length ? r.nodeId : null }));
 }
 
@@ -1055,7 +1340,10 @@ export async function buildSet(node, opts = {}) {
   const ctx = setContext(opts, road);
   const attempt = nodeAttempt(ctx.profile, n.id);
   if (attempt) ctx.seed = `${ctx.seed}~${attempt}`;
-  const reps = await (repKind(road, n) === 'pass' ? passSet(n, ctx) : spotSet(n, ctx));
+  const plan = stagePlan(nodeStars(ctx.profile, n.id), { count: ctx.reps });
+  await withStages(ctx, opts, plan);
+  const built = await (repKind(road, n) === 'pass' ? passSet(n, ctx) : spotSet(n, ctx));
+  const reps = planSet(built, stagePlan(nodeStars(ctx.profile, n.id), { count: built.length }), ctx.stager);
   if (opts.app) {
     try { startSet(opts.app, n.id, reps); } catch (err) { console.warn('[fotbol] road: could not count the set', err?.message ?? err); }
   }
@@ -1066,11 +1354,14 @@ export async function buildSet(node, opts = {}) {
  * The onboarding set (§4.1, '#/play/first'): 3 easy reps for your position group, the easiest authored first (in your
  * role, then your group's first chapter's ideas first: chapterOrder, "Help the ball" for attackers), then generated
  * ones on those ideas, then easy ones in other positions.
- * @param {{ road?, profile?, index?, load?, seed?, formations?, catalogue?, generators?, count?, app? }} [opts]
+ * @param {{ road?, profile?, index?, load?, seed?, formations?, catalogue?, generators?, count?, app? }} [opts]  app: the app
+ *   playing the set: given it, the reps become the profile's last set (startSet), so the first node's set does not
+ *   deal the tutorial's drills again (the worked example's answer was just shown)
  */
 export async function buildFirstSet(opts = {}) {
   const road = opts.road ?? bound.app?.data?.road ?? null;
   const ctx = setContext({ ...opts, count: opts.count ?? ROAD_DEFAULTS.firstReps }, road);
+  await withStages(ctx, opts, stagePlan(0, { first: true, count: ctx.reps }));
   const firstChapter = chapterOrder(road, ctx.group)[0];
   const early = firstChapter ? [...new Set(firstChapter.nodes.filter((x) => x.kind === 'spot').flatMap((x) => x.principles))] : [];
   // Every authored spot scenario, easiest first; then in your role, then on chapter 1's ideas, then seeded.
@@ -1090,17 +1381,44 @@ export async function buildFirstSet(opts = {}) {
   }
   refs.sort((a, b) => cmp(a.rank, b.rank));
   const out = [];
-  const set = setState();
+  const set = setState(ctx.needs);
+  // Easiest first, and while the set is short of reps that can be played small (all three are: PROGRESSIVE_FIELD §2),
+  // one that cannot is passed over for up to stageLook more (stagePick), then taken.
   const take = async (list) => {
-    for (const ref of list) {
-      if (out.length >= ctx.reps) return;
-      if (set.used.has(baseId(ref.id))) continue;
-      set.used.add(baseId(ref.id));
-      const rep = await loadRef(ref, ctx);
-      if (rep) { set.take(baseId(ref.id), rep); out.push({ ...rep, nodeId: FIRST_SET }); }
+    while (out.length < ctx.reps) {
+      const pick = stagePick(ctx);
+      let chosen = null;
+      for (const ref of list) {
+        const id = baseId(ref.id);
+        if (set.used.has(id)) continue;
+        if (!pick.more()) break;
+        const rep = await loadRef(ref, ctx);
+        if (!rep) { set.used.add(id); continue; }
+        if (pick.offer(id, rep)) { chosen = { id, rep }; break; }
+      }
+      chosen ??= pick.fallback;
+      if (!chosen) return;
+      set.take(chosen.id, chosen.rep);
+      out.push({ ...chosen.rep, nodeId: FIRST_SET });
     }
   };
-  await take(refs.filter((r) => r.inGroup));
+  // All three are small (PROGRESSIVE_FIELD §2) without costing you your position: the easy drills (difficulty 0 or
+  // less) of your group that can be played small, in your position first (then easiest first), are taken before
+  // anything else. A defender's easiest drills in the left back's shoes need a bigger game, and passing over them for
+  // up to stageLook more (below) once gave a first set all in another position ("Now you're the left centre-back" x 3).
+  const group = refs.filter((r) => r.inGroup);
+  const own = (r) => (r.role === ctx.role ? 0 : 1);
+  for (const ref of group.filter((r) => r.rank[0] <= 0).sort((a, b) => cmp([own(a), ...a.rank], [own(b), ...b.rank]))) {
+    if (out.length >= ctx.reps) break;
+    const id = baseId(ref.id);
+    if (set.used.has(id)) continue;
+    const rep = await loadRef(ref, ctx);
+    if (!rep) { set.used.add(id); continue; }
+    if (ctx.stager(rep)?.small === false) continue; // unknown (no stager): taken
+    set.take(id, rep);
+    out.push({ ...rep, nodeId: FIRST_SET });
+  }
+  await take(group);
   if (out.length < ctx.reps && early.length) {
     const q = spotQueue({ id: FIRST_SET, principles: early }, { ...ctx, index: [] }, set, 'first');
     while (out.length < ctx.reps) {
@@ -1110,5 +1428,11 @@ export async function buildFirstSet(opts = {}) {
     }
   }
   await take(refs.filter((r) => !r.inGroup));
-  return fillUp(out, ctx.reps);
+  const filled = fillUp(out, ctx.reps);
+  const reps = planSet(filled, stagePlan(0, { first: true, count: filled.length }), ctx.stager);
+  if (opts.app) {
+    // Its reps become the last set (startSet), so the first node's set does not deal them again straight away.
+    try { startSet(opts.app, FIRST_SET, reps); } catch (err) { console.warn('[fotbol] road: could not remember the first set', err?.message ?? err); }
+  }
+  return reps;
 }

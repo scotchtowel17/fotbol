@@ -8,8 +8,11 @@
 //   [ New sticker: Back Up Your Buddy ]   each card, badge or kit earned, one at a time, big: "More" steps to the
 //                                         next (never a second "Next" next to the main button); 3 at most, then
 //                                         "+2 more on your card" (a link to #/card, where they all are)
-//   Best move: you are backing up your teammate at an angle   only for a rep with 2 stars or more, naming what you
-//                                         did (the rep's `move`; else, as "Who's open?" sends it, its idea's name)
+//   Best move: Back up your buddy         only for a rep with 2 stars or more, naming the move you made best, with a
+//                                         capital (the rep's `move`: the praised idea's simple name; else, as "Who's
+//                                         open?" sends it, its idea's name)
+//   Next time: bigger games               the node's stars rose, so its next set plays bigger games (a Road set's
+//                                         stages follow the node's stars: docs/PROGRESSIVE_FIELD.md §2)
 //   Good work today. Take a break?        after about 15 minutes of play today (R22)
 //   [ Home ]  [ Play again ]              Home is the main button; Play again is neutral and never automatic
 //
@@ -59,6 +62,7 @@ export const STRINGS = Object.freeze({
   newKit: (name) => `New kit colour: ${name}`,
   bestMove: (name) => `Best move: ${name}`,
   takeBreak: 'Good work today. Take a break?',
+  biggerNext: 'Next time: bigger games', // the node's stars rose: its next set plays bigger games (PROGRESSIVE_FIELD §2)
   nodeStars: (before, after) => `${after} of 3 stars here${after > before ? ', up from ' + before : ''}`,
   repRow: (i, n) => `Play ${i}: ${n} of 3 stars`,
   skill: 'a new skill',
@@ -118,14 +122,19 @@ export function earnedItems(gained, { principles = {} } = {}) {
   return [...cards, ...badges, ...kits];
 }
 
+/** The first letter in capitals (pure): "Best move: Back up your buddy", never "Best move: back up your buddy". */
+const capital = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
+
 /**
- * What a rep's "Best move" says (pure): its `move` (what you did, from the reveal: "you stayed onside"), else the name
- * of its idea in sentence case ("Back up your buddy"); `move: null` means nothing to name (no praise on the rep).
+ * What a rep's "Best move" says (pure), always a move with a capital: its `move` (the move the reveal praised, as
+ * play.js bestMoveOf names it: the idea's simple name, "Back up your buddy", or what you did, "You found your own
+ * space."), else the name of its idea in sentence case ("Back up your buddy", as "Who's open?" sends it); `move: null`
+ * means nothing to name (no praise on the rep).
  */
 export function bestMoveName(rep) {
   if (rep?.move === null) return null;
-  if (typeof rep?.move === 'string' && rep.move.trim()) return rep.move.trim();
-  return typeof rep?.title === 'string' && rep.title.trim() ? sentenceCase(rep.title) : null;
+  if (typeof rep?.move === 'string' && rep.move.trim()) return capital(rep.move.trim());
+  return typeof rep?.title === 'string' && rep.title.trim() ? capital(sentenceCase(rep.title)) : null;
 }
 
 /**
@@ -135,7 +144,8 @@ export function bestMoveName(rep) {
  * @param {{ reps?: { stars: number, title?: string, move?: string|null }[], xpBefore?: number, xpAfter?: number,
  *   gained?: object, nodeStars?: object|null, principles?: object }} opts
  * @returns {{ rows: number[], total: number, max: number, xpGain: number, before: object, after: object, levelUp: boolean,
- *   items: object[], moreItems: number, allItems: object[], best: string|null, nodeStars: { before: number, after: number }|null }}
+ *   items: object[], moreItems: number, allItems: object[], best: string|null, nodeStars: { before: number, after: number }|null,
+ *   bigger: boolean }}   bigger: the node's stars rose, so its next set plays bigger games ("Next time: bigger games")
  */
 export function fullTimeModel({ reps = [], xpBefore, xpAfter, gained, nodeStars = null, principles = {} } = {}, P = FULLTIME_DEFAULTS) {
   const rows = (Array.isArray(reps) ? reps : []).map((r) => clampStars(r?.stars));
@@ -150,12 +160,15 @@ export function fullTimeModel({ reps = [], xpBefore, xpAfter, gained, nodeStars 
   });
   const ns = nodeStars && Number.isFinite(nodeStars.before) && Number.isFinite(nodeStars.after)
     ? { before: clampStars(nodeStars.before), after: clampStars(Math.max(nodeStars.after, nodeStars.before)) } : null;
+  // A Road set's stages follow the node's stars (PROGRESSIVE_FIELD §2: more stars, bigger games), so stars that rose
+  // mean bigger games next time.
+  const bigger = !!ns && ns.after > ns.before;
   const allItems = earnedItems(g, { principles });
   const items = allItems.slice(0, Math.max(0, P.maxItems));
   return {
     rows, total: rows.reduce((a, b) => a + b, 0), max: rows.length * 3,
     xpGain: Math.max(0, Math.round(xa - xb)), before, after, levelUp: after.level > before.level || !!g.levelUp,
-    items, moreItems: allItems.length - items.length, allItems, best, nodeStars: ns,
+    items, moreItems: allItems.length - items.length, allItems, best, nodeStars: ns, bigger,
   };
 }
 
@@ -256,6 +269,7 @@ export function showFullTime(root, app, opts = {}) {
   }
 
   const best = m.best ? el('p', { class: 'ft-best', text: STRINGS.bestMove(m.best) }) : null;
+  const bigger = node && m.bigger ? el('p', { class: 'ft-next', text: STRINGS.biggerNext }) : null;
   const rest = nudge ? el('p', { class: 'ft-break', text: STRINGS.takeBreak }) : null;
   const home = button(homeLabel ?? STRINGS.home, { variant: 'primary', icon: 'arrow', className: 'ft-home', onClick: () => onHome?.() });
   const again = onAgain ? button(STRINGS.playAgain, { className: 'ft-again', onClick: () => onAgain() }) : null;
@@ -267,6 +281,7 @@ export function showFullTime(root, app, opts = {}) {
       ...[extra].flat().filter(Boolean),
       xp,
       nodeRow,
+      bigger,
       itemBox,
       best,
       rest,

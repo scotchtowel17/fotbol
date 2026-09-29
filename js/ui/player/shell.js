@@ -3,12 +3,15 @@
 // Theme, "Coach or parent? Open Coach mode"), which header each route shows, the Player-styled "coming soon" and
 // "couldn't start" cards, and the icons the Player screens share.
 //
+//   kidFigure({ role, number, palette, crop, height }) → <svg>: the kid's own tabletop figure (js/ui/figures.js) in their
+//     kit, with their number and the look YOU have on the pitch (kidLook: figureLook of 'us-' + role); crop 'full' (the
+//     card, the kit locker, the kick-off shirts) or 'bust' (head and shoulders: the top bar)
 //   chromeFor(route) → 'coach' | 'player' | 'none'      route = main.js resolveRoute() output
 //     'coach'  the Coach header (index.html .app-header, with "Back to Player mode")
 //     'player' this top bar (home, card)
 //     'none'   no header: the kick-off screens and the play screens (play, pass, match day) fill the screen and bring
 //              their own way out (R7: during Watch and Decide only the pitch, YOU and one line are visible)
-//   topBarModel({ rewards, profile, settings }) → { number, nickname, level, rank, rankId, progress }     (pure)
+//   topBarModel({ rewards, profile, settings }) → { number, nickname, level, rank, rankId, progress, role, look }     (pure)
 //   createPlayerShell(app, { bar }) → { setChrome(chrome), refresh(), openSettings(), closeSettings(), destroy() }
 //   playerIcon(name, { size, className }) → <svg>     levelRing(level, progress, { size }) → <svg>
 //   soonCard(route), failedCard(route, err)
@@ -16,10 +19,10 @@
 // Nothing runs at import time; STRINGS holds every visible word (tests/copy.test.js).
 
 import { el, svg, segmented, toggleSwitch, announce } from '../components.js';
-import { levelFor, normalizeRewards } from '../../rewards.js';
-import { ROLE_INFO } from '../../engine/roles.js';
+import { levelFor, normalizeRewards, paletteById } from '../../rewards.js';
+import { ROLE_INFO, LEARNABLE_ROLES } from '../../engine/roles.js';
 import { loadRewards, onRewards, shirtNumber } from '../rewards-store.js';
-import { kitToken } from '../celebrate.js';
+import { drawFigure, figureLook, FIGURE } from '../figures.js';
 import { loadProfile, onProfile } from './road.js';
 
 export const STRINGS = Object.freeze({
@@ -52,7 +55,10 @@ export function chromeFor(route) {
 /** The page title of a Player route. */
 export const playerTitle = (module) => (module === 'home' ? STRINGS.titles.home : `${STRINGS.titles[module] ?? STRINGS.titles.home} · fotbol`);
 
-/** What the top bar shows (pure): your shirt number (the kit's, else your position's), nickname, level and rank. */
+/**
+ * What the top bar shows (pure): your figure (your position's look, your shirt number: the kit's, else your
+ * position's), nickname, level and rank.
+ */
 export function topBarModel({ rewards, profile, settings } = {}) {
   const s = normalizeRewards(rewards);
   const l = levelFor(s.xp);
@@ -64,7 +70,60 @@ export function topBarModel({ rewards, profile, settings } = {}) {
     rank: l.rank.name,
     rankId: l.rank.id,
     progress: Math.max(0, Math.min(1, Number(l.progress) || 0)),
+    role: LEARNABLE_ROLES.includes(role) ? role : null,
+    look: kidLook(role),
+    palette: kitPalette(s),
   };
+}
+
+/** The kit a rewards state wears ({ shirt, edge, ink }: js/rewards.js paletteById; the classic kit when none). */
+export function kitPalette(rewards) {
+  const p = paletteById(normalizeRewards(rewards).kit.palette);
+  return p ? { shirt: p.shirt, edge: p.edge, ink: p.ink } : null;
+}
+
+// ---------------------------------------------------------------- the kid's own figure (docs/PROGRESSIVE_FIELD.md §5)
+
+/** The position whose look a kid without one takes (a midfielder, the group most kids pick first). */
+const LOOK_ROLE = 'LCM';
+
+/**
+ * The kid's own look (pure): the skin, hair and hair style YOU have on the pitch in your position (js/ui/figures.js
+ * figureLook of 'us-' + role, as the board draws YOU), so the figure in the top bar is the one you play.
+ */
+export const kidLook = (role) => figureLook(`us-${LEARNABLE_ROLES.includes(role) ? role : LOOK_ROLE}`, 'us');
+
+/** The base disc the kid's figure stands on, in figure units: about its shoulders wide (as board.js baseScale draws a
+ *  figure's base: FIGURE.shoulders x figureBase), never a plate. */
+export const KID_BASE_R = Math.round(((FIGURE.shoulders ?? 1.2) * 1.1) / 2 * 100) / 100;
+
+/** The window onto a figure (its units: FIGURE's, feet at 0): the whole figure on its base, or head and shoulders. */
+export const KID_FIGURE_CROPS = Object.freeze({
+  full: Object.freeze({ x: -0.96, y: -2.64, width: 1.92, height: 2.64 + KID_BASE_R + 0.1 }),
+  bust: Object.freeze({ x: -0.9, y: -2.6, width: 1.8, height: 1.78 }),
+});
+
+/**
+ * The kid's own tabletop figure as an <svg> (decorative: the element around it names it): your look (kidLook), your
+ * shirt number, and your kit: `palette` ({ shirt, edge, ink }: a kit being tried on in the kit locker), else the kit you
+ * wear app-wide (css/figures.css takes --kit-us*, which js/ui/rewards-store.js applyKit sets).
+ * @param {{ role?: string|null, number?: number|string|null, palette?: { shirt, edge, ink }|null, crop?: 'full'|'bust',
+ *   height?: number, className?: string }} [opts]  height: CSS px
+ * @returns {SVGSVGElement}
+ */
+export function kidFigure({ role = null, number = null, palette = null, crop = 'full', height = 40, className = '' } = {}) {
+  const box = KID_FIGURE_CROPS[crop] ?? KID_FIGURE_CROPS.full;
+  const node = svg('svg', {
+    class: `pm-fig pm-fig--${crop === 'bust' ? 'bust' : 'full'} ${className}`.trim(), viewBox: `${box.x} ${box.y} ${box.width} ${box.height}`,
+    width: Math.round((height * box.width) / box.height), height, 'aria-hidden': 'true', focusable: 'false',
+  });
+  const kit = palette ? { shirt: palette.shirt, edge: palette.edge, ink: palette.ink, shorts: palette.edge } : {};
+  const fig = drawFigure(node, { ...kidLook(role), ...kit, number: number ?? null, facing: 1, base: false });
+  if (crop !== 'bust') { // its own base, shoulder-wide (css/figures.css .fig-base: the kit's colours), under the feet
+    const base = svg('circle', { class: 'fig-base', r: KID_BASE_R });
+    fig.insertBefore(base, fig.firstChild);
+  }
+  return node;
 }
 
 // ---------------------------------------------------------------- icons (24 x 24, stroke: currentColor)
@@ -173,7 +232,7 @@ export function createPlayerShell(app, { bar } = {}) {
     const m = topBarModel({ rewards: loadRewards(app), profile: loadProfile(app), settings: app.settings });
     inner.replaceChildren(
       el('a', { class: 'pm-me', href: '#/', 'aria-label': [STRINGS.home, STRINGS.me(m.nickname, m.number)].filter(Boolean).join('. ') }, [
-        el('span', { class: 'pm-me-token' }, [kitToken(null, { number: m.number, size: 40 })]),
+        el('span', { class: 'pm-me-token' }, [kidFigure({ role: m.role, number: m.number, palette: m.palette, crop: 'bust', height: 40 })]),
         m.nickname ? el('span', { class: 'pm-me-name', text: m.nickname }) : null,
       ]),
       el('p', { class: 'pm-level', role: 'img', 'aria-label': STRINGS.level(m.level, m.rank) }, [

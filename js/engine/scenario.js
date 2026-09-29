@@ -233,7 +233,34 @@ export function validateScenario(s, { principles, params } = {}) {
       regionErrors(m.region, `${path}.region`, point).forEach(err);
     });
   }
+  // The progressive field's optional block (docs/PROGRESSIVE_FIELD.md §3): npm run check and #/author catch it alike.
+  stagesErrors(s.stages).forEach(err);
   return errs;
+}
+
+/** The fields of a scenario's optional `"stages"` block (docs/PROGRESSIVE_FIELD.md §3, js/engine/cast.js keepIdsOf). */
+export const STAGES_FIELDS = Object.freeze(['note', 'keep']);
+
+/**
+ * The problems with a scenario's optional `"stages"` block (pure; empty = fine, and so is no block): an object with
+ * `note`, a non-empty string (why the drill has no small or medium stage, or hides a player its words name), and
+ * `keep`, an array of player ids the cast always shows (us-LB, them-ST: one of ours or theirs by role; cast.js mirrors
+ * them with the drill), and no other field. validateScenario reports them, so #/author and npm run check agree
+ * (scripts/check-scenarios.mjs stagesProblems is this).
+ * @param {unknown} stages  the scenario's `stages` (undefined: none)
+ * @returns {string[]}
+ */
+export function stagesErrors(stages) {
+  if (stages === undefined) return [];
+  if (!isObj(stages)) return ['"stages" must be an object: { "note": "...", "keep": ["us-LB", ...] }'];
+  const out = [];
+  for (const k of Object.keys(stages)) if (!STAGES_FIELDS.includes(k)) out.push(`"stages.${k}" is not a stages field (${STAGES_FIELDS.join(', ')})`);
+  if ('note' in stages && !(typeof stages.note === 'string' && stages.note.trim())) out.push('"stages.note" must be a non-empty string');
+  if ('keep' in stages) {
+    if (!Array.isArray(stages.keep)) out.push('"stages.keep" must be an array of player ids');
+    else for (const id of stages.keep) if (!isPlayerId(id)) out.push(`"stages.keep" has ${JSON.stringify(id)}, not a player id (us-LB, them-ST ...)`);
+  }
+  return out;
 }
 
 function regionErrors(r, path, point) {

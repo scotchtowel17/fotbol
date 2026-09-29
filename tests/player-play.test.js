@@ -1,14 +1,24 @@
 // Player mode, the play area (docs/KID_REDESIGN.md §4.1 step 3, §4.3, §4.5, §4.6, §5): the pure parts of
 // js/ui/player/strings.js, play.js, reveal.js, fulltime.js and matchday.js, and the Player-mode rules in
-// js/ui/celebrate.js and js/ui/sound.js. No DOM: everything here runs under node --test and in tests.html.
+// js/ui/celebrate.js and js/ui/sound.js. No DOM: everything here runs under node --test and in tests.html, except
+// the mount test at the end, which plays a whole set through play.js mount on a fake page (Node only).
 
-import { test, assert, loadJSON, isNode } from './harness.js';
-import { STRINGS as SHARED, STAR_WORDS, ROLE_NAMES, roleName, starWord, roleCard } from '../js/ui/player/strings.js';
+import { test, assert, approx, loadJSON, isNode } from './harness.js';
+import { STRINGS as SHARED, STAR_WORDS, ROLE_NAMES, roleName, starWord, roleCard, stageWords, stageLine } from '../js/ui/player/strings.js';
 import {
   STRINGS as PLAY, PLAY_DEFAULTS, usableText, starsForScore, wordForStars, questionFor, briefFor, takeawayFor, pickLine, whyFor,
   keyPlayers, firstSetStep, setStep, createTally, tallyTry, tallyStars, missNote, repTitle, seedFor, recordIdOf, recordPolicy,
   repCard, ideasOf, praiseOf, bestMoveOf, cueMarker, repScene, revealFor, bestSpotMarker, lockAction, redirectTo,
+  wantedStage, stagedScene, watchFrame, cameraRect, stageCamera, answerCamera, cardSpot,
+  nameSpecific, ruleRefs, repSpeaker, repWords, mentionsSideline, touchlineBy, bestSpotPlace,
 } from '../js/ui/player/play.js';
+import { STAGES, bestStage, reduceFrame } from '../js/engine/cast.js';
+import { CAMERA_MIN, BOARD_DEFAULTS, shirtNumberOf } from '../js/ui/board.js';
+import { buildContext } from '../js/engine/context.js';
+import { judgeSpot } from '../js/engine/analyse.js';
+import { frameAt, timing } from '../js/engine/timeline.js';
+import { LENGTH, WIDTH } from '../js/engine/pitch.js';
+import { mirrorScenario } from '../js/engine/scenario.js';
 import { STRINGS as REVEAL, REVEAL_DEFAULTS, whyModel, revealWordCount, burstFor, createPlayerReveal } from '../js/ui/player/reveal.js';
 import {
   STRINGS as FULLTIME, FULLTIME_DEFAULTS, sentenceCase, addToday, minutesOn, breakDue, fullTimeModel, earnedItems, bestMoveName, TODAY_KEY,
@@ -22,6 +32,7 @@ import { createFormation } from '../js/engine/formation.js';
 import { SPOT_WORDS } from '../js/engine/spotdrill.js';
 import { levelFor, LEVEL_XP } from '../js/rewards.js';
 import * as Road from '../js/ui/player/road.js';
+import { fakePage, recordingBoard } from './player-mount.js';
 
 const words = (s) => String(s).trim().split(/\s+/).filter(Boolean).length;
 
@@ -251,14 +262,16 @@ test('player play: Full time has one "Next" at most (the reward cards step with 
   assert.equal(FULLTIME_DEFAULTS.bestMoveStars, 2);
   // A 1-star rep is never the best move, whatever its title.
   assert.equal(fullTimeModel({ reps: [{ stars: 1, title: 'Close Them Down' }, { stars: 0, title: 'X' }] }).best, null);
-  // The rep's move (what you did, from the reveal) wins over its idea's name; the first of the best.
+  // The rep's move (the move the reveal praised: play.js bestMoveOf) wins over its idea's name; the first of the best;
+  // always with a capital (the verifier saw "Best move: the ball has a clear path to you").
   const m = fullTimeModel({ reps: [
-    { stars: 2, title: 'Close Them Down', move: 'you got close from the middle side' },
-    { stars: 3, title: 'Back Up Your Buddy', move: 'you are backing up your teammate at an angle' },
-    { stars: 3, title: 'Later', move: 'you stayed wide' },
+    { stars: 2, title: 'Close Them Down', move: 'Show them the sideline' },
+    { stars: 3, title: 'Back Up Your Buddy', move: 'Get open' },
+    { stars: 3, title: 'Later', move: 'Stay wide' },
   ] });
-  assert.equal(m.best, 'you are backing up your teammate at an angle');
-  assert.equal(FULLTIME.bestMove(m.best), 'Best move: you are backing up your teammate at an angle');
+  assert.equal(m.best, 'Get open');
+  assert.equal(FULLTIME.bestMove(m.best), 'Best move: Get open');
+  assert.equal(bestMoveName({ stars: 3, move: 'you stayed onside.' }), 'You stayed onside.', 'a move from elsewhere gets its capital');
   // move: null (a rep with nothing to praise) is never named; no move at all ("Who's open?") names its idea.
   assert.equal(fullTimeModel({ reps: [{ stars: 2, title: 'Close Them Down', move: null }] }).best, null);
   assert.equal(fullTimeModel({ reps: [{ stars: 2, title: 'Close Them Down', move: null }, { stars: 2, title: 'Find the Free Player' }] }).best, 'Find the free player');
@@ -486,7 +499,9 @@ test('player play: the reveal\'s words match the stars: praise only at 3 stars, 
         seen.low++;
         // After a miss: the drill's note on your mistake, else a reason about the drill's own ideas when there is one.
         const about = (r.more.reasons ?? []).filter((x) => ideasOf(x).some((id) => own.includes(id)) && usableText(x.text, PLAY_DEFAULTS.lineMaxWords));
-        if (!r.misText && about.length) assert.equal(r.line, about[0].text, `${where}: the drill's own idea first`);
+        // (Its words as shown: the player it means by number where the game shows two of the group, repSpeaker.)
+        const said = about.map((x) => r.who.rule(x.text, x.ruleId, r.judgement.result.rules, spot)).filter((t) => usableText(t, PLAY_DEFAULTS.lineMaxWords));
+        if (!r.misText && said.length) assert.equal(r.line, said[0], `${where}: the drill's own idea first`);
       }
     }
   }
@@ -497,10 +512,12 @@ test('player play: the reveal\'s words match the stars: praise only at 3 stars, 
   assert.equal(at(m104, repScene(m104, { formations }).start).line, 'Get between their striker and our goal.', 'm1-04 from the start: goal-side (D5), not the line of defenders');
   const m106 = authored.find((s) => s.id === 'm1-06-t3-rw');
   const g106 = repScene(m106, { formations }).ghost.spot;
-  const miss = at(m106, { x: g106.x - 5, y: g106.y + 3 });
+  const missAt = { x: g106.x - 5, y: g106.y + 3 };
+  const miss = at(m106, missAt);
   assert.ok(miss.stars <= 1);
   assert.notEqual(miss.line, 'Stay a little further in front of your midfielders.', '"Their defender runs past you": the goal-side fix, not the shape');
-  assert.ok((miss.more.reasons ?? []).some((x) => x.text === miss.line && ideasOf(x).includes('D5')), miss.line);
+  assert.ok((miss.more.reasons ?? []).some((x) => miss.who.rule(x.text, x.ruleId, miss.judgement.result.rules, missAt) === miss.line && ideasOf(x).includes('D5')), miss.line);
+  assert.equal(miss.line, 'Get closer to their number 3.', 'the full match shows four of their defenders: the one it means, by number');
 });
 
 test('player play: praise knows its idea; "Best move" says what you did; a miss\'s lesson can be the drill\'s takeaway', () => {
@@ -514,9 +531,17 @@ test('player play: praise knows its idea; "Best move" says what you did; a miss\
   assert.deepEqual(praise[1].principles, ['D5']);
   assert.equal(pickLine({ praise, stars: 3, principles: ['D5'] }), praise[1].text, 'a drill about D5: its praise first');
   assert.equal(pickLine({ praise, stars: 3 }), praise[0].text);
-  assert.equal(bestMoveOf({ praise, principles: ['D5'] }), 'you are between your player and our goal');
-  assert.equal(bestMoveOf({ praise: ['Good timing, you stayed onside.'] }), 'you stayed onside');
-  assert.equal(bestMoveOf({ praise: ['Good run, you are in a scoring spot for the cross.'] }), 'you are in a scoring spot for the cross');
+  // "Best move" is the move the praise was for, the idea's simple name with a capital (the drill's own first), never
+  // the praise line lower-cased ("the ball has a clear path to you" is not a move); a line whose idea has no name says
+  // what you did as a sentence; one that says no move is not a best move.
+  assert.equal(bestMoveOf({ praise, principles: ['D5'], byId }), 'Between them and goal');
+  assert.equal(bestMoveOf({ praise, byId }), 'Stay in line', 'the heaviest praise: the line (U4)');
+  const lane = praiseOf({ rules: [{ id: 'lane-open', weight: 3, s: 1, critical: false, vars: {} }] });
+  assert.equal(lane[0].text, 'The ball has a clear path to you.');
+  assert.equal(bestMoveOf({ praise: lane, principles: ['B3'], byId }), 'Get open');
+  assert.equal(bestMoveOf({ praise: lane }), null, 'no idea named and not a move of yours: nothing');
+  assert.equal(bestMoveOf({ praise: ['Good timing, you stayed onside.'] }), 'You stayed onside.');
+  assert.equal(bestMoveOf({ praise: ['Good run, you are in a scoring spot for the cross.'] }), 'You are in a scoring spot for the cross.');
   assert.equal(bestMoveOf({ praise: [] }), null);
   // A miss: the drill's own lesson (its takeaway) comes before a reason about another idea.
   const reasons = [{ ruleId: 'compact', principleId: 'U1', text: 'Stay a little further in front of your midfielders.' }];
@@ -573,4 +598,619 @@ test('player play: a pass node opened in "Find your spot" goes on to #/pass in p
   const calls = [];
   redirectTo({ navigate: (hash, opts) => calls.push([hash, opts]) }, '#/pass/free-player');
   assert.deepEqual(calls, [['#/pass/free-player', { replace: true }]]);
+});
+
+// ---------------------------------------------------------------- stages: a small game, a bigger game, the full match
+
+test('player play: the role card names the stage in a few words ("Small game: 3 v 2", "Bigger game: 6 v 5", "Full match")', () => {
+  assert.equal(stageWords('small', { ours: 3, theirs: 2 }), 'Small game: 3 v 2');
+  assert.equal(stageWords('medium', { ours: 6, theirs: 5 }), 'Bigger game: 6 v 5');
+  assert.equal(stageWords('full', { ours: 11, theirs: 11 }), 'Full match');
+  assert.equal(stageWords('full'), 'Full match');
+  assert.equal(stageWords('small'), '', 'no cast: nothing to say');
+  assert.equal(stageWords('huge', { ours: 3, theirs: 2 }), '');
+  for (const t of [stageWords('small', { ours: 3, theirs: 2 }), stageWords('medium', { ours: 6, theirs: 5 }), SHARED.fullMatch, SHARED.nowGame(6, 5)]) {
+    assert.ok(words(t) <= 5, `${t}: a few words`);
+    assert.doesNotMatch(t, /\bm\b|\d+\s?m\b|metre/i);
+  }
+  assert.equal(SHARED.nowGame(6, 5), 'Now 6 v 5!');
+  assert.deepEqual([...STAGES], ['small', 'medium', 'full'], 'the stages strings.js counts in (a copy of cast.js STAGES)');
+});
+
+test('player play: the first rep of a bigger stage in a set says "Now 6 v 5!" once; Try again never does', () => {
+  const cast = (ours, theirs) => ({ ours, theirs });
+  // The 0-star plan (small, small, small, medium, medium), a rep falling back bigger, then the full match.
+  const reps = [['small', cast(3, 2)], ['small', cast(2, 2)], ['medium', cast(4, 4)], ['small', cast(3, 3)], ['medium', cast(6, 5)], ['medium', cast(7, 5)], ['full', cast(11, 11)], ['full', cast(11, 11)]];
+  let top = -1;
+  const said = [];
+  for (const [stage, c] of reps) {
+    const l = stageLine(top, stage, c);
+    said.push(l.now ? `NOW ${l.text}` : l.text);
+    top = l.top;
+  }
+  assert.deepEqual(said, [
+    'Small game: 3 v 2', 'Small game: 2 v 2', 'NOW Now 4 v 4!', 'Small game: 3 v 3', 'Bigger game: 6 v 5', 'Bigger game: 7 v 5', 'NOW Now 11 v 11!', 'Full match',
+  ]);
+  // The set's first rep only names its stage, whatever it is.
+  assert.deepEqual(stageLine(-1, 'medium', cast(6, 5)), { text: 'Bigger game: 6 v 5', now: false, top: 1 });
+  assert.deepEqual(stageLine(-1, 'full', null), { text: 'Full match', now: false, top: 2 });
+  // Try again (the twin at the first try's stage): its stage's words, never "Now", and the set's top is left alone.
+  assert.deepEqual(stageLine(0, 'medium', cast(6, 5), { again: true }), { text: 'Bigger game: 6 v 5', now: false, top: 0 });
+  assert.deepEqual(stageLine(1, 'nope', cast(6, 5)), { text: '', now: false, top: 1 }, 'no stage: no line');
+});
+
+test('player play: the stage each rep wants: the road\'s tag, else the plan\'s for its slot; the first set small, else the full match', () => {
+  assert.equal(wantedStage({ stage: 'medium' }, 0, { plan: ['small'] }), 'medium', 'the road tagged it');
+  assert.equal(wantedStage({ stage: 'giant' }, 0, { plan: ['small'] }), 'small', 'a bad tag: the plan');
+  assert.equal(wantedStage(null, 1, { plan: ['small', 'full'] }), 'full');
+  assert.equal(wantedStage(null, 3, { plan: ['small'], first: true }), 'small', '#/play/first: small x 3');
+  assert.equal(wantedStage({}, 0), 'full', 'no tag and no plan: the full match, as before');
+  const plan = typeof Road.stagePlan === 'function' ? Road.stagePlan(0, { first: true, count: 3 }) : ['small', 'small', 'small'];
+  assert.deepEqual([0, 1, 2].map((i) => wantedStage(null, i, { plan, first: true })), ['small', 'small', 'small'], 'the onboarding set is small x 3');
+});
+
+test('player play: a small game\'s camera fits the points, never smaller than CAMERA_MIN, and stays on the pitch', () => {
+  assert.equal(cameraRect([]), null);
+  assert.equal(cameraRect([{ x: NaN, y: 3 }]), null);
+  // A tight 2 v 1: grown about its middle to 24 x 16 m.
+  const tiny = cameraRect([{ x: 50, y: 30 }, { x: 53, y: 33 }]);
+  approx(tiny.x1 - tiny.x0, CAMERA_MIN.length, 0.011);
+  approx(tiny.y1 - tiny.y0, CAMERA_MIN.width, 0.011);
+  approx((tiny.x0 + tiny.x1) / 2, 51.5, 0.011);
+  approx((tiny.y0 + tiny.y1) / 2, 31.5, 0.011);
+  // In a corner: slid onto the pitch, still the minimum size.
+  const corner = cameraRect([{ x: 103, y: 1 }, { x: 104, y: 2 }]);
+  assert.deepEqual(corner, { x0: LENGTH - CAMERA_MIN.length, x1: LENGTH, y0: 0, y1: CAMERA_MIN.width });
+  // A ball out of play counts at the touchline; a big game keeps its box.
+  const big = cameraRect([{ x: 20, y: -4 }, { x: 70, y: 50 }]);
+  assert.deepEqual(big, { x0: 20, x1: 70, y0: 0, y1: 50 });
+  // Never bigger than the pitch.
+  assert.deepEqual(cameraRect([{ x: -10, y: -10 }, { x: 200, y: 200 }]), { x0: 0, x1: LENGTH, y0: 0, y1: WIDTH });
+  assert.deepEqual(cameraRect([{ x: 50, y: 30 }], { min: { length: 10, width: 6 } }), { x0: 45, x1: 55, y0: 27, y1: 33 });
+});
+
+/** The first authored drills that stage small (and one that stages medium), for the tests below. */
+const stagedDrills = (() => {
+  const out = { small: [], medium: [] };
+  for (const s of authored) {
+    if (out.small.length >= 3 && out.medium.length >= 1) break;
+    const st = bestStage(s, 'small', { formations, principles: catalogue });
+    if (st.stage === 'small' && out.small.length < 3) out.small.push({ s, st });
+    else if (st.stage === 'medium' && out.medium.length < 1) out.medium.push({ s, st });
+  }
+  return out;
+})();
+
+test('player play: a staged rep is watched, frozen and judged on the reduced frame: only its cast is drawn or scored', () => {
+  const cases = [...stagedDrills.small, ...stagedDrills.medium];
+  assert.ok(stagedDrills.small.length >= 2, `${stagedDrills.small.length} authored drills staged small`);
+  for (const { s, st } of cases) {
+    const scene = stagedScene(s, st);
+    const ids = new Set(st.cast.ids);
+    const tag = `${s.id} (${st.stage}, ${st.cast.label})`;
+    assert.equal(scene.stage, st.stage);
+    assert.ok(scene.ids instanceof Set && scene.ids.size === ids.size, tag);
+    // The freeze frame holds only the cast, YOU among them; its context names only players in it.
+    assert.deepEqual(scene.freezeFrame.players.map((p) => p.id).sort(), [...ids].sort(), `${tag}: the freeze frame`);
+    assert.ok(ids.has(scene.learnerId));
+    for (const who of ['firstDefender', 'secondDefender', 'markTarget', 'dangerousAttacker']) {
+      const id = scene.ctx[who]?.id;
+      if (id && id !== scene.learnerId) assert.ok(ids.has(id), `${tag}: ${who} ${id} is in the cast`);
+    }
+    // The watch: every frame of the clip shows only the cast, YOU at your start.
+    const { duration } = timing(s);
+    for (let t = 0; t <= duration; t += 0.7) {
+      const f = watchFrame(s, scene, t, scene.start, { formations });
+      assert.ok(f.players.every((p) => ids.has(p.id)), `${tag} at ${t.toFixed(1)} s: only the cast`);
+      const me = f.players.find((p) => p.id === scene.learnerId);
+      assert.deepEqual({ x: me.x, y: me.y }, scene.start);
+    }
+    // Judging: the same as judging on the full freeze frame with everyone else taken off (nobody hidden is scored).
+    const hand = reduceFrame(frameAt(s, timing(s).freezeAt, { formations }), ids);
+    const ctx = buildContext(hand, { learnerId: scene.learnerId, base: scene.base });
+    for (const spot of [scene.start, scene.ghost.spot, { x: scene.ghost.spot.x + 3, y: scene.ghost.spot.y - 2 }]) {
+      const a = revealFor(s, scene, spot, { principles: byId });
+      const b = judgeSpot({ ctx, ghost: scene.ghost }, spot, { wording: 'kid', principles: byId });
+      assert.equal(a.judgement.result.score, b.result.score, `${tag}: the score at ${spot.x.toFixed(1)}, ${spot.y.toFixed(1)}`);
+      const cue = a.judgement.feedback.cue?.highlight;
+      if (cue?.type === 'player') assert.ok(ids.has(cue.id), `${tag}: the cue ${cue.id} is in the cast`);
+    }
+    // The best spot is a 3-star answer, with the full game's line.
+    const best = revealFor(s, scene, scene.ghost.spot, { principles: byId });
+    assert.equal(best.stars, 3, `${tag}: the ghost earns 3 stars`);
+  }
+});
+
+test('player play: whatever a staged rep says (the line, Why?, the cue), the groups it names are in the small or bigger game', () => {
+  // PROGRESSIVE_FIELD §1: every sentence depends only on players the kid can see. Spots all round the answer (a miss
+  // says more than a hit), every authored drill and its mirror at each smaller stage it can be played at. The level
+  // line once fell back to YOUR own base when nobody else in the back line was in a small game, so "Move back, in line
+  // with your other defenders" and a "Your defenders" line named defenders nobody could see (m1-02, m3-11).
+  const BACK = ['LB', 'LCB', 'RCB', 'RB'], MID = ['DM', 'LCM', 'RCM'];
+  const has = (ids, team, roles, not = []) => ids.some((i) => i.startsWith(`${team}-`) && roles.includes(i.split('-')[1]) && !not.includes(i));
+  const GROUPS = [
+    [/your other defenders|your defenders|your line of defenders|front of your defenders/i, (ids, skip) => has(ids, 'us', BACK, skip)],
+    [/your midfielders/i, (ids, skip) => has(ids, 'us', MID, skip)],
+    [/their midfielders/i, (ids) => has(ids, 'them', MID)],
+    [/their defenders|their last defender/i, (ids) => has(ids, 'them', [...BACK, 'GK'])],
+    [/their striker/i, (ids) => ids.includes('them-ST')],
+  ];
+  let reps = 0;
+  for (const s of authored.flatMap((d) => [d, mirrorScenario(d)])) {
+    for (const stage of ['small', 'medium']) {
+      const st = bestStage(s, stage, { formations, principles: catalogue });
+      if (st.stage !== stage) continue;
+      reps++;
+      const scene = stagedScene(s, st);
+      const ids = st.cast.ids;
+      const skip = [st.learnerId, st.ctx.firstDefender?.id].filter(Boolean); // "your other defenders": not you, not the presser
+      const g = st.ghost.spot;
+      const spots = [scene.start, g];
+      for (const r of [4, 10]) for (let a = 0; a < 8; a++) spots.push({ x: Math.max(1, Math.min(104, g.x + r * Math.cos(a * Math.PI / 4))), y: Math.max(1, Math.min(67, g.y + r * Math.sin(a * Math.PI / 4))) });
+      for (const spot of spots) {
+        const rv = revealFor(s, scene, spot, { principles: byId });
+        const cue = cueMarker(rv.judgement.feedback.cue, { rules: rv.judgement.result.rules, ball: scene.freezeFrame.ball });
+        const texts = [rv.line, rv.why?.summary, ...(rv.why?.reasons ?? []), ...(rv.why?.praise ?? []), cue?.label].filter((t) => typeof t === 'string');
+        const tag = `${s.id} ${st.stage} ${st.cast.label} at ${spot.x.toFixed(1)}, ${spot.y.toFixed(1)}`;
+        for (const t of texts) for (const [re, ok] of GROUPS) if (re.test(t)) assert.ok(ok(ids, skip), `${tag}: "${t}" names players the game does not show`);
+        if (cue?.type === 'player') assert.ok(ids.includes(cue.id), `${tag}: the cue ring is on ${cue.id}, not shown`);
+        if (cue?.type === 'line-x' && /defenders/i.test(cue.label ?? '')) {
+          const xs = st.frame.players.filter((p) => !skip.includes(p.id) && p.id.startsWith('us-') && BACK.includes(p.role)).map((p) => p.x);
+          assert.ok(xs.some((x) => Math.abs(x - cue.x) < 4), `${tag}: "${cue.label}" drawn at ${cue.x.toFixed(1)}, where no defender of yours stands`);
+        }
+      }
+    }
+  }
+  assert.ok(reps >= 60, `${reps} staged reps checked`);
+});
+
+test('player play: the full match plays as before (the staged full scene judges like repScene), with no camera', () => {
+  for (const s of authored.slice(0, 6)) {
+    const st = bestStage(s, 'full', { formations, principles: catalogue });
+    const scene = stagedScene(s, st);
+    const old = repScene(s, { formations });
+    assert.equal(scene.ids, null, `${s.id}: nobody left out`);
+    assert.equal(scene.freezeFrame.players.length, 22);
+    assert.equal(scene.freezeAt, old.freezeAt);
+    assert.equal(scene.duration, old.duration);
+    assert.deepEqual(scene.start, old.start);
+    assert.deepEqual(scene.ghost.spot, old.ghost.spot, `${s.id}: the same best spot`);
+    for (const spot of [old.start, old.ghost.spot, { x: old.ghost.spot.x - 4, y: old.ghost.spot.y + 2 }]) {
+      const a = revealFor(s, scene, spot, { principles: byId }), b = revealFor(s, old, spot, { principles: byId });
+      assert.equal(a.judgement.result.score, b.judgement.result.score, `${s.id}: the same score`);
+      assert.equal(a.line, b.line, `${s.id}: the same line`);
+    }
+    assert.equal(stageCamera(s, scene, { formations }), null, `${s.id}: the full match keeps the focus crop and the spotlight`);
+    assert.equal(watchFrame(s, scene, 0.5, scene.start, { formations }).players.length, 22);
+  }
+});
+
+test('player play: a small game\'s camera is one rect for the whole clip: the cast, the ball, YOUR start and the best spot', () => {
+  for (const { s, st } of [...stagedDrills.small, ...stagedDrills.medium]) {
+    const scene = stagedScene(s, st);
+    const rect = stageCamera(s, scene, { formations });
+    const tag = `${s.id} (${st.stage})`;
+    const inside = (p) => p.x >= rect.x0 - 1e-6 && p.x <= rect.x1 + 1e-6 && p.y >= rect.y0 - 1e-6 && p.y <= rect.y1 + 1e-6;
+    assert.ok(rect.x1 - rect.x0 >= CAMERA_MIN.length - 0.02 && rect.y1 - rect.y0 >= CAMERA_MIN.width - 0.02, `${tag}: at least CAMERA_MIN`);
+    assert.ok(rect.x0 >= 0 && rect.x1 <= LENGTH && rect.y0 >= 0 && rect.y1 <= WIDTH, `${tag}: on the pitch`);
+    assert.ok(inside(scene.start) && inside(scene.ghost.spot), `${tag}: YOUR start and the best spot`);
+    const { duration } = timing(s);
+    for (let t = 0; t <= duration; t += 0.5) {
+      const f = watchFrame(s, scene, t, scene.start, { formations });
+      for (const p of f.players) if (p.id !== scene.learnerId) assert.ok(inside(p), `${tag} at ${t} s: ${p.id} in view`);
+      if (f.ball) assert.ok(inside({ x: Math.max(0, Math.min(LENGTH, f.ball.x)), y: Math.max(0, Math.min(WIDTH, f.ball.y)) }), `${tag} at ${t} s: the ball in view`);
+    }
+    assert.ok((rect.x1 - rect.x0) * (rect.y1 - rect.y0) < 0.6 * LENGTH * WIDTH, `${tag}: a small part of the pitch (${(rect.x1 - rect.x0).toFixed(0)} x ${(rect.y1 - rect.y0).toFixed(0)} m)`);
+  }
+});
+
+test('player play: at the whistle a small game eases in on the freeze: its players, the ball, YOUR start and the best spot', () => {
+  let tighter = 0;
+  for (const { s, st } of [...stagedDrills.small, ...stagedDrills.medium]) {
+    const scene = stagedScene(s, st);
+    const clip = stageCamera(s, scene, { formations });
+    const rect = answerCamera(scene);
+    const tag = `${s.id} (${st.stage})`;
+    const inside = (p, r = rect) => p.x >= r.x0 - 1e-6 && p.x <= r.x1 + 1e-6 && p.y >= r.y0 - 1e-6 && p.y <= r.y1 + 1e-6;
+    const onPitch = (p) => ({ x: Math.max(0, Math.min(LENGTH, p.x)), y: Math.max(0, Math.min(WIDTH, p.y)) });
+    assert.ok(inside(scene.start) && inside(scene.ghost.spot), `${tag}: YOUR start and the best spot`);
+    for (const p of scene.freezeFrame.players) if (p.id !== scene.learnerId) assert.ok(inside(p), `${tag}: ${p.id} at the freeze`);
+    assert.ok(inside(onPitch(scene.freezeFrame.ball)), `${tag}: the ball`);
+    assert.ok(rect.x1 - rect.x0 >= CAMERA_MIN.length - 0.02 && rect.y1 - rect.y0 >= CAMERA_MIN.width - 0.02, `${tag}: at least CAMERA_MIN`);
+    // Never more than the clip's camera shows (a part of the same points).
+    assert.ok((rect.x1 - rect.x0) * (rect.y1 - rect.y0) <= (clip.x1 - clip.x0) * (clip.y1 - clip.y0) + 0.05, `${tag}: no wider than the clip's`);
+    if ((rect.x1 - rect.x0) * (rect.y1 - rect.y0) < 0.9 * (clip.x1 - clip.x0) * (clip.y1 - clip.y0)) tighter++;
+  }
+  assert.ok(tighter >= 1, `${tighter} of the staged drills get closer at the whistle`);
+  // The full match: no camera (the focus crop and the spotlight, as before).
+  const full = stagedScene(authored[0], bestStage(authored[0], 'full', { formations, principles: catalogue }));
+  assert.equal(answerCamera(full), null);
+});
+
+test('player play: the role card sits where it covers nobody: the top, the bottom, the middle, a band between, an edge; else least', () => {
+  const stage = { top: 100, bottom: 600 };
+  const box = (top, h = 60, left = 150, w = 40) => ({ left, right: left + w, top, bottom: top + h });
+  const at = (...a) => cardSpot(...a).at;
+  assert.deepEqual(cardSpot(stage, 120, []), { at: 'top', top: 12, side: 'center' }, 'nothing to keep off: the top');
+  assert.equal(at(stage, 120, [box(130)]), 'bottom', 'YOU at the top: the bottom');
+  assert.equal(at(stage, 120, [box(130), box(520)]), 'middle', 'YOU at the top and the ball at the bottom: the middle');
+  assert.equal(at(stage, 120, [box(130, 60, 0, 20)], { left: 100, right: 300 }), 'top', 'beside the card, not under it');
+  assert.equal(at(stage, 120, [null, box(130)]), 'bottom', 'a player not drawn is skipped');
+  // Every player drawn counts, not only YOU and the ball (the verifier: the card over their defender on the ball).
+  const you = { box: box(460), weight: PLAY_DEFAULTS.cardWeights.you }, ball = { box: box(330, 30), weight: PLAY_DEFAULTS.cardWeights.ball };
+  const carrier = { box: box(120), weight: PLAY_DEFAULTS.cardWeights.key };
+  const free = cardSpot(stage, 80, [you, ball, carrier]);
+  assert.equal(free.at, 'free', 'the top has the player on the ball, the bottom YOU, the middle the ball: a band between');
+  const c = PLAY_DEFAULTS.cardClearPx;
+  assert.ok(free.top + 100 >= 180 + c - 1e-6 && free.top + 100 + 80 <= 330 - c + 1e-6, `the band clears them all (${free.top})`);
+  // No band across the middle: the card slides to an edge where the play leaves a corner free.
+  const col = (top) => ({ box: box(top, 90, 200, 60), weight: 1 });
+  const edge = cardSpot(stage, 120, [col(110), col(230), col(350), col(470)], { left: 170, right: 330, room: { left: 0, right: 500 } });
+  assert.notEqual(edge.side, 'center', 'a column of players down the middle: an edge');
+  // Nowhere clear: least of YOU and the ball, then the player on the ball, then anyone else.
+  const all = [{ box: box(100, 500, 0, 500), weight: PLAY_DEFAULTS.cardWeights.other }, { box: box(130), weight: PLAY_DEFAULTS.cardWeights.you }];
+  assert.notEqual(at(stage, 120, all, { left: 100, right: 300 }), 'top', 'the crowd everywhere: off YOU');
+  assert.ok(PLAY_DEFAULTS.cardWeights.you > PLAY_DEFAULTS.cardWeights.key && PLAY_DEFAULTS.cardWeights.key > PLAY_DEFAULTS.cardWeights.other);
+  // The gap from the edge is single-sourced (play.js sets the card's --pl-card-gap from it).
+  assert.equal(PLAY_DEFAULTS.cardGapPx, 12);
+});
+
+test('player play: Try again\'s twin is staged at the stage its first try was played at', () => {
+  for (const { s, st } of stagedDrills.small) {
+    const twin = bestStage(mirrorScenario(s), st.stage, { formations, principles: catalogue });
+    assert.equal(twin.stage, st.stage, `${s.id}: the twin plays the same stage`);
+    assert.equal(twin.cast.ids.length, st.cast.ids.length, `${s.id}: the same number of players`);
+  }
+});
+
+test('player play: Full time says "Next time: bigger games" only when the node\'s stars rose', () => {
+  assert.equal(FULLTIME.biggerNext, 'Next time: bigger games');
+  assert.ok(words(FULLTIME.biggerNext) <= 8);
+  const m = (nodeStars) => fullTimeModel({ reps: [{ stars: 2 }], xpBefore: 0, xpAfter: 20, nodeStars }).bigger;
+  assert.equal(m({ before: 0, after: 1 }), true);
+  assert.equal(m({ before: 2, after: 3 }), true);
+  assert.equal(m({ before: 1, after: 1 }), false, 'the same stars: the same games');
+  assert.equal(m({ before: 3, after: 3 }), false);
+  assert.equal(m(null), false, 'no node (the first set, Match day)');
+});
+
+// ---------------------------------------------------------------- whom the words mean, the sideline, the shape
+
+test('player play: a group on show more than once is named by shirt number, from what the words say (never a guess)', () => {
+  const players = [
+    { id: 'us-LB', team: 'us', role: 'LB' }, { id: 'us-LCB', team: 'us', role: 'LCB' }, { id: 'us-DM', team: 'us', role: 'DM' },
+    { id: 'them-LW', team: 'them', role: 'LW' }, { id: 'them-RW', team: 'them', role: 'RW' }, { id: 'them-ST', team: 'them', role: 'ST' },
+  ];
+  const who = { players, learnerId: 'us-LB' };
+  // One of the group on show: the words stay.
+  assert.deepEqual(nameSpecific('Get between their striker and our goal.', who), { text: 'Get between their striker and our goal.', ok: true });
+  // Two wingers: the rule's player (refs), by number; capitals kept; plurals are groups and stay.
+  assert.deepEqual(nameSpecific('Get closer to their winger.', { ...who, refs: ['them-RW'] }), { text: 'Get closer to their number 7.', ok: true });
+  assert.equal(nameSpecific('Their winger has the ball.', { ...who, holders: ['them-LW'] }).text, 'Their number 11 has the ball.');
+  assert.equal(nameSpecific('Stay in line with your defenders.', who).text, 'Stay in line with your defenders.');
+  // Who is on the ball only where the words say so: "has the ball", "goes to", "chasing"...; else the refs.
+  assert.equal(nameSpecific('The ball goes to their winger.', { ...who, holders: ['them-RW'] }).text, 'The ball goes to their number 7.');
+  assert.equal(nameSpecific('Their striker is chasing your teammate.', { ...who, holders: ['us-DM'] }).text, 'Their striker is chasing your number 6.');
+  assert.deepEqual(nameSpecific('Their winger is free at the far post.', { ...who, holders: ['them-LW'] }), { text: 'Their winger is free at the far post.', ok: false }, 'not a ball phrase: the holder is not who it means');
+  // A pool names only its one player of the group (two: not known).
+  assert.equal(nameSpecific('Their winger is free at the far post.', { ...who, pools: [['them-RW', 'them-ST']] }).text, 'Their number 7 is free at the far post.');
+  assert.equal(nameSpecific('Their winger is free.', { ...who, pools: [['them-RW', 'them-LW'], ['them-LW']] }).text, 'Their number 11 is free.', 'the first pool with exactly one');
+  assert.equal(nameSpecific('Their winger is free.', { ...who, pools: [['them-RW', 'them-LW']] }).ok, false);
+  // "your teammate" is anyone of ours but YOU; YOUR kit number swaps in as on the shirts (board.js shirtNumberOf).
+  assert.equal(nameSpecific('Stand behind your teammate.', { ...who, refs: ['us-LCB'] }).text, 'Stand behind your number 4.');
+  assert.equal(nameSpecific('Stand behind your teammate.', { ...who, refs: ['us-LCB'], youNumber: 4 }).text, 'Stand behind your number 3.', 'YOU wear 4: the left centre-back wears your 3');
+  assert.equal(nameSpecific('They passed to their other winger.', { ...who, holders: ['them-LW'] }).text, 'They passed to their number 11.');
+  assert.equal(PLAY.theirNumber(7), 'their number 7');
+  assert.equal(PLAY.yourNumber(4), 'your number 4');
+});
+
+test('player play: whatever a rep says (the question, the line, Why?, the cue), a group it names is one player on show, or is named by number', () => {
+  // The verifier's finish: "Get closer to their winger" with both wingers on show, "Their defender has the ball" with
+  // two defenders in a 2 v 2. Every authored drill and its mirror, at every stage it can be played at, spots all round
+  // the answer. The brief (the play in motion) is named wherever its words say who: it keeps its words otherwise.
+  const GROUP = /\b(their|your)\s+(?:other\s+)?(defender|midfielder|winger|striker|keeper|teammate)\b(?![-\w])/gi;
+  const FAMS = { defender: ['CB', 'FB'], midfielder: ['DM', 'CM'], winger: ['W'], striker: ['ST'], keeper: ['GK'], teammate: null };
+  const fam = (id) => ({ GK: 'GK', LCB: 'CB', RCB: 'CB', LB: 'FB', RB: 'FB', DM: 'DM', LCM: 'CM', RCM: 'CM', LW: 'W', RW: 'W', ST: 'ST' })[id.split('-')[1]];
+  const many = (t, ids, me) => [...String(t).matchAll(GROUP)].filter((m) => {
+    const team = m[1].toLowerCase() === 'their' ? 'them' : 'us', fs = FAMS[m[2].toLowerCase()];
+    return ids.filter((id) => id !== me && id.startsWith(`${team}-`) && (!fs || fs.includes(fam(id)))).length > 1;
+  }).map((m) => m[0]);
+  const NUM = /\b(their|your) number (\d+)\b/gi;
+  let reps = 0, named = 0, questions = 0, fallbacks = 0;
+  for (const s of authored.flatMap((d) => [d, mirrorScenario(d)])) {
+    for (const stage of STAGES) {
+      const st = bestStage(s, stage, { formations, principles: catalogue });
+      if (st.stage !== stage) continue;
+      reps++;
+      const scene = stagedScene(s, st);
+      const ids = scene.freezeFrame.players.map((p) => p.id);
+      const words = repWords(s, scene);
+      assert.ok(usableText(words.question, PLAY_DEFAULTS.questionMaxWords) && usableText(words.brief, PLAY_DEFAULTS.briefMaxWords), `${s.id} ${stage}: "${words.question}" / "${words.brief}" within 12 words`);
+      if (words.question !== questionFor(s)) questions++;
+      if (words.question === PLAY.question && questionFor(s) !== PLAY.question) fallbacks++;
+      const g = scene.ghost.spot;
+      const spots = [scene.start, g];
+      for (const r of [4, 10]) for (let a = 0; a < 8; a++) spots.push({ x: Math.max(1, Math.min(104, g.x + r * Math.cos(a * Math.PI / 4))), y: Math.max(1, Math.min(67, g.y + r * Math.sin(a * Math.PI / 4))) });
+      const texts = [words.question];
+      for (const spot of spots) {
+        const rv = revealFor(s, scene, spot, { principles: byId });
+        const rules = rv.judgement.result.rules;
+        const cue = cueMarker(rv.judgement.feedback.cue, { rules, ball: scene.freezeFrame.ball, name: (t, id) => rv.who.rule(t, id, rules, spot) });
+        texts.push(rv.line, ...(rv.why?.reasons ?? []), ...(rv.why?.praise ?? []), rv.why?.summary, cue?.label);
+        assert.ok(usableText(rv.line, PLAY_DEFAULTS.lineMaxWords), `${s.id} ${stage}: "${rv.line}" fits`);
+      }
+      for (const t of texts.filter((x) => typeof x === 'string')) {
+        assert.deepEqual(many(t, ids, scene.learnerId), [], `${s.id} ${stage} (${st.cast?.label ?? '11 v 11'}): "${t}" names a group the game shows more than once`);
+        // A number named is a player on show, of that team.
+        for (const m of t.matchAll(NUM)) {
+          named++;
+          const team = m[1].toLowerCase() === 'their' ? 'them' : 'us';
+          assert.ok(ids.some((id) => id.startsWith(`${team}-`) && id !== scene.learnerId && shirtNumberOf(id, { learnerId: scene.learnerId }) === +m[2]), `${s.id} ${stage}: "${t}" names a number nobody on show wears`);
+        }
+      }
+    }
+  }
+  assert.ok(reps >= 150 && named >= 50, `${reps} reps, ${named} numbers named`);
+  assert.ok(questions >= 20, `${questions} questions name their player by number`);
+  assert.ok(fallbacks <= 4, `${fallbacks} questions could not say whom they meant (the default question instead)`);
+  // The verifier's two: m1-11 in a 2 v 2 names the defender on the ball; m1-05's full match, the winger.
+  const m111 = authored.find((s) => s.id === 'm1-11-d2-rcm');
+  const small = stagedScene(m111, bestStage(m111, 'small', { formations, principles: catalogue }));
+  assert.equal(repWords(m111, small).question, `Their number ${shirtNumberOf(small.freezeFrame.carrierId)} has the ball by the sideline. Where now?`);
+  // A number that takes the question past 12 words: its question at the end is "Where now?".
+  const m202 = authored.find((s) => s.id === 'm2-02-b4-dm');
+  const s202 = stagedScene(m202, bestStage(m202, 'small', { formations, principles: catalogue }));
+  assert.match(repWords(m202, s202).question, /^Their striker is chasing your number \d+\. Where now\?$/);
+  const m105 = authored.find((s) => s.id === 'm1-05-d2-rb');
+  const full = stagedScene(m105, bestStage(m105, 'full', { formations, principles: catalogue }));
+  assert.match(repWords(m105, full).question, /^Their number (7|11) has the ball, facing you\./);
+});
+
+test('player play: the rule behind the words says whom it means (ruleRefs): its name for the player, else its cue', () => {
+  const s = authored.find((d) => d.id === 'm1-08-d1-st');
+  const scene = stagedScene(s, bestStage(s, 'small', { formations, principles: catalogue }));
+  const r = revealFor(s, scene, scene.start, { principles: byId });
+  const rules = r.judgement.result.rules;
+  // The press rule is about the player on the ball (its cue rings them; its words name them).
+  assert.deepEqual(ruleRefs('press', { rules, ctx: scene.ctx, spot: scene.start }), [scene.ctx.carrier.id]);
+  assert.deepEqual(ruleRefs('nope', { rules, ctx: scene.ctx }), []);
+  const who = repSpeaker(s, scene);
+  assert.equal(who.holder, scene.freezeFrame.carrierId);
+  assert.ok(who.lesson.includes(scene.ctx.carrier.id), 'the drill\'s own idea (D1) is about the player on the ball');
+  assert.equal(who.rule('Get closer to their defender.', 'press', rules, scene.start), `Get closer to their number ${shirtNumberOf(scene.ctx.carrier.id)}.`);
+});
+
+test('player play: words about the sideline keep it in view; a small game never talks about "the team\'s shape"', () => {
+  assert.equal(mentionsSideline('Their defender has the ball by the sideline.'), true);
+  assert.equal(mentionsSideline('Move wider, close to the touchline.', null), true);
+  assert.equal(mentionsSideline('Get closer to their winger.'), false);
+  assert.deepEqual(touchlineBy({ x: 40, y: 10 }), { x: 40, y: 0 });
+  assert.deepEqual(touchlineBy({ x: 110, y: 50 }), { x: LENGTH, y: WIDTH });
+  let sided = 0, zone = 0;
+  for (const s of authored.flatMap((d) => [d, mirrorScenario(d)])) {
+    for (const stage of ['small', 'medium']) {
+      const st = bestStage(s, stage, { formations, principles: catalogue });
+      if (st.stage !== stage) continue;
+      const scene = stagedScene(s, st);
+      const words = repWords(s, scene);
+      if (words.sideline) {
+        // The cameras play.js gives it (stageNow): the question's sideline, the one by the ball, in both.
+        sided++;
+        const side = touchlineBy(scene.freezeFrame.ball);
+        for (const rect of [answerCamera(scene, { extra: [side] }), stageCamera(s, scene, { formations, extra: [side] })]) {
+          assert.ok(side.y === 0 ? rect.y0 === 0 : rect.y1 === WIDTH, `${s.id} ${stage}: the sideline in view (${JSON.stringify(rect)})`);
+        }
+      }
+      const g = scene.ghost.spot;
+      for (const spot of [scene.start, { x: g.x - 12, y: g.y }, { x: g.x + 12, y: g.y }, { x: g.x, y: Math.min(66, g.y + 14) }, { x: g.x, y: Math.max(2, g.y - 14) }]) {
+        const rv = revealFor(s, scene, spot, { principles: byId });
+        for (const t of [rv.line, ...(rv.why?.reasons ?? [])]) assert.doesNotMatch(t, /team'?s shape/i, `${s.id} ${stage}: "${t}"`);
+        if ([rv.line, ...(rv.why?.reasons ?? [])].includes(PLAY.zoneLine)) zone++;
+      }
+    }
+  }
+  assert.ok(sided >= 2, `${sided} staged reps whose words talk about the sideline`);
+  assert.ok(zone >= 1, `${zone} small or bigger games say "${PLAY.zoneLine}" where the full match says "the team's shape"`);
+  assert.ok(usableText(PLAY.zoneLine, PLAY_DEFAULTS.lineMaxWords));
+  // The full match keeps its words (the shape is on show there).
+  const m103 = authored.find((s) => s.id === 'm1-03-d4-lb');
+  const full = stagedScene(m103, bestStage(m103, 'full', { formations, principles: catalogue }));
+  const far = revealFor(m103, full, { x: full.ghost.spot.x + 25, y: full.ghost.spot.y }, { principles: byId });
+  assert.ok(![far.line, ...far.why.reasons].includes(PLAY.zoneLine), 'the full match: not the small game\'s words');
+});
+
+test('player play: "Best spot" goes by the ring where it covers nobody, else a short callout with a line from the ring', () => {
+  const fs = 1.5 * 1.4;
+  const w = PLAY.bestSpot.length * PLAY_DEFAULTS.labelEm * fs, h = (PLAY_DEFAULTS.labelAscent + PLAY_DEFAULTS.labelDescent) * fs;
+  const ring = { x: 30, y: 40 }, r = 2.5;
+  const view = { x: 0, y: 0, width: 70, height: 100 };
+  const over = (a, b) => Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) * Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0)) > 0;
+  // Nothing near: over the ring, centred; its words written where they were weighed (board.js drawLabel, no lift).
+  const clear = bestSpotPlace({ ring, r, fs, view });
+  assert.equal(clear.kind, 'near');
+  assert.equal(clear.side, 'above');
+  approx(clear.box.x1 - clear.box.x0, w);
+  approx(clear.box.y1 - clear.box.y0, h);
+  assert.ok(clear.box.y1 <= ring.y - r, 'over the ring, clear of it');
+  approx(clear.at.y - 0.8 - PLAY_DEFAULTS.labelAscent * fs, clear.box.y0, 1e-9, 'the baseline where the box was measured');
+  // YOU (a figure and your tag) just over the ring: under it.
+  const youAbove = { x0: 27, x1: 33, y0: 28, y1: 37.2 };
+  const under = bestSpotPlace({ ring, r, fs, view, you: [youAbove] });
+  assert.equal(under.kind, 'near');
+  assert.ok(!over(under.box, youAbove), `off YOU (${under.side})`);
+  // YOU on one side of the ring and players round the rest of it (a 2-star spot a step away): a callout, off YOU.
+  const youBeside = { x0: 22, x1: 29, y0: 30, y1: 44 };
+  const crowd = [{ x0: 29, x1: 36, y0: 29, y1: 37 }, { x0: 26, x1: 40, y0: 43, y1: 51 }, { x0: 33, x1: 44, y0: 35, y1: 45 }];
+  const call = bestSpotPlace({ ring, r, fs, view, you: [youBeside], others: crowd });
+  assert.equal(call.kind, 'callout');
+  assert.ok(call.clear && !over(call.box, youBeside), 'the callout covers neither YOU nor YOUR tag');
+  assert.ok(Math.abs(Math.hypot(call.from.x - ring.x, call.from.y - ring.y) - r) < 1e-6, 'its line starts at the ring\'s rim');
+  const toBox = Math.hypot(Math.max(call.box.x0 - call.to.x, 0, call.to.x - call.box.x1), Math.max(call.box.y0 - call.to.y, 0, call.to.y - call.box.y1));
+  assert.ok(toBox < 0.5 * fs, 'and ends by the words');
+  // Kept in view: a ring at the edge writes its words inward.
+  const edge = bestSpotPlace({ ring: { x: 68, y: 2 }, r, fs, view });
+  assert.ok(edge.box.x1 <= 70 + 1e-6 && edge.box.y0 >= -1e-6, `in view (${edge.kind} ${edge.side})`);
+  // The ball and its halo count as much as a player, the arrow a little.
+  const ball = { x0: 27, x1: 33, y0: 33, y1: 37 };
+  assert.ok(!over(bestSpotPlace({ ring, r, fs, view, ball }).box, ball), 'off the ball');
+});
+
+test('player play: Full time\'s "Best move" is a move with a capital, from what the reveal praised', () => {
+  const s = authored.find((d) => d.id === 'm1-07-d3-dm');
+  const scene = repScene(s, { formations });
+  const best = revealFor(s, scene, scene.ghost.spot, { principles: byId });
+  assert.equal(best.stars, 3);
+  assert.equal(best.move, 'Back up your buddy', 'the drill\'s idea (D3), by its simple name');
+  const m = fullTimeModel({ reps: [{ stars: 3, title: repTitle(s, byId), move: best.move }] });
+  assert.equal(FULLTIME.bestMove(m.best), 'Best move: Back up your buddy');
+  // Every authored drill's best spot: a move with a capital, never a lower-cased praise line.
+  for (const d of authored) {
+    const sc = repScene(d, { formations });
+    const rv = revealFor(d, sc, sc.ghost.spot, { principles: byId });
+    if (rv.move === null) continue;
+    assert.match(rv.move, /^[A-Z]/, `${d.id}: "${rv.move}"`);
+    assert.ok(usableText(rv.move, PLAY_DEFAULTS.moveMaxWords), `${d.id}: "${rv.move}"`);
+    assert.doesNotMatch(rv.move, /^The ball\b|^Good\b/, `${d.id}: "${rv.move}" is a move`);
+  }
+});
+
+// ---------------------------------------------------------------- mount: a whole set on a fake page (Node)
+
+// The fake page and the recording board are shared with the pass mount test (tests/player-mount.js).
+
+test('player play: mounted, a whole set draws, freezes, judges and replays only each rep\'s cast; Try again plays its twin at the same stage', async () => {
+  if (!isNode) return; // (the browser has a real page: this drives play.js mount on a fake one)
+  const page = fakePage();
+  const { normalizePrinciples, normalizeScenarioIndex, createScenarioStore } = await import('../js/data.js');
+  const { mount } = await import('../js/ui/player/play.js');
+  const mem = new Map();
+  const store = { get: (k, f = null) => (mem.has(k) ? JSON.parse(mem.get(k)) : f), set: (k, v) => { mem.set(k, JSON.stringify(v)); return true; }, remove: (k) => mem.delete(k) };
+  // A defender who has played "Close Them Down" once, 1 star: the plan is small, small, bigger, bigger, full.
+  store.set('player', { version: 1, group: 'DEF', role: 'LB', onboarded: true, road: { 'close-down': { stars: 1, plays: 1 } } });
+  const roadData = Road.normalizeRoad(await loadJSON('data/road.json'));
+  const root = page.doc.createElement('div');
+  page.doc.body.append(root);
+  const phaseOf = () => root.querySelector('.pl')?.dataset.phase ?? null;
+  const cardOf = () => `${root.querySelector('.pl-card-text')?.textContent ?? ''}|${root.querySelector('.pl-card-stage')?.textContent ?? ''}`;
+  let board = null;
+  const app = {
+    data: {
+      formations, principles: normalizePrinciples(catalogue), road: roadData,
+      scenarios: createScenarioStore(normalizeScenarioIndex(scenarioIndex), (path) => loadJSON(path)),
+    },
+    store, settings: { mode: 'player', sound: false }, sound: { play() {} }, celebrate: { show() {} }, navigate() {},
+    createBoard: () => (board = recordingBoard(page, phaseOf, cardOf)),
+  };
+  const warn = console.warn, info = console.info;
+  const warnings = [];
+  console.warn = (...a) => warnings.push(a.join(' '));
+  console.info = () => {};
+  let unmount = null;
+  try {
+    mount(root, app, ['close-down']).then((u) => { unmount = u; });
+    assert.ok(await page.clock.until(() => unmount !== null && !!board), 'the set is built and on the pitch');
+    const click = (sel) => { const b = root.querySelector(sel); assert.ok(b, `${sel} is there`); b.click(); };
+    const handled = new Map();
+    let reveals = 0, replays = 0, retries = 0;
+    // When the role card shows (every step of the clock), and what each reveal first draws (its stars and markers).
+    const cardShows = [], answers = [];
+    let cardOn = false;
+    const step0 = page.clock.step;
+    page.clock.step = async (dt) => {
+      await step0(dt);
+      const c = root.querySelector('.pl-card');
+      const on = !!c && !c.hidden;
+      if (on && !cardOn) cardShows.push({ t: page.clock.now, card: cardOf() });
+      cardOn = on;
+    };
+    for (let guard = 0; guard < 40; guard++) {
+      const ok = await page.clock.until(() => root.querySelector('.ft') || phaseOf() === 'place' || (phaseOf() === 'reveal' && !root.querySelector('.pr.is-busy')));
+      assert.ok(ok, `the set moves on (phase ${phaseOf()})`);
+      if (root.querySelector('.ft')) break;
+      if (phaseOf() === 'place') { click('.pl-lock'); await page.clock.step(); continue; }
+      // The reveal: "See what happens" once, then Try again when it is offered (not on a twin), then Next.
+      const slot = [...root.querySelectorAll('.pl-dots li')].findIndex((li) => li.classList.contains('is-current'));
+      const key = `${slot}:${root.querySelector('.pr-note')?.textContent === PLAY.practiceNote ? 'twin' : 'first'}`;
+      const h = handled.get(key) ?? {};
+      handled.set(key, h);
+      if (!h.seen) {
+        h.seen = true; reveals++;
+        answers.push({ stars: STAR_WORDS.indexOf(root.querySelector('.pr-word')?.textContent ?? ''), marks: board.log.markers.at(-1)?.list ?? [] });
+      }
+      if (!h.replayed) { h.replayed = true; replays++; click('.pr-replay'); await page.clock.until(() => phaseOf() === 'replay'); continue; }
+      if (!h.retried && root.querySelector('.pr-retry')) { h.retried = true; retries++; click('.pr-retry'); await page.clock.until(() => phaseOf() === 'set'); continue; }
+      click('.pr-next');
+      await page.clock.step();
+    }
+    assert.ok(root.querySelector('.ft'), 'Full time');
+    assert.ok(reveals >= 5 && replays >= 5, `${reveals} reveals, ${replays} replays`);
+    assert.ok(retries >= 1, `${retries} Try again (a lock at the start misses)`);
+    // The role card shows once the camera has landed (placed then: before, it covered YOU or the ball mid-ease).
+    assert.equal(cardShows.length, reveals, 'a role card for every rep played');
+    const moves = board.log.camera.filter((c, i, all) => i === 0 || JSON.stringify(c.r) !== JSON.stringify(all[i - 1].r));
+    for (const show of cardShows) {
+      const last = moves.filter((c) => c.t <= show.t).at(-1);
+      if (last) assert.ok(show.t >= last.t + BOARD_DEFAULTS.cameraMs, `"${show.card}" at ${show.t} ms, the camera moved at ${last.t} ms: not before it lands`);
+    }
+    // Every reveal but a 3-star one labels the ring "Best spot".
+    assert.ok(answers.some((a) => a.stars >= 0 && a.stars < 3), 'a miss among the reveals');
+    for (const [i, a] of answers.entries()) {
+      assert.ok(a.stars >= 0, `reveal ${i + 1}: its word`);
+      const label = a.marks.find((m) => m.type === 'label' && m.text === PLAY.bestSpot);
+      if (a.stars < 3) assert.ok(label, `reveal ${i + 1} (${a.stars} stars): "Best spot" on the ring`);
+    }
+
+    // One segment of renders per rep played (a first try or its twin), from its role card to the next.
+    const segs = [];
+    for (const r of board.log.renders) {
+      if (r.ph === 'set' && (!segs.length || segs.at(-1).at(-1).ph !== 'set')) segs.push([]);
+      segs.at(-1)?.push(r);
+    }
+    assert.equal(segs.length, reveals, 'a role card for every rep');
+    const stageOf = (card) => (/Full match|11 v 11/.test(card) ? 'full' : /Small game/.test(card) ? 'small' : /Bigger game/.test(card) ? 'medium' : null);
+    const played = [];
+    for (const [i, seg] of segs.entries()) {
+      // The card as the watch began (the role card's words are written just after its first frame is drawn).
+      const card = seg.find((r) => r.ph === 'watch')?.card ?? seg.at(-1).card;
+      const ids = seg[0].ids.join(',');
+      const phases = new Set(seg.map((r) => r.ph));
+      for (const want of ['set', 'watch', 'freeze', 'reveal', 'replay']) assert.ok(phases.has(want), `rep ${i + 1}: drawn in ${want} (${[...phases].join(', ')})`);
+      // Every picture of the rep, the watch, the freeze, the answer and "See what happens", shows the same players.
+      for (const r of seg) assert.equal(r.ids.join(','), ids, `rep ${i + 1} (${card}): the ${r.ph} draws only the cast (${r.ids.length} players, not ${seg[0].ids.length})`);
+      assert.ok(seg.every((r) => r.learner && seg[0].ids.includes(r.learner)), `rep ${i + 1}: YOU are in it`);
+      const n = seg[0].ids.length;
+      const vs = /(\d+) v (\d+)/.exec(card);
+      let stage = stageOf(card);
+      if (/Now \d+ v \d+!/.test(card) && vs) stage = +vs[1] + +vs[2] === 22 ? 'full' : n <= 6 ? 'small' : 'medium';
+      assert.ok(stage, `rep ${i + 1}: the card names the game (${card})`);
+      if (stage === 'full') assert.equal(n, 22, `rep ${i + 1}: the full match`);
+      else {
+        assert.ok(vs && +vs[1] + +vs[2] === n, `rep ${i + 1}: "${card}" and ${n} players drawn`);
+        assert.ok(stage === 'small' ? n >= 3 && n <= 6 : n >= 6 && n <= 12, `rep ${i + 1}: ${n} players in a ${stage} game`);
+      }
+      played.push({ card, stage, n, twin: /Same play, other side/.test(card), ids: seg[0].ids });
+    }
+    // Try again's twin: the same stage and the same number of players as its first try.
+    for (const [i, p] of played.entries()) {
+      if (!p.twin) continue;
+      const firstTry = played[i - 1];
+      assert.ok(firstTry && !firstTry.twin, 'a twin follows its first try');
+      assert.equal(p.stage, firstTry.stage, `the twin plays the first try's stage (${firstTry.card} → ${p.card})`);
+      assert.equal(p.n, firstTry.n, 'with as many players');
+    }
+    assert.ok(played.some((p) => p.stage === 'small') && played.some((p) => p.stage !== 'small'), `small and bigger games: ${played.map((p) => p.stage).join(', ')}`);
+    // Markers, the drag and the spotlight name only players the rep shows; a small or bigger game has a camera and
+    // no spotlight, the full match the spotlight and no camera.
+    const everyone = new Set(played.flatMap((p) => p.ids));
+    for (const m of board.log.markers) for (const id of m.ids) assert.ok(everyone.has(id), `a marker on ${id}, who is never drawn`);
+    for (const d of board.log.drag) assert.equal(d.ids.length, 1, 'only YOU can be moved');
+    for (const s of board.log.spot) for (const id of s.ids ?? []) assert.ok(everyone.has(id), `the spotlight on ${id}`);
+    assert.ok(board.log.camera.some((c) => c.r) && board.log.camera.some((c) => c.ph === 'freeze' && c.r), 'the camera fits a small game, and eases in at the whistle');
+    assert.ok(warnings.every((w) => !/could not|not valid|stopped/.test(w)), `no failures: ${warnings.join(' / ')}`);
+  } finally {
+    console.warn = warn;
+    console.info = info;
+    try { unmount?.(); } catch { /* gone */ }
+    page.restore();
+  }
 });

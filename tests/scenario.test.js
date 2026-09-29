@@ -1,5 +1,6 @@
 import { test, assert, approx, loadJSON, isNode } from './harness.js';
-import { validateScenario, mirrorScenario, normalizeScenario, learnerId } from '../js/engine/scenario.js';
+import { validateScenario, mirrorScenario, normalizeScenario, learnerId, stagesErrors, STAGES_FIELDS } from '../js/engine/scenario.js';
+import { stagesProblems } from '../scripts/check-scenarios.mjs';
 import { frameAt, timing } from '../js/engine/timeline.js';
 import { createFormation } from '../js/engine/formation.js';
 import { mirrorPlayerId } from '../js/engine/roles.js';
@@ -53,6 +54,32 @@ test('validation catches off-pitch coordinates and bad ids', () => {
   hasError(errorsAfter((s) => { s.timeline.players.overrides.push(clone(s.timeline.players.overrides[1])); }), /overridden twice/);
   hasError(errorsAfter((s) => { s.misconceptions[0].region = { type: 'circle', x: 30, y: 30, r: 0 }; }), /positive radius/);
   hasError(errorsAfter((s) => { s.misconceptions[1].region.x1 = 20; }), /x0 < x1/);
+});
+
+test('validation catches a malformed "stages" block, as npm run check does (so #/author catches it too)', () => {
+  assert.deepEqual(errorsAfter((s) => { s.stages = { note: 'Needs the whole back four.', keep: ['us-LB', 'them-ST'] }; }), []);
+  assert.deepEqual(errorsAfter((s) => { s.stages = { keep: [] }; }), [], 'an empty keep is fine');
+  hasError(errorsAfter((s) => { s.stages = 'small'; }), /"stages" must be an object/);
+  hasError(errorsAfter((s) => { s.stages = []; }), /"stages" must be an object/);
+  hasError(errorsAfter((s) => { s.stages = null; }), /"stages" must be an object/);
+  hasError(errorsAfter((s) => { s.stages = { note: 5 }; }), /"stages\.note" must be a non-empty string/);
+  hasError(errorsAfter((s) => { s.stages = { note: '  ' }; }), /"stages\.note" must be a non-empty string/);
+  hasError(errorsAfter((s) => { s.stages = { keep: 'us-LB' }; }), /"stages\.keep" must be an array/);
+  hasError(errorsAfter((s) => { s.stages = { keep: ['us-XX'] }; }), /"stages\.keep" has "us-XX"/);
+  hasError(errorsAfter((s) => { s.stages = { keep: [3] }; }), /"stages\.keep" has 3/);
+  hasError(errorsAfter((s) => { s.stages = { notes: 'typo' }; }), /"stages\.notes" is not a stages field/);
+  assert.deepEqual([...STAGES_FIELDS], ['note', 'keep']);
+  // One definition: npm run check's stagesProblems is validateScenario's stagesErrors, on the same inputs.
+  for (const st of [undefined, { note: 'x' }, { note: '' }, { keep: ['us-LB', 'x'] }, { other: 1 }, [], 'no', null, { keep: 'us-LB', note: 3 }]) {
+    assert.deepEqual(stagesProblems(st === undefined ? {} : { stages: st }), stagesErrors(st), JSON.stringify(st));
+    const errs = errorsAfter((s) => { if (st === undefined) delete s.stages; else s.stages = st; });
+    for (const e of stagesErrors(st)) assert.ok(errs.includes(e), `validateScenario reports ${e}`);
+  }
+  // The block is kept through normalizing and mirroring as authored (cast.js keepIdsOf mirrors its ids with the drill).
+  const s = clone(example);
+  s.stages = { keep: ['them-ST'] };
+  assert.deepEqual(normalizeScenario(s).stages, { keep: ['them-ST'] });
+  assert.deepEqual(mirrorScenario(s).stages, { keep: ['them-ST'] });
 });
 
 test('validation catches inconsistent tracks', () => {

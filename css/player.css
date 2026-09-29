@@ -100,7 +100,13 @@
   color: var(--text); text-decoration: none;
 }
 .pm-me:hover { color: var(--text); }
-.pm-me-token { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--pm-pitch); flex: none; }
+/* Your figure, head and shoulders, in a pitch-green disc (shell.js kidFigure, crop 'bust'): it stands on the disc's edge. */
+.pm-me-token {
+  display: grid; place-items: end center; width: 44px; height: 44px; border-radius: 50%; overflow: hidden; flex: none;
+  background: radial-gradient(circle at 50% 35%, var(--pm-pitch-3), var(--pm-pitch) 72%);
+  box-shadow: inset 0 0 0 2px var(--kit-us-edge);
+}
+.pm-me-token .pm-fig { display: block; margin-bottom: -1px; }
 .pm-me-name {
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-family: var(--pm-num); font-weight: 800; font-size: 1.4rem; line-height: 1;
@@ -305,12 +311,9 @@ a.pm-node:active .pm-node-disc { transform: translateY(2px); }
 }
 .pm-shirt:hover, .pm-shirt:focus-visible { border-color: var(--pm-hot); background: rgb(6 26 15 / 0.94); }
 .pm-shirt:active { transform: scale(0.97); }
+/* Each position's player: a figure in your kit with that position's number (shell.js kidFigure). */
 .pm-shirt-art { position: relative; display: grid; place-items: center; }
-.pm-shirt-art .pm-shirt-icon { fill: var(--kit-us); stroke: var(--kit-us-edge); stroke-width: 1.1; }
-.pm-shirt-num {
-  position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-38%);
-  font-family: var(--pm-num); font-weight: 800; font-size: 1.9rem; line-height: 1; color: var(--kit-us-ink);
-}
+.pm-shirt-fig { display: block; overflow: visible; filter: drop-shadow(0 4px 6px rgb(0 0 0 / 0.35)); }
 .pm-shirt-name { font-weight: 800; font-size: 1.2rem; }
 @media (min-width: 760px) {
   .pm-shirts { grid-template-columns: repeat(4, 1fr); width: min(100%, 860px); }
@@ -323,8 +326,14 @@ a.pm-node:active .pm-node-disc { transform: translateY(2px); }
 
 .pm-kit { display: grid; gap: 20px; }
 .pm-kit-preview {
-  display: grid; place-items: center; min-height: 150px; padding: 16px; border-radius: var(--pm-radius);
+  display: grid; justify-items: center; align-content: center; gap: 6px; min-height: 150px; padding: 16px; border-radius: var(--pm-radius);
   background: repeating-linear-gradient(90deg, var(--pm-stripe) 0 34px, transparent 34px 68px), linear-gradient(160deg, var(--pm-pitch), var(--pm-pitch-2));
+}
+/* You in the kit you are trying on (card.js kitEditor): your figure and, over it, your tag as on the pitch. */
+.pm-kit-fig { display: block; overflow: visible; filter: drop-shadow(0 6px 10px rgb(0 0 0 / 0.35)); }
+.pm-kit-tag {
+  padding: 3px 12px; border-radius: 999px; background: var(--pm-hot); color: var(--pm-hot-ink);
+  font-family: var(--pm-num); font-weight: 800; font-size: 1.15rem; line-height: 1.2; white-space: nowrap;
 }
 .pm-kit-form { display: grid; gap: 20px; min-width: 0; }
 .pm-kit-set { border: 0; margin: 0; padding: 0; min-width: 0; }
@@ -415,7 +424,7 @@ a.pm-node:active .pm-node-disc { transform: translateY(2px); }
 .pm-fc.metal-legend .pm-ring-track { stroke: rgb(255 255 255 / 0.2); }
 .pm-fc.metal-legend .pm-ring-fill { stroke: var(--pm-hot); }
 .pm-fc-token { position: relative; display: grid; place-items: center; padding: 2px 0; }
-.pm-fc-token .rw-token { filter: drop-shadow(0 6px 10px rgb(0 0 0 / 0.3)); }
+.pm-fc-token .pm-fig { display: block; overflow: visible; filter: drop-shadow(0 6px 10px rgb(0 0 0 / 0.3)); }
 .pm-fc-name { position: relative; margin: 0; text-align: center; font-family: var(--pm-num); font-weight: 800; font-size: 2.1rem; line-height: 1; padding-bottom: 8px; border-bottom: 2px solid rgb(0 0 0 / 0.14); }
 .pm-fc-skills { position: relative; list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 18px; }
 .pm-fc-skill { display: flex; align-items: baseline; gap: 8px; }

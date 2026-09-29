@@ -42,6 +42,44 @@ test('shell: the top bar shows your shirt number (kit, else position), nickname,
   assert.equal(Shell.topBarModel({ rewards: null, profile: null, settings: { role: 'ST' } }).number, 9, 'no profile: Coach mode\'s position');
 });
 
+test('shell: the top bar and the card show your own figure: the look YOU have on the pitch, your number, your kit', async () => {
+  const { figureLook, figureSpec, FIGURE } = await import('../js/ui/figures.js');
+  const m = Shell.topBarModel({ rewards: { ...createRewards(), kit: { palette: 'classic', number: 23, nickname: '' } }, profile: R.pickGroup(null, 'DEF') });
+  assert.equal(m.role, 'LB');
+  assert.deepEqual(m.look, figureLook('us-LB', 'us'), 'the board draws YOU (us-LB) with this look');
+  assert.deepEqual(Shell.kidLook('ST'), figureLook('us-ST'));
+  assert.deepEqual(Shell.kidLook(null), figureLook('us-LCM'), 'no position yet: a midfielder\'s look');
+  assert.deepEqual(Shell.kidLook('GK'), figureLook('us-LCM'), 'never a keeper');
+  assert.equal(Shell.topBarModel({ rewards: null, profile: null, settings: { role: 'nope' } }).role, null);
+  // Each group's position has its own look, so the four players on the kick-off screen differ.
+  const looks = R.GROUPS.map((g) => JSON.stringify(Shell.kidLook(R.DEFAULT_ROLE[g])));
+  assert.equal(new Set(looks).size, 4, looks.join(' '));
+  // The crops: the whole figure on its base (2.4 base radii tall), or head and shoulders with the shirt number.
+  const { full, bust } = Shell.KID_FIGURE_CROPS;
+  assert.ok(full.y <= -FIGURE.height - 0.2 && full.y + full.height >= Shell.KID_BASE_R && full.x <= -FIGURE.halfWidth && full.x + full.width >= FIGURE.halfWidth, 'the base, the arms and the hair fit');
+  // The base is about the shoulders wide, as the board draws a figure's base (board.js figureBase x FIGURE.shoulders): never a plate.
+  const { BOARD_DEFAULTS } = await import('../js/ui/board.js');
+  const across = 2 * Shell.KID_BASE_R / FIGURE.shoulders;
+  assert.ok(across >= BOARD_DEFAULTS.figureBase.min && across <= BOARD_DEFAULTS.figureBase.max, `${across} shoulder widths across`);
+  // The kit you wear: explicit colours from the palette (the top bar, the card), the classic kit when none is set.
+  assert.deepEqual(m.palette, { shirt: '#fff3c9', edge: '#6b5600', ink: '#2a2200' });
+  assert.deepEqual(Shell.kitPalette({ ...createRewards(), xp: 100000, kit: { palette: 'sky', number: null, nickname: '' } }), { shirt: '#cfe8ff', edge: '#1d4f91', ink: '#0b2545' });
+  assert.ok(bust.y <= FIGURE.head.y - FIGURE.head.r - 0.15, 'the hair fits the bust');
+  assert.ok(bust.y + bust.height >= FIGURE.numberY + 0.35, 'the shirt number shows in the bust');
+  assert.ok(bust.y + bust.height < -0.72, 'no legs in the bust');
+  // The kit locker tries a kit on: explicit colours on the figure (a CSS colour each); else the live kit (--kit-us*).
+  const spec = figureSpec({ ...Shell.kidLook('LB'), shirt: '#cfe8ff', edge: '#1d4f91', ink: '#0b2545', shorts: '#1d4f91', number: 23 });
+  assert.match(spec.attrs.style, /--fig-shirt:#cfe8ff/);
+  assert.equal(figureSpec({ number: 3 }).attrs.style, null, 'no palette: the figure takes the kit the app wears');
+});
+
+test('kickoff: the replay\'s camera fits the small game\'s players through the whole clip', () => {
+  const frameOf = (t) => ({ ball: { x: 50 + t, y: 30 }, players: [{ id: 'us-LCM', x: 40 + 2 * t, y: 30 }, { id: 'them-RCM', x: 60, y: 20 - t }] });
+  assert.deepEqual(Kickoff.replayCamera(frameOf, 2), { x0: 40, x1: 60, y0: 18, y1: 30 });
+  assert.equal(Kickoff.replayCamera(() => ({ players: [] }), 1), null);
+  assert.equal(Kickoff.KICKOFF_DEFAULTS.stage, 'small');
+});
+
 test('shell: icons and cards exist for every Road icon', () => {
   for (const n of R.roadNodes(road)) assert.ok(Shell.PLAYER_ICONS[n.icon], `icon "${n.icon}" (${n.id})`);
   for (const c of road.chapters) assert.ok(Shell.PLAYER_ICONS[c.icon], `chapter icon "${c.icon}"`);
