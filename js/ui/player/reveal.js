@@ -32,7 +32,7 @@ import { STRINGS as SHARED, starWord } from './strings.js';
 export const REVEAL_DEFAULTS = Object.freeze({
   lineMaxWords: 14, // [S] KID_REDESIGN §0 rule 3 / R2: the reveal line
   beforeWhyMaxWords: 30, // [S] R2: everything before "Why?"
-  whyMaxWords: 60, // [S] §4.3 step 7: the Why? sheet
+  whyMaxWords: 90, // [S] §4.3 step 7, widened 2026-10-01 (the owner: "a little more explanation"): the principle's own why line joined the sheet
   whyReasons: 2, // [S] §4.3 step 7: up to 2 more reasons
   whyPraise: 1, // [D] one thing you did right keeps the sheet short
   cheerAtMs: 120, // [D] the cheer of a first 3-star starts just after the stars begin
@@ -55,16 +55,18 @@ const words = (s) => String(s ?? '').trim().split(/\s+/).filter(Boolean).length;
 const text = (v) => (typeof v === 'string' ? v.trim() : '');
 
 /**
- * The Why? sheet's content, cut to fit (pure): the title and summary, then up to `whyReasons` reasons and
- * `whyPraise` praise lines while the whole sheet stays within whyMaxWords (praise goes first, then the last reasons).
- * Empty or repeated lines are dropped.
- * @param {{ title?: string, summary?: string, reasons?: string[], praise?: string[] }} why
- * @returns {{ title: string, summary: string, reasons: string[], praise: string[], words: number }}
+ * The Why? sheet's content, cut to fit (pure): the title, the summary and the principle's own because line ("a
+ * little more explanation", the owner, 2026-10-01: why the idea works, data/principles.json `why`), then up to
+ * `whyReasons` reasons and `whyPraise` praise lines while the whole sheet stays within whyMaxWords (praise goes
+ * first, then the last reasons; the because line is protected like the summary). Empty or repeated lines are dropped.
+ * @param {{ title?: string, summary?: string, because?: string, reasons?: string[], praise?: string[] }} why
+ * @returns {{ title: string, summary: string, because: string, reasons: string[], praise: string[], words: number }}
  */
 export function whyModel(why = {}, P = REVEAL_DEFAULTS) {
   const title = text(why?.title);
   const summary = text(why?.summary);
-  const seen = new Set([title.toLowerCase(), summary.toLowerCase()]);
+  const because = text(why?.because);
+  const seen = new Set([title.toLowerCase(), summary.toLowerCase(), because.toLowerCase()]);
   const pick = (list, max) => {
     const out = [];
     for (const s of Array.isArray(list) ? list : []) {
@@ -77,10 +79,10 @@ export function whyModel(why = {}, P = REVEAL_DEFAULTS) {
   };
   const reasons = pick(why?.reasons, P.whyReasons);
   const praise = pick(why?.praise, P.whyPraise);
-  const count = () => words(title) + words(summary) + reasons.reduce((a, s) => a + words(s), 0) + praise.reduce((a, s) => a + words(s), 0);
+  const count = () => words(title) + words(summary) + words(because) + reasons.reduce((a, s) => a + words(s), 0) + praise.reduce((a, s) => a + words(s), 0);
   while (count() > P.whyMaxWords && praise.length) praise.pop();
   while (count() > P.whyMaxWords && reasons.length) reasons.pop();
-  return { title, summary, reasons, praise, words: count() };
+  return { title, summary, because, reasons, praise, words: count() };
 }
 
 /** Words a reveal shows before "Why?" is tapped (the word, the line, the note and the button labels). */
@@ -182,6 +184,7 @@ export function createPlayerReveal(container, { app, budget } = {}) {
     const sheet = el('div', { class: 'pr-why', role: 'dialog', 'aria-modal': 'false', 'aria-labelledby': titleId, onkeydown: (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeWhy(); } } }, [
       el('h2', { class: 'pr-why-title', id: titleId, tabindex: '-1', text: m.title || STRINGS.whyTitle }),
       m.summary ? el('p', { class: 'pr-why-summary', text: m.summary }) : null,
+      m.because ? el('p', { class: 'pr-why-because', text: m.because }) : null,
       m.reasons.length ? el('ul', { class: 'pr-why-list pr-why-reasons', 'aria-label': STRINGS.tryThis }, m.reasons.map((r) => el('li', { text: r }))) : null,
       m.praise.length ? el('div', { class: 'pr-why-good' }, [
         el('p', { class: 'pr-why-kicker', text: STRINGS.didRight }),

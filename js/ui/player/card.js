@@ -54,6 +54,7 @@ export const STRINGS = Object.freeze({
   shirt: 'Shirt',
   number: 'Number',
   nickname: 'Nickname',
+  typeOwn: 'Or type your own',
   noNickname: 'None',
   lockedAt: (n) => `Level ${n}`,
   lockedSr: (name, n) => `${name}. Opens at level ${n}.`,
@@ -135,8 +136,9 @@ export function nicknameList() {
 // ---------------------------------------------------------------- the kit editor (shared with the kick-off)
 
 /**
- * Kit colours, a big shirt-number grid and a nickname from the pick-list, with a live preview. Save stores it through
- * js/rewards.js setKit (so only unlocked colours and listed nicknames are kept) and applies it app-wide.
+ * Kit colours, a big shirt-number grid and a nickname (one tap from the suggestions, or typed: owner's call,
+ * 2026-10-01), with a live preview. Save stores it through js/rewards.js setKit (so only unlocked colours and
+ * cleaned nicknames are kept) and applies it app-wide.
  * @param {object} app
  * @param {{ showLocked?: boolean, saveLabel?: string, onSaved?: (state) => void, actions?: Node[] }} [opts]
  *   showLocked: list locked colours with the level that opens them (the card's Kit tab) or only unlocked ones (the kick-off)
@@ -190,13 +192,29 @@ export function kitEditor(app, { showLocked = true, saveLabel = STRINGS.save, on
     el('span', { text: String(n) }),
   ])), 'pm-nums');
 
-  const nicks = radios(`${group}-nick`, STRINGS.nickname, ['', ...nicknameList()].map((n) => el('label', { class: 'pm-nick' }, [
-    el('input', {
-      type: 'radio', name: `${group}-nick`, value: n, checked: n === (draft.nickname || ''),
-      onchange: (e) => { if (e.target.checked) { draft.nickname = n; touched(); } },
-    }),
-    el('span', { text: n || STRINGS.noNickname }),
-  ])), 'pm-nicks');
+  const listed = nicknameList();
+  const own = el('input', {
+    class: 'pm-nick-own', type: 'text', maxlength: String(Rewards.REWARDS_DEFAULTS?.nicknameMax ?? 10),
+    autocomplete: 'off', spellcheck: 'false', 'aria-label': STRINGS.typeOwn, placeholder: STRINGS.typeOwn,
+    value: draft.nickname && !listed.includes(draft.nickname) ? draft.nickname : '',
+    oninput: (e) => {
+      const clean = Rewards.cleanNickname ? Rewards.cleanNickname(e.target.value) : e.target.value;
+      draft.nickname = clean;
+      // The chips follow: a typed name unchecks them (None stays for an empty box).
+      for (const r of nicks.querySelectorAll('input[type="radio"]')) r.checked = r.value === (clean && listed.includes(clean) ? clean : clean ? null : '');
+      touched();
+    },
+  });
+  const nicks = radios(`${group}-nick`, STRINGS.nickname, [
+    ...['', ...listed].map((n) => el('label', { class: 'pm-nick' }, [
+      el('input', {
+        type: 'radio', name: `${group}-nick`, value: n, checked: n === (draft.nickname || ''),
+        onchange: (e) => { if (e.target.checked) { draft.nickname = n; own.value = ''; touched(); } },
+      }),
+      el('span', { text: n || STRINGS.noNickname }),
+    ])),
+    el('div', { class: 'pm-nick-own-row' }, [own]),
+  ], 'pm-nicks');
 
   const save = el('button', {
     type: 'button', class: 'pm-btn pm-btn--hot pm-kit-save',

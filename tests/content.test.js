@@ -176,14 +176,17 @@ test('principles: names, levels, releases and sources match RESEARCH section 8',
 
 test('principles: learner text is present and within length limits', () => {
   for (const p of principles) {
-    for (const k of ['name', 'short', 'who', 'ruleOfThumb', 'why', 'commonMistake']) assert.ok(isText(p[k]), `${p.id}.${k}`);
+    for (const k of ['name', 'short', 'who', 'ruleOfThumb', 'commonMistake']) assert.ok(isText(p[k]), `${p.id}.${k}`);
     assert.ok(isWording(p.summary), `${p.id}.summary`);
+    assert.ok(isWording(p.why), `${p.id}.why (both wordings: the kid one joined the Why? sheet, 2026-10-01)`);
+    assert.ok(words(p.why.kid) <= 30, `${p.id} kid why is ${words(p.why.kid)} words`);
     assert.ok(words(p.short) <= 4, `${p.id} short "${p.short}" > 4 words`);
     assert.ok(words(p.summary.kid) <= 15, `${p.id} kid summary is ${words(p.summary.kid)} words`);
     assert.ok(!/\(default\)|\[[DSM]\]|\bx\s*[<>=]/.test(p.summary.kid), `${p.id} kid summary has engine jargon`);
     const n = sentences(p.summary.standard);
     assert.ok(n >= 1 && n <= 2, `${p.id} standard summary has ${n} sentences`);
-    assert.ok(sentences(p.why) >= 1 && sentences(p.why) <= 2, `${p.id} why`);
+    assert.ok(sentences(p.why.standard) >= 1 && sentences(p.why.standard) <= 2, `${p.id} why (standard)`);
+    assert.ok(sentences(p.why.kid) >= 1 && sentences(p.why.kid) <= 4, `${p.id} why (kid: short sentences, so up to 4)`);
     assert.equal(sentences(p.commonMistake), 1, `${p.id} commonMistake should be one sentence`);
   }
 });

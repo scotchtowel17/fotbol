@@ -108,6 +108,7 @@ export const PLAY_DEFAULTS = Object.freeze({
   lineMaxWords: 14, // [S] R2
   maxRepMs: 3 * 60 * 1000, // [D] one rep counts at most this much play time (a tab left open is not play)
   whyMaxWords: 20, // [D] a reason, praise line or summary longer than this never goes on the Why? sheet
+  whyBecauseMaxWords: 30, // [D] the principle's own why line (the longest today is 29 words); past this it stays off the sheet
   moveMaxWords: 12, // [D] Full time's "Best move: ..." (2 words) stays within a 14-word line (R2)
   cueLabelSide: 6, // [D] metres in from the touchline away from the ball: where a cue line's label sits
   cameraStep: 0.5, // [D] s between the frames sampled for a small or bigger game's camera (one rect for the whole clip)
@@ -306,11 +307,14 @@ export function whyFor({ principle = null, reasons = [], praise = [], line = '',
   const ideas = Array.isArray(own) ? own : [];
   const title = (typeof principle?.kidName === 'string' && principle.kidName) || principle?.short || '';
   const summary = [typeof principle?.summary === 'string' ? principle.summary : principle?.summary?.kid, takeaway].find(ok) ?? '';
+  // "A little more explanation" (the owner, 2026-10-01): the idea's own because line, from the principle catalogue.
+  const because = [typeof principle?.why === 'string' ? principle.why : principle?.why?.kid]
+    .find((s) => usableText(s, PLAY_DEFAULTS.whyBecauseMaxWords) && s !== summary) ?? '';
   const all = drillFirst(reasons ?? [], ideas).map(textOf);
   const fixes = stars >= 3 ? 0 : stars === 2 ? (all.includes(line) ? 0 : 1) : 2;
   const more = all.filter((t) => ok(t) && t !== line).slice(0, fixes);
   const good = drillFirst(praise ?? [], ideas).map(textOf).filter((t) => ok(t) && t !== line).slice(0, 2);
-  return { title, summary, reasons: more, praise: good };
+  return { title, summary, because, reasons: more, praise: good };
 }
 
 /**

@@ -57,6 +57,17 @@ and anything harder than a 10 to 14 year old needs. What changed, in the audit's
   stays (legible shirt numbers carry the "their number 7" language); the NaN-to-null context change was skipped (the
   gates already exclude the only frames that reach it).
 
+### 2026-10-01, later the same day (the owner's two follow-ups)
+
+- **Type your own nickname**: the kit locker and the kick-off kit step keep the 30 suggestions as one-tap chips and
+  add a text box; `pickNickname` returns the listed entry (listed casing) or the cleaned typed text
+  (`cleanNickname`: letters, digits, spaces, hyphens, apostrophes, 10 characters). R27's no-typed-names rule became
+  guidance: everything stays on the device, and a typed real name only ever shows on the kid's own screen.
+- **The Why? sheet explains a little more**: every principle's `why` became dual wording ({standard, kid}); the kid
+  line (85 authored, each at most 30 words, swept by the copy gates like every other kid string) now sits on the
+  Why? sheet between the summary and the fixes, protected from the cut like the summary; the sheet's budget grew
+  60 → 90 words. Coach mode's Learn library shows the standard wording as before (pickText).
+
 ## Next
 
 1. **Test with real players** (R42). About 5 players aged 10-11 and 5 aged 13-14, in separate groups: time to first drag, what they read aloud and what they skip, whether "Try again" and "Why?" get used, and whether the Road makes sense without help. Nothing in Player mode has been tried by a child yet: every "play-test" so far is the team's own. Watch in particular whether the right area feels fair (2026-09-29): does "anywhere in the green" read, is the green seen in a crowded press, and does 1 star for a spot near the ring on the wrong side of the ball feel right or harsh.

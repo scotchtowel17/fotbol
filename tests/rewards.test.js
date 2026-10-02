@@ -219,13 +219,13 @@ test('rewards: normalizeRewards survives junk, keeps valid data and reads record
   assert.deepEqual(Object.keys(s.days), ['2026-09-27']);
   assert.equal(s.kit.palette, 'classic', 'locked palette refused');
   assert.equal(s.kit.number, null);
-  assert.equal(s.kit.nickname, '', 'a typed name is not a nickname from the list');
-  assert.equal(normalizeRewards({ kit: { nickname: 'rocket' } }).kit.nickname, 'Rocket');
+  assert.equal(s.kit.nickname, 'bLeob', 'a typed name is kept once cleaned (tags and punctuation stripped)');
+  assert.equal(normalizeRewards({ kit: { nickname: 'rocket' } }).kit.nickname, 'Rocket', 'a listed name keeps its listed casing');
   assert.equal(normalizeRewards(normalizeRewards({ best: { a: { score: 70, grade: 'B' } } })).best.a.stars, 1, 'stable on a round trip');
   assert.deepEqual(GRADE_FLOOR, { ...Object.fromEntries(GRADE_BANDS), F: 0 }, 'the grade floors are js/engine/score.js GRADE_BANDS');
 });
 
-test('rewards: nicknames come from a pick-list of about 30 football nicknames', () => {
+test('rewards: nickname suggestions are about 30 football nicknames; a typed one is cleaned and kept (owner, 2026-10-01)', () => {
   assert.ok(NICKNAMES.length >= 25 && NICKNAMES.length <= 40, `${NICKNAMES.length} nicknames`);
   assert.equal(new Set(NICKNAMES.map((n) => n.toLowerCase())).size, NICKNAMES.length, 'no repeats');
   for (const n of ['Rocket', 'The Wall', 'Maestro', 'Flash']) assert.ok(NICKNAMES.includes(n), n);
@@ -234,8 +234,10 @@ test('rewards: nicknames come from a pick-list of about 30 football nicknames', 
     assert.ok(n.length <= REWARDS_DEFAULTS.nicknameMax, `${n} fits the tag over YOU`);
     assert.equal(pickNickname(n.toUpperCase()), n);
   }
-  assert.equal(pickNickname('Mia'), '');
-  assert.equal(pickNickname('  the   wall '), 'The Wall');
+  assert.equal(pickNickname('Mia'), 'Mia', 'a typed name is kept (cleaned), not refused');
+  assert.equal(pickNickname('  the   wall '), 'The Wall', 'a listed name saves in its listed casing');
+  assert.equal(pickNickname('Maggie B!'), 'Maggie B', 'cleaned: letters, digits, spaces, hyphens, apostrophes');
+  assert.equal(pickNickname('Bartholomew the Third'), 'Bartholome', 'capped at nicknameMax');
   assert.equal(pickNickname(null), '');
 });
 
@@ -247,7 +249,7 @@ test('rewards: kit changes respect unlocks and take nicknames from the list only
   assert.deepEqual(kit, { palette: 'gold', number: 10, nickname: 'Maestro' });
   assert.equal(setKit(s, { number: 10 }).kit.number, 10);
   assert.equal(setKit(s, { number: 0 }).kit.number, null);
-  assert.equal(setKit(s, { nickname: 'Mia' }).kit.nickname, '', 'a real name is refused');
+  assert.equal(setKit(s, { nickname: 'Mia' }).kit.nickname, 'Mia', 'a typed name is kept (owner, 2026-10-01)');
   assert.equal(setKit(setKit(s, { nickname: 'Rocket' }), { number: 7 }).kit.nickname, 'Rocket', 'kept when other things change');
   assert.equal(cleanNickname('José Luis-O\'Neil the Third'), 'José Luis');
   assert.equal(cleanNickname('a<script>'), 'ascript');

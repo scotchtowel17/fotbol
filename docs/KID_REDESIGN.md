@@ -107,7 +107,7 @@ Chapters of nodes; each node is a **set** of 5 reps about one to three related p
 4. **Move:** tap YOU then tap a spot, or drag. Aids by level: glow (hot in the right area: where the reveal would give 3 stars) → none. "Watch again" small button.
 5. **Lock:** big **Lock it** button (Enter also locks). No confidence step in Player mode.
 6. **Reveal (tap-paced, never timed):** the right area in green with the best-spot ring inside it, and after a miss an arrow from your spot into the green; stars pop (0.6 s chime; confetti only for the first 3-star of the set); one word (Spot on / Great / Close / Not yet) and one line ≤ 14 words from the top reason in simple wording (e.g. "Get between your striker and our goal."). Buttons: **Next** (primary), **Why?**, **Try again** (only after 0–1 stars: replays the mirrored twin), **See what happens** (continuation replay from your spot).
-7. **Why?** opens a sheet: the principle's kid name and one-sentence summary, up to 2 more reasons, and what you did right. Still ≤ 60 words.
+7. **Why?** opens a sheet: the principle's kid name, its one-sentence summary, its because line (the idea's own "why it works", `why.kid` in the catalogue: a little more explanation, the owner, 2026-10-01), up to 2 more reasons, and what you did right. Still <= 90 words (was 60 before the because line).
 8. After a miss, once per set: "Hard one. Pros miss it too." (R20).
 
 ### 4.4 "Who's open?" rep (about 15 s) — owner: pass

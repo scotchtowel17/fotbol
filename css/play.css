@@ -330,3 +330,6 @@
 :root[data-reduced-motion="true"] :is(.pl-card, .pr-stars.is-animated .pr-star.is-on path, .ft-stars, .ft-star.is-new path, .ft-item, .md-count-n, .board-aid, .ft-bar-fill, .pl-tip) {
   animation: none !important; transition: none !important;
 }
+
+/* The Why? sheet's because line (reveal.js): the idea's own "why it works", quieter than the summary. */
+.pr-why-because { margin: 2px 0 0; font-size: 1.02rem; line-height: 1.45; color: var(--text-muted, #5b655b); }

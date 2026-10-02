@@ -440,7 +440,7 @@ test('import: rewards travel with the progress, sanitised on the way in; a reset
   assert.equal(r.xp, rewards.xp);
   assert.equal(r.kit.palette, 'classic', 'a kit this level has not unlocked is refused');
   assert.equal(r.kit.number, 7);
-  assert.equal(r.kit.nickname, '', 'a nickname that is not on the pick-list is dropped');
+  assert.equal(r.kit.nickname, 'bMiab', 'a typed nickname imports cleaned (owner, 2026-10-01: typing your own is allowed)');
   assert.equal(parseProgressFile(JSON.stringify({ 'fotbol:rewards': { kit: { nickname: 'the wall' } } })).data['fotbol:rewards'].kit.nickname, 'The Wall');
   assert.ok(r.badges['first-s']);
   const b = memStore();

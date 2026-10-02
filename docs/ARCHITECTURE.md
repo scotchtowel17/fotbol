@@ -956,7 +956,7 @@ starsForScore(score) → 0..3, STAR_WORDS, wordForStars(stars), repStars(event) 
 weekStart(day), weekDaysPlayed(state, today) → 0..7                    // days played this week (Monday start; only fills up)
 BADGES, BADGES_BY_ID, badgeProgress(state), CARD_TIERS (1 bronze, 2 silver, 3 gold), cardTier(state, principleId)
 KIT_PALETTES (light shirts only: colour-blind safe against --kit-them), kitOptions(state), paletteById(id), setKit(state, patch),
-NICKNAMES (30 football nicknames), pickNickname(raw) → a NICKNAMES entry or '', cleanNickname(s)
+NICKNAMES (30 football nickname suggestions), pickNickname(raw) → the NICKNAMES entry raw names (any case, listed casing kept), else the cleaned typed text itself (owner, 2026-10-01: typing your own is allowed; cleanNickname strips to letters, digits, spaces, hyphens and apostrophes, at most nicknameMax characters), else ''
 ```
 
 Mirrored drills (`<id>-m`) share one best-score record with their original. `REWARDS_DEFAULTS` and `LEVEL_XP` hold every tunable number.

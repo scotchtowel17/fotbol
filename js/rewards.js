@@ -69,9 +69,10 @@ export const KIT_PALETTES = Object.freeze([
 ].map(Object.freeze));
 
 /**
- * The nicknames to pick from (R27, KID_REDESIGN §6.3): football nicknames, plain and cool, no real names and nothing
- * mean. A pick-list instead of a text box, so no real name is ever typed or stored. At most nicknameMax characters,
- * since the nickname is the tag over YOU on the board.
+ * Suggested nicknames (KID_REDESIGN §6.3): football nicknames, plain and cool. One tap each; since 2026-10-01 (the
+ * owner's call) a kid may also type their own, cleaned by cleanNickname (letters, digits, spaces, hyphens and
+ * apostrophes, at most nicknameMax characters, since the nickname is the tag over YOU on the board). R27's privacy
+ * note still applies as guidance: everything stays on this device, but a typed real name will show on screen.
  */
 export const NICKNAMES = Object.freeze([
   'Ace', 'Anchor', 'Arrow', 'Blaze', 'Cheetah', 'Comet', 'Dynamo', 'Eagle', 'Falcon', 'Flash',
@@ -182,10 +183,13 @@ export function cleanNickname(raw, P = REWARDS_DEFAULTS) {
   return String(raw ?? '').replace(/[^\p{L}\p{N} '-]/gu, '').replace(/\s+/g, ' ').replace(edge, '').slice(0, P.nicknameMax).replace(edge, '');
 }
 
-/** The NICKNAMES entry `raw` names (any case), or '' for anything else: a typed or old free-text name is dropped. */
+/** A usable nickname from `raw`: the NICKNAMES entry it names (any case, so "the wall" saves as "The Wall"), else
+ *  the cleaned typed text itself (owner's call, 2026-10-01: typing your own is allowed; cleanNickname strips
+ *  anything but letters, digits, spaces, hyphens and apostrophes and caps the length). '' when nothing usable. */
 export function pickNickname(raw) {
-  const key = cleanNickname(raw).toLowerCase();
-  return (key && NICKNAMES.find((n) => n.toLowerCase() === key)) || '';
+  const clean = cleanNickname(raw);
+  const key = clean.toLowerCase();
+  return (key && NICKNAMES.find((n) => n.toLowerCase() === key)) || clean;
 }
 
 /** Sanitise stored or imported rewards (anything malformed falls back to defaults). */

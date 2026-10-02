@@ -158,8 +158,8 @@ test('player play: the reveal line is the top fix after a miss, the praise on a 
   for (const s of [PLAY.lineInGreen, PLAY.lineNear, PLAY.lineClose, PLAY.lineStill, PLAY.greenIsRight, PLAY.missNote]) assert.ok(words(s) <= 14 && usableText(s), s);
 });
 
-test('player play: the Why? sheet: the idea, its summary, 2 more reasons at most, what you did right, 60 words at most', () => {
-  const principle = { id: 'D3', kidName: 'Back Up Your Buddy', summary: { kid: "Stand behind your teammate at a slant, ready if they're beaten." } };
+test('player play: the Why? sheet: the idea, its summary, its because line, 2 more reasons at most, what you did right, 90 words at most', () => {
+  const principle = { id: 'D3', kidName: 'Back Up Your Buddy', summary: { kid: "Stand behind your teammate at a slant, ready if they're beaten." }, why: 'If the presser is beaten, the cover player is already in position to stop the attack.' };
   const why = whyFor({
     principle, line: 'Stand at an angle behind your teammate, not straight behind.',
     reasons: [{ text: 'Stand at an angle behind your teammate, not straight behind.' }, { text: 'Move closer to your teammate.' }, { text: 'Drop 5 m deeper.' }, { text: 'Stay in line with your other defenders.' }],
@@ -167,12 +167,15 @@ test('player play: the Why? sheet: the idea, its summary, 2 more reasons at most
   });
   assert.equal(why.title, 'Back Up Your Buddy');
   assert.match(why.summary, /slant/);
+  assert.match(why.because, /already in position/, 'the idea\'s own why line rides along ("a little more explanation", the owner, 2026-10-01)');
+  assert.equal(whyFor({ principle: { ...principle, why: 'w '.repeat(40) } }).because, '', 'an oversized why stays off the sheet');
   assert.deepEqual(why.reasons, ['Move closer to your teammate.', 'Stay in line with your other defenders.'], 'not the line again, no metres');
   const m = whyModel(why);
   assert.ok(m.words <= REVEAL_DEFAULTS.whyMaxWords, `${m.words} words`);
   assert.ok(m.reasons.length <= 2 && m.praise.length <= 1);
-  const long = whyModel({ title: 'Idea', summary: 'word '.repeat(40), reasons: ['one two three four five six seven eight nine ten', 'ten nine eight seven six five four three two one'], praise: ['a b c d e f g h'] });
-  assert.ok(long.words <= 60, 'cut to fit: praise first, then reasons');
+  const long = whyModel({ title: 'Idea', summary: 'word '.repeat(40), because: 'why '.repeat(28), reasons: ['one two three four five six seven eight nine ten', 'ten nine eight seven six five four three two one'], praise: ['a b c d e f g h'] });
+  assert.ok(long.words <= REVEAL_DEFAULTS.whyMaxWords, 'cut to fit: praise first, then reasons (the because line is protected like the summary)');
+  assert.ok(long.because, 'the because line survives the cut');
   assert.equal(long.praise.length, 0);
   assert.deepEqual(whyModel({ title: 'X', summary: 'Y', reasons: ['Same', 'Same', ''], praise: ['Same'] }).reasons, ['Same'], 'no repeats');
 });

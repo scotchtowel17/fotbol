@@ -34,6 +34,7 @@ const BUDGETS = Object.freeze({
   question: { max: 12, fk: true }, // the question at the freeze, a rule's cue
   line: { max: 14, fk: true }, // the reveal line, a praise line, a takeaway, a misconception, a tutorial line, a badge
   summary: { max: 15, fk: true }, // a principle's kid summary (the Why? sheet)
+  because: { max: 30, fk: true }, // a principle's why line, on the Why? sheet since 2026-10-01 ("a little more explanation": longer than a summary, still plain)
   ui: { max: 14, fk: true }, // any other Player-mode string (a key naming a question or brief: 12)
   name: { min: 2, max: 4, fk: false }, // R3: an idea's name in 2-4 plain football words
   title: { max: 8, fk: false }, // a drill's title
@@ -325,6 +326,8 @@ async function principleItems() {
   for (const p of principles) {
     items.push({ src: `principle ${p.id} (${p.category}) kidName`, text: p.kidName, kind: 'name' });
     items.push({ src: `principle ${p.id} (${p.category}) summary.kid`, text: p.summary?.kid, kind: 'summary', group: `principle ${p.id} summary.kid` });
+    const why = typeof p.why === 'string' ? p.why : p.why?.kid;
+    items.push({ src: `principle ${p.id} (${p.category}) why`, text: why, kind: 'because', group: `principle ${p.id} why` });
   }
   return { items, count: principles.length, categories: [...new Set(principles.map((p) => p.category))] };
 }

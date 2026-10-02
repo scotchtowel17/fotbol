@@ -965,7 +965,7 @@ function mountPrinciple(root, app, rawId) {
       ]),
       el('div', { class: 'ln-dgrid' }, [
         el('div', { class: 'ln-dmain' }, [
-          block(L.why, p.why),
+          block(L.why, pickText(p.why, w())),
           block(L.mistake, p.commonMistake, 'ln-block--mistake'),
           ruleOfThumb,
         ]),
