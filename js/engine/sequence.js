@@ -23,7 +23,7 @@ import { clamp, dist, pointSegmentDistance, projectionParam } from './geometry.j
 import { LENGTH, WIDTH, MID_Y } from './pitch.js';
 import { LEARNABLE_ROLES, playerId } from './roles.js';
 import { autoFrame, autoRoles } from './scene.js';
-import { TIMELINE_DEFAULTS, interpKeys, ballAt, meanBallAt, possessionAt, carrierAt, ballEvents, adjustCells, applyAdjustments, adjustmentOf } from './timeline.js';
+import { TIMELINE_DEFAULTS, interpKeys, ballAt, meanBallAt, possessionAt, carrierAt, ballEvents, adjustCells, applyAdjustments, adjustmentOf, overridesAt, tagsAt } from './timeline.js';
 import { rateOptions, swapTeams } from './passing.js';
 
 export const SEQUENCE_DEFAULTS = Object.freeze({
@@ -605,31 +605,4 @@ export function createPlayback(scenario, opts = {}) {
   };
 }
 
-/** Override positions at t, with the learner pinned to learnerSpot if given (timeline.js twin). */
-function overridesAt(tl, t, learnerId, learnerSpot) {
-  const out = {};
-  for (const o of tl.players?.overrides ?? []) {
-    const p = interpKeys(o.keys, t);
-    if (p) out[o.id] = p;
-  }
-  if (learnerSpot && learnerId) out[learnerId] = { x: learnerSpot.x, y: learnerSpot.y };
-  return out;
-}
-
-/** Cumulative tags at t, plus scenario.phase and a derived ballMovingBack (timeline.js twin). */
-function tagsAt(scenario, t, possession, P) {
-  const src = scenario.timeline?.tags;
-  const keys = Array.isArray(src) ? src : src && typeof src === 'object' ? [{ ...src, t: -Infinity }] : [];
-  const tags = {};
-  for (const k of keys) {
-    if (!(k.t <= t)) continue;
-    const { t: _t, ...rest } = k;
-    Object.assign(tags, rest);
-  }
-  if (tags.phase === undefined && scenario.phase) tags.phase = scenario.phase;
-  if (tags.ballMovingBack === undefined && (possession === 'us' || possession === 'them')) {
-    const dx = ballAt(scenario, t).x - ballAt(scenario, t - P.ballBackWindow).x;
-    if ((possession === 'us' ? -dx : dx) >= P.ballBackDist) tags.ballMovingBack = true;
-  }
-  return tags;
-}
+// overridesAt and tagsAt are imported from timeline.js (the byte-for-byte twins here went with the 2026-10-01 audit).

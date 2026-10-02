@@ -189,9 +189,11 @@ export function openModal({ title, content, actions = [], onClose, className } =
   );
   const onRoute = () => close('route');
   window.addEventListener('hashchange', onRoute);
+  document.addEventListener('fotbol:route', onRoute); // replace navigations fire no hashchange (main.js navigateTo)
   dlg.addEventListener('click', (e) => { if (e.target === dlg) close('dismiss'); });
   dlg.addEventListener('close', () => {
     window.removeEventListener('hashchange', onRoute);
+    document.removeEventListener('fotbol:route', onRoute);
     dlg.remove();
     onClose?.(dlg.returnValue);
   }, { once: true });

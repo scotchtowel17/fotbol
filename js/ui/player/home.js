@@ -23,6 +23,7 @@ export const HOME_DEFAULTS = Object.freeze({
   weekDays: 7, // [S] §3: the days of a Monday-to-Sunday week
   zigzag: Object.freeze([0, 1, 0, -1]), // [D] the Road's sideways sway, in node steps, repeating
   pulseMs: 2400, // [D] how long the Match day gate pulses after a tap on the locked tile (3 beats)
+  noteMs: 4000, // [D] how long the tapped lock's sentence ("Win a star in Big Match to open it.") stays up
 });
 
 export const STRINGS = Object.freeze({
@@ -33,7 +34,7 @@ export const STRINGS = Object.freeze({
   whosOpen: "Who's open?",
   matchday: 'Match day',
   finish: (title) => `Finish ${title}`,
-  finishShort: 'Finish',
+  gateNote: (title) => `Win a star in ${title} to open it.`,
   lockedTileSr: (name, hint) => `${name}. Locked. ${hint}.`,
   week: 'This week',
   weekSr: (n, max) => `Days played this week: ${n} of ${max}.`,
@@ -86,14 +87,17 @@ export function homeModel({ road, profile, rewards, today } = {}) {
   const gate = matchdayGate(road);
   return {
     next: next ? { id: next.id, title: next.title, href: nodeHref(road, next), reps: ROAD_DEFAULTS.reps } : null,
+    // Every chapter shows its title (a kid should read what the chapters are called, not guess from icons); only the
+    // current chapter's nodes are on show, the other open chapters fold up (a details/summary the kid can open), and
+    // a locked chapter is its title and a lock, nothing else.
     chapters: roadModel(road, profile).map((c) => ({
-      ...c, showTitle: c.current, nodes: c.nodes.map((n) => ({ ...n, label: n.id === gate?.id ? n.title : null })),
+      ...c, expanded: c.current, nodes: c.nodes.map((n) => ({ ...n, label: n.id === gate?.id ? n.title : null })),
     })),
     tiles: {
       pass: { href: '#/pass' },
       matchday: {
         href: '#/matchday', unlocked: isMatchdayUnlocked(road, profile),
-        hint: gate ? STRINGS.finish(gate.title) : '', short: gate ? STRINGS.finishShort : '',
+        hint: gate ? STRINGS.finish(gate.title) : '', short: gate ? STRINGS.finish(gate.title) : '',
         gate: gate ? { id: gate.id, title: gate.title, icon: gate.icon } : null,
       },
     },
@@ -101,15 +105,16 @@ export function homeModel({ road, profile, rewards, today } = {}) {
   };
 }
 
-/** The words the home shows (the 25-word check, tests/player-shell.test.js), the top bar aside. */
+/** The words the home shows (the 40-word check, tests/player-shell.test.js), the top bar aside. Every chapter title
+ *  counts: they are all visible now (a folded or locked chapter still shows its name). */
 export function homeWords(m) {
   const t = m?.tiles?.matchday;
   return [
     STRINGS.play, m?.next ? STRINGS.next(m.next.title, m.next.reps) : '',
     STRINGS.whosOpen, STRINGS.matchday, t && !t.unlocked ? t.short : '',
     STRINGS.week,
-    ...(m?.chapters ?? []).filter((c) => c.showTitle).map((c) => c.title),
-    ...(m?.chapters ?? []).flatMap((c) => c.nodes.map((n) => n.label)),
+    ...(m?.chapters ?? []).map((c) => c.title),
+    ...(m?.chapters ?? []).filter((c) => c.expanded).flatMap((c) => c.nodes.map((n) => n.label)),
   ].filter(Boolean);
 }
 
@@ -164,22 +169,37 @@ function week(w) {
 function roadView(chapters) {
   let k = 0; // the sway runs on across chapters, so the path never jumps
   const Z = HOME_DEFAULTS.zigzag;
+  const nodeList = (c) => el('ol', { class: 'pm-nodes' }, c.nodes.map((n) => {
+    const x = Z[k++ % Z.length];
+    // A closed node shows a lock; the one that opens Match day keeps its trophy (the locked tile points at it).
+    const disc = el('span', { class: 'pm-node-disc' }, [playerIcon(n.unlocked || n.label ? n.icon : 'lock', { size: 28 })]);
+    const body = [disc, starsRow(n.stars, 'pm-stars pm-node-stars')];
+    if (n.label) body.push(el('span', { class: 'pm-node-label', 'aria-hidden': 'true', text: n.label }));
+    const cls = ['pm-node', `is-${n.kind}`, n.current && 'is-current', !n.unlocked && 'is-locked', n.stars === 3 && 'is-full', n.label && 'has-label'];
+    return el('li', { class: 'pm-node-item', style: { '--x': String(x) }, dataset: { node: n.id } }, [n.unlocked
+      ? el('a', { class: cls, href: n.href, title: n.title, 'aria-label': (n.current ? STRINGS.nodeNextSr : STRINGS.nodeSr)(n.title, n.stars), 'aria-current': n.current ? 'step' : null }, body)
+      : el('span', { class: cls, title: n.title, role: 'img', 'aria-label': STRINGS.lockedSr(n.title) }, body)]);
+  }));
+  // The current chapter is open with its nodes on show; another open chapter folds up behind its title (a native
+  // details, so a tap shows its nodes for a replay); a locked chapter is its title and a lock, no nodes at all.
   return el('section', { class: 'pm-road', 'aria-labelledby': 'pm-road-title' }, [
     el('h2', { id: 'pm-road-title', class: 'visually-hidden', text: STRINGS.road }),
-    el('ol', { class: 'pm-chapters' }, chapters.map((c) => el('li', { class: ['pm-chapter', !c.unlocked && 'is-locked', c.showTitle && 'is-current'] }, [
-      el('h3', { class: ['pm-chapter-title', !c.showTitle && 'visually-hidden'], text: c.title }),
-      c.showTitle ? null : el('span', { class: 'pm-chapter-mark', title: c.title, 'aria-hidden': 'true' }, [playerIcon(c.unlocked ? c.icon : 'lock', { size: 20 })]),
-      el('ol', { class: 'pm-nodes' }, c.nodes.map((n) => {
-        const x = Z[k++ % Z.length];
-        // A closed node shows a lock; the one that opens Match day keeps its trophy (the locked tile points at it).
-        const disc = el('span', { class: 'pm-node-disc' }, [playerIcon(n.unlocked || n.label ? n.icon : 'lock', { size: 28 })]);
-        const body = [disc, starsRow(n.stars, 'pm-stars pm-node-stars')];
-        if (n.label) body.push(el('span', { class: 'pm-node-label', 'aria-hidden': 'true', text: n.label }));
-        const cls = ['pm-node', `is-${n.kind}`, n.current && 'is-current', !n.unlocked && 'is-locked', n.stars === 3 && 'is-full', n.label && 'has-label'];
-        return el('li', { class: 'pm-node-item', style: { '--x': String(x) }, dataset: { node: n.id } }, [n.unlocked
-          ? el('a', { class: cls, href: n.href, title: n.title, 'aria-label': (n.current ? STRINGS.nodeNextSr : STRINGS.nodeSr)(n.title, n.stars), 'aria-current': n.current ? 'step' : null }, body)
-          : el('span', { class: cls, title: n.title, role: 'img', 'aria-label': STRINGS.lockedSr(n.title) }, body)]);
-      })),
+    el('ol', { class: 'pm-chapters' }, chapters.map((c) => el('li', { class: ['pm-chapter', !c.unlocked && 'is-locked', c.expanded && 'is-current'] }, [
+      !c.unlocked
+        ? el('span', { class: 'pm-chapter-head', role: 'img', 'aria-label': STRINGS.lockedSr(c.title) }, [
+          el('span', { class: 'pm-chapter-mark', 'aria-hidden': 'true' }, [playerIcon('lock', { size: 20 })]),
+          el('h3', { class: 'pm-chapter-title', 'aria-hidden': 'true', text: c.title }),
+        ])
+        : c.expanded
+          ? el('h3', { class: 'pm-chapter-title', text: c.title })
+          : el('details', { class: 'pm-chapter-fold' }, [
+            el('summary', { class: 'pm-chapter-head' }, [
+              el('span', { class: 'pm-chapter-mark', 'aria-hidden': 'true' }, [playerIcon(c.icon, { size: 20 })]),
+              el('h3', { class: 'pm-chapter-title', text: c.title }),
+            ]),
+            nodeList(c),
+          ]),
+      c.unlocked && c.expanded ? nodeList(c) : null,
     ]))),
   ]);
 }
@@ -211,10 +231,15 @@ export async function mount(root, app) {
   /** The locked Match day tile: scroll the Road to the node that opens it and make it pulse (a steady ring under
    *  reduced motion); an open node takes keyboard focus. */
   let pulseTimer = 0;
+  let noteTimer = 0;
   function showGate(gate) {
+    showGateNote(gate); // the words come first: the tap always gets an answer, even with the node off show
+    announce(STRINGS.gateSr(gate?.title ?? STRINGS.matchday));
     const item = gate ? [...root.querySelectorAll('.pm-node-item')].find((li) => li.dataset.node === gate.id) : null;
     const node = item?.querySelector('.pm-node');
     if (!node) return;
+    const fold = item.closest('details.pm-chapter-fold');
+    if (fold) fold.open = true; // a folded chapter opens so the kid sees the node the words name
     item.scrollIntoView({ behavior: reducedMotion(app) ? 'auto' : 'smooth', block: 'center' });
     for (const n of root.querySelectorAll('.pm-node.is-pulse')) n.classList.remove('is-pulse');
     void node.offsetWidth; // restart the animation on a second tap
@@ -222,12 +247,21 @@ export async function mount(root, app) {
     clearTimeout(pulseTimer);
     pulseTimer = setTimeout(() => node.classList.remove('is-pulse'), HOME_DEFAULTS.pulseMs);
     if (node.matches('a')) node.focus({ preventScroll: true });
-    announce(STRINGS.gateSr(gate.title));
+  }
+
+  /** The same sentence Match day's locked page says, shown under the tiles while the node pulses. */
+  function showGateNote(gate) {
+    root.querySelector('.pm-gate-note')?.remove();
+    const tiles = root.querySelector('.pm-tiles');
+    if (!tiles || !gate?.title) return;
+    tiles.after(el('p', { class: 'pm-gate-note', text: STRINGS.gateNote(gate.title) }));
+    clearTimeout(noteTimer);
+    noteTimer = setTimeout(() => root.querySelector('.pm-gate-note')?.remove(), HOME_DEFAULTS.noteMs);
   }
 
   draw();
   const offRewards = onRewards(draw);
   const offProfile = onProfile(draw);
-  return () => { alive = false; clearTimeout(pulseTimer); offRewards(); offProfile(); };
+  return () => { alive = false; clearTimeout(pulseTimer); clearTimeout(noteTimer); offRewards(); offProfile(); };
 }
 

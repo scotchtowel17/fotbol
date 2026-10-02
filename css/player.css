@@ -111,8 +111,6 @@
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-family: var(--pm-num); font-weight: 800; font-size: 1.4rem; line-height: 1;
 }
-.pm-level { display: inline-flex; align-items: center; gap: 5px; margin: 0; min-height: 44px; flex: none; }
-.pm-rank { font-family: var(--pm-num); font-weight: 800; font-size: 1.25rem; line-height: 1; white-space: nowrap; }
 .pm-ring { display: block; overflow: visible; }
 .pm-ring-track { fill: none; stroke: var(--surface-3); stroke-width: 4.5; }
 .pm-ring-fill { fill: none; stroke: var(--pm-hot); stroke-width: 4.5; stroke-linecap: round; }
@@ -476,9 +474,6 @@ a.pm-sticker.is-mystery:hover { border-color: var(--pm-hot-deep); color: var(--t
 
 /* ------------------------------------------------------------------ motion */
 
-@media (prefers-reduced-motion: reduce) {
-  .pm-node.is-current .pm-node-disc, .pm-node.is-pulse .pm-node-disc { animation: none; }
-}
 :root[data-reduced-motion="true"] .pm-node.is-current .pm-node-disc,
 :root[data-reduced-motion="true"] .pm-node.is-pulse .pm-node-disc { animation: none; }
 
@@ -490,3 +485,19 @@ a.pm-sticker.is-mystery:hover { border-color: var(--pm-hot-deep); color: var(--t
   font-size: 1rem; line-height: 1.5; color: var(--text);
 }
 .coach-note strong { font-weight: 700; }
+
+/* The tapped lock's answer (home.js showGateNote): the same sentence Match day's locked page says. */
+.pm-gate-note { margin: 10px 0 0; font-size: 1rem; font-weight: 600; color: var(--text-muted); }
+
+/* Chapter folds (home.js roadView): the current chapter is open; another open chapter folds behind its title. */
+.pm-chapter-head { display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; }
+.pm-chapter-head .pm-chapter-mark { margin-top: 0; width: 36px; height: 36px; }
+.pm-chapter-fold { display: grid; justify-items: center; }
+.pm-chapter-fold > summary { list-style: none; cursor: pointer; border-radius: 12px; }
+.pm-chapter-fold > summary::-webkit-details-marker { display: none; }
+.pm-chapter-fold > summary:focus-visible { outline: 3px solid var(--pm-hot); outline-offset: 2px; }
+.pm-chapter.is-locked .pm-chapter-title { color: var(--text-muted); }
+
+/* The grown-up check before Coach mode (shell.js): a sum an adult answers without thinking. */
+.pm-sheet-sum { display: grid; gap: 8px; margin-top: 10px; }
+.pm-sheet-sum-in { font-size: 1.25rem; padding: 8px 10px; width: 90px; border-radius: 10px; border: 2px solid var(--border, #c8cfc2); }

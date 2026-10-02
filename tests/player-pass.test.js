@@ -50,11 +50,11 @@ const words = (s) => String(s).trim().split(/\s+/).filter(Boolean).length;
 // ---- labels and outcomes
 
 test('pass: every engine label shows a shape AND a word, with a tone and a lane style', () => {
-  const want = { best: '★ Best', good: '✓ Good', risky: '! Risky', 'cut-out': '✗ Cut out', offside: '✗ Offside', danger: '✗ Danger' };
+  const want = { best: '★ Best', good: '✓ Good', risky: '! Risky', 'cut-out': '✗ Cut out', offside: '✗ Cut out', danger: '✗ Cut out' };
   for (const [label, text] of Object.entries(want)) {
     const L = labelStyle(label);
     assert.equal(L.text, text, label);
-    assert.equal(L.key, label);
+    assert.equal(L.key, label === 'offside' || label === 'danger' ? 'cut-out' : label, 'the kid reads four words (audit 2026-10-01)');
     assert.ok(['good', 'warn', 'bad'].includes(L.tone), `${label} tone`);
     assert.ok(['solid', 'dashed', 'dotted'].includes(L.line), `${label} line`);
   }
@@ -67,9 +67,9 @@ test('pass: every engine label shows a shape AND a word, with a tone and a lane 
   for (const k of ['cut-out', 'offside', 'danger']) assert.equal(labelStyle(k).shape, '✗', `${k} is a cross`);
   assert.equal(labelStyle('nonsense').key, 'risky', 'an unknown label reads as risky (never as good)');
   assert.deepEqual(Object.keys(LABELS).sort(), Object.keys(STRINGS.labels).sort(), 'a word for every label');
-  assert.equal(STRINGS.outcomes.danger, 'Danger!', 'the banner and the label agree');
-  const ranks = rankOptions(Object.keys(LABELS).map((l, i) => ({ id: `x${i}`, label: l, score: 50 }))).map((o) => o.label);
-  assert.deepEqual(ranks, ['best', 'good', 'risky', 'cut-out', 'offside', 'danger']);
+  assert.equal(Object.keys(STRINGS.labels).length, 4, 'four option words, never six (audit 2026-10-01)');
+  const ranks = rankOptions(['best', 'good', 'risky', 'cut-out', 'offside', 'danger'].map((l, i) => ({ id: `x${i}`, label: l, score: 50 }))).map((o) => o.label);
+  assert.deepEqual(ranks, ['best', 'good', 'risky', 'cut-out', 'offside', 'danger'], 'the engine labels still rank apart');
 });
 
 test('pass: outcomes: cut out groans (with the blocker), a broken line lifts, a safe pass is quiet, all with words', () => {
@@ -102,7 +102,7 @@ test('pass: outcomes: cut out groans (with the blocker), a broken line lifts, a 
   assert.equal(off.tone, 'bad');
 
   const dangerSafe = passOutcome({ id: 'us-RCB', label: 'danger', pSafe: 0.7, blocker: { id: 'them-ST', at: { x: 10, y: 30 } } }, { outcome: 'danger' });
-  assert.equal(dangerSafe.text, 'Danger!');
+  assert.equal(dangerSafe.text, 'Cut out!', 'a danger pass wears the fourth word (audit 2026-10-01)');
   assert.ok(!dangerSafe.intercepted);
   const dangerCut = passOutcome({ id: 'us-RCB', label: 'danger', pSafe: 0.4, blocker: { id: 'them-ST', at: { x: 10, y: 30 } } }, { outcome: 'danger' });
   assert.equal(dangerCut.text, 'Cut out!', 'a pass across our goal that is likely cut out is shown cut out');
@@ -183,7 +183,7 @@ test('pass: the reveal labels every teammate option, draws your lane and the bes
   const byRec = Object.fromEntries(labels.map((l) => [l.receiverId, l]));
   assert.equal(byRec['us-LCM'].text, '★ Best');
   assert.equal(byRec['us-ST'].text, '✗ Cut out');
-  assert.equal(byRec['us-LW'].text, '✗ Offside');
+  assert.equal(byRec['us-LW'].text, '✗ Cut out');
   assert.equal(byRec['us-DM'].text, '! Risky');
   assert.equal(byRec['us-RCB'].text, '✓ Good');
   for (const l of labels) {
@@ -937,7 +937,8 @@ test('pass: on a phone, a small game\'s choice zooms in on a compact cast: figur
   // half the board empty grass), since the cast often reached both touchlines. cast.js now stages a pass rep's smaller
   // games on the most compact cast that passes the gate; the choice's camera (chooseCamera) fits just it. Here: the
   // phone's board (359 x 570 CSS px, upright), the window board.js setCamera gives the rect (cameraViewBox with room
-  // over it for a figure and YOUR tag, standHeight) and the figures' height there, old order against compact.
+  // over it for a figure and YOUR tag, standHeight) and the figures' height there. (The old-order comparison went
+  // with the passCompact flag, audit 2026-10-01: the absolute bounds below are the regression guard.)
   const [pd, cast, { buildFormations }, board, { FIGURE }] = await Promise.all([
     import('../js/engine/passdrill.js'), import('../js/engine/cast.js'), import('../js/data.js'), import('../js/ui/board.js'), import('../js/ui/figures.js'),
   ]);
@@ -961,7 +962,7 @@ test('pass: on a phone, a small game\'s choice zooms in on a compact cast: figur
       const drill = pd.generatePassDrill({ seed, role, formations });
       if (!drill) continue;
       const got = {};
-      for (const [key, params] of [['now', undefined], ['old', { passCompact: false }]]) {
+      for (const [key, params] of [['now', undefined]]) {
         const st = cast.stagePassDrill(drill, 'small', { formations, params });
         if (!st) continue;
         const scene = passScene(drill, st, { formations, passdrill: pd, reduceFrame: cast.reduceFrame });
@@ -973,16 +974,15 @@ test('pass: on a phone, a small game\'s choice zooms in on a compact cast: figur
         got[key] = phone(cam);
       }
       if (got.now) rows.push({ id: drill.id, ...got });
-      if (got.old) assert.ok(got.now, `${drill.id}: the old order played it small, so must the compact one`);
+
     }
   }
   const med = (v) => [...v].sort((a, b) => a - b)[v.length >> 1];
-  const both = rows.filter((r) => r.old);
-  const now = med(rows.map((r) => r.now.fig)), old = med(both.map((r) => r.old.fig)), nowBoth = med(both.map((r) => r.now.fig));
-  t?.diagnostic?.(`small pass games on a phone: ${rows.length} (old order ${both.length}); figures median ${now.toFixed(0)} px (the same reps: ${nowBoth.toFixed(0)} px, old order ${old.toFixed(0)} px; the full match ${full.fig.toFixed(0)} px); ${med(rows.map((r) => r.now.ppm)).toFixed(1)} px/m (old ${med(both.map((r) => r.old.ppm)).toFixed(1)}, full ${full.ppm.toFixed(1)}); at most 45 px: ${rows.filter((r) => r.now.fig <= 45).length} of ${rows.length} (old ${both.filter((r) => r.old.fig <= 45).length} of ${both.length})`);
+  const now = med(rows.map((r) => r.now.fig));
+  t?.diagnostic?.(`small pass games on a phone: ${rows.length}; figures median ${now.toFixed(0)} px (the full match ${full.fig.toFixed(0)} px); ${med(rows.map((r) => r.now.ppm)).toFixed(1)} px/m (full ${full.ppm.toFixed(1)}); at most 45 px: ${rows.filter((r) => r.now.fig <= 45).length} of ${rows.length}`);
   assert.ok(rows.length >= 12, `${rows.length} small games`);
   assert.ok(now >= full.fig * 1.2, `small games' figures ${now.toFixed(0)} px, the full match's ${full.fig.toFixed(0)} px`);
-  assert.ok(nowBoth >= old + 4, `the same reps: ${nowBoth.toFixed(0)} px now, ${old.toFixed(0)} px with the old order`);
+  assert.ok(now >= 55, `figures median ${now.toFixed(0)} px (62 px when the flag was retired: a drift back toward wide casts fails here)`);
   assert.ok(rows.filter((r) => r.now.fig <= full.fig * 1.1).length <= 0.35 * rows.length, 'most small games are drawn bigger than the full match');
 });
 
@@ -1312,7 +1312,7 @@ async function playPassSet({ params = [], profile }) {
     page.doc.body.append(root);
     const phaseOf = () => root.querySelector('.ps')?.dataset.phase ?? null;
     // The card's words (the stage line, then the card's line), as last written: read as a rep's watch begins.
-    const cardOf = () => `${root.querySelector('.ps-card-stage')?.textContent ?? ''}|${root.querySelector('.ps-card-text')?.textContent ?? ''}`;
+    const cardOf = () => `${root.querySelector('.ps-card')?.dataset.stage ?? ''}|${root.querySelector('.ps-card-text')?.textContent ?? ''}`;
     let board = null, practice = false;
     const sounds = [], navigated = [];
     const app = {
@@ -1444,19 +1444,15 @@ function checkPassSet(played, { plan, where }) {
     else assert.equal(n, 22, `${rep}: the full match draws everyone`);
     const you = seg[0].learner;
     assert.ok(seg.every((r) => r.learner === you) && ids.includes(you) && you.startsWith('us-'), `${rep}: YOU (${you}) are drawn`);
-    // The card, as the watch began: the game's size and "N v M" for the players drawn.
+    // The card, as the watch began: it carries the stage played (data only: the stage line went with the audit).
     const card = seg.find((r) => r.ph === 'watch').card;
-    const ours = ids.filter((id) => id.startsWith('us-')).length, theirs = ids.filter((id) => id.startsWith('them-')).length;
-    const vs = /(\d+) v (\d+)/.exec(card);
-    const stage = /Full match/.test(card) ? 'full' : /Small game/.test(card) ? 'small' : /Bigger game/.test(card) ? 'medium'
-      : /Now \d+ v \d+!/.test(card) && vs ? (+vs[1] + +vs[2] === 22 ? 'full' : 'medium') : null;
-    assert.ok(stage, `${rep}: the card names the game ("${card}")`);
-    if (vs) assert.deepEqual([+vs[1], +vs[2]], [ours, theirs], `${rep}: "${card}" is what is drawn (${ours} v ${theirs})`);
+    const stage = /^(small|medium|full)\|/.exec(card)?.[1] ?? null;
+    assert.ok(stage, `${rep}: the card carries the stage ("${card}")`);
     if (stage === 'full') assert.equal(n, 22, `${rep}: the full match`);
     else assert.ok(stage === 'small' ? n >= 3 && n <= 6 : n >= 6 && n <= 12, `${rep}: ${n} players in a ${stage} game`);
     assert.ok(STAGE_RANK[stage] >= STAGE_RANK[plan[i]], `${rep}: played ${stage}, its slot wants ${plan[i]} (never smaller)`);
     stages.push(stage);
-    assert.equal(stage, want.stage, `${rep}: the card names the stage it is played at`);
+    assert.equal(stage, want.stage, `${rep}: the card carries the stage it is played at`);
     // Targets: only teammates drawn (never YOU); a small or bigger game's are its gate's 3-5.
     const targets = log.targets.filter(inSeg(i));
     assert.ok(targets.length >= 1, `${rep}: targets at the choice`);

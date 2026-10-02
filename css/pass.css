@@ -114,9 +114,6 @@
 .ps-card[data-side="right"] { left: auto; right: var(--ps-card-gap, 12px); width: var(--ps-card-w, auto); --ps-card-x: 0%; }
 .ps-card-text { margin: 0; font-size: clamp(1.5rem, 5.5vw, 2.1rem); font-weight: 850; line-height: 1.15; letter-spacing: -0.01em; }
 /* The game's size over the card's line ("Small game: 3 v 2"; the first time the set grows, "Now 6 v 5!" in the hot colour). */
-.ps-card-stage { margin: 0 0 6px; font-size: 1.125rem; font-weight: 800; line-height: 1.25; color: var(--ps-card-ink); opacity: 0.86; white-space: nowrap; }
-.ps-card-stage[hidden] { display: none; }
-.ps-card.is-bigger .ps-card-stage { opacity: 1; color: var(--pm-hot, #ffb81c); font-size: 1.3rem; }
 .ps-banner {
   top: 14px; transform: translateX(-50%); /* a broadcast strip at the top edge: it covers as little play as it can */
   display: inline-flex; align-items: center; gap: 12px; white-space: nowrap;
@@ -173,7 +170,4 @@
 .ps-fb-full { max-width: 480px; margin: 0 auto; padding: 32px 16px; display: grid; gap: 12px; text-align: center; }
 
 /* ---- reduced motion: no pops, no flashing, no marching (the ring stays, still) */
-@media (prefers-reduced-motion: reduce) {
-  .ps-card, .ps-banner, .ps-view .mk-ring.ps-flash, .ps-view .mk-segment.ps-preview { animation: none !important; }
-}
 :root[data-reduced-motion="true"] :is(.ps-card, .ps-banner, .ps-view .mk-ring.ps-flash, .ps-view .mk-segment.ps-preview) { animation: none !important; }

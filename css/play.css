@@ -25,6 +25,7 @@
   /* the right area ("Anywhere in the green is right"): a lit patch of bright green on the grass, with a light edge */
   --pl-zone-fill: rgb(176 255 92 / 0.34);
   --pl-zone-edge: #eaffc2;
+  --pl-in-ink: #3f7d08; /* the "in the green" word (Match day's Spot on) */
   /* a reward shown big at Full time */
   --pl-item-bg: #1f2c25;
   --pl-item-edge: transparent;
@@ -33,7 +34,7 @@
   :root:not([data-theme="light"]) {
     --pl-hot-ink: #ff9d63; --pl-warm-ink: #ffd65c; --pl-cold-ink: #8fc4ff;
     --pl-star-off: #56685e; --pl-item-bg: #22332a; --pl-item-edge: #3a5246;
-    --pl-zone-fill: rgb(150 240 80 / 0.26); --pl-zone-edge: #c6f79a;
+    --pl-zone-fill: rgb(150 240 80 / 0.26); --pl-zone-edge: #c6f79a; --pl-in-ink: #b9f27d;
   }
 }
 :root[data-theme="dark"] {
@@ -55,7 +56,7 @@
   opacity: calc(0.45 + 0.55 * var(--aid-k, 0.5));
   transition: stroke 0.2s, opacity 0.2s, stroke-width 0.2s;
 }
-.board-aid.aid-hot { stroke: var(--pl-hot); }
+.board-aid.aid-hot { stroke: var(--pl-zone-edge); } /* in the right area: the green's own edge colour */
 .board-aid.aid-warm { stroke: var(--pl-warm); stroke-dasharray: 1.3 0.6; }
 .board-aid.aid-cool { stroke: var(--pl-cool); stroke-dasharray: 0.55 0.6; }
 .board-aid.aid-cold { stroke: var(--pl-cold); stroke-dasharray: 0.05 0.75; }
@@ -180,13 +181,6 @@
 .pl-card.is-changed { box-shadow: 0 0 0 4px var(--learner), 0 10px 30px rgb(0 0 0 / 0.35); }
 .pl-card-text { margin: 0; font-size: clamp(1.5rem, 5.5vw, 2.1rem); font-weight: 850; line-height: 1.15; letter-spacing: -0.01em; }
 /* The stage under it ("Small game: 3 v 2"), a pill; the first rep of a bigger stage ("Now 6 v 5!") in the ball's yellow. */
-.pl-card-stage {
-  display: inline-block; margin: 10px 0 0; padding: 3px 12px; border-radius: 999px; white-space: nowrap;
-  font-size: clamp(1.05rem, 4vw, 1.25rem); font-weight: 800; line-height: 1.3;
-  background: rgb(255 255 255 / 0.14); color: var(--pl-card-ink);
-}
-.pl-card-stage[hidden] { display: none; }
-.pl-card.is-bigger .pl-card-stage { background: var(--ball-halo, #ffdd00); color: #14170f; font-size: clamp(1.25rem, 5vw, 1.55rem); }
 .pl.is-role-change .token.is-learner .token-glow { animation-duration: 0.9s; }
 @keyframes pl-pop { from { opacity: 0; transform: translate(var(--pl-card-x, -50%), var(--pl-card-y, -50%)) scale(0.85); } to { opacity: 1; transform: translate(var(--pl-card-x, -50%), var(--pl-card-y, -50%)) scale(1); } }
 
@@ -317,17 +311,12 @@
 @keyframes md-count { from { opacity: 0; transform: scale(1.4); } 30% { opacity: 1; transform: scale(1); } to { opacity: 0.9; transform: scale(0.96); } }
 .md-heat { display: flex; align-items: center; justify-content: center; gap: 12px; font-size: clamp(2rem, 8vw, 2.8rem); font-weight: 900; line-height: 1.1; }
 .md-heat[hidden] { display: none; }
-.md-heat[data-heat="hot"] { color: var(--pl-hot-ink); }
+.md-heat[data-heat="hot"] { color: var(--pl-in-ink, #3f7d08); } /* Spot on: green, the right area's word */
 .md-heat[data-heat="warm"] { color: var(--pl-warm-ink); }
 .md-heat[data-heat="cold"] { color: var(--pl-cold-ink); }
-.md-shape { flex: none; width: 1.05em; height: 1.05em; }
-.md-shape--hot { fill: currentColor; stroke: none; }
-.md-shape--warm, .md-shape--cold { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 .md-results[hidden] { display: none; }
 .md-summary { display: grid; gap: 10px; justify-items: center; text-align: center; }
 .md-word { margin: 0; font-size: 1.7rem; font-weight: 900; line-height: 1.1; }
-.md-streak { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: 1.125rem; font-weight: 750; }
-.md-streak .md-shape { width: 1.4em; height: 1.4em; color: var(--pl-hot-ink); }
 .md-hardest { min-height: 48px; }
 .md-locked { max-width: 480px; margin: 0 auto; padding: 56px 16px; display: grid; gap: 12px; justify-items: center; text-align: center; }
 .md-locked h1 { margin: 0; font-size: 1.8rem; font-weight: 900; }
@@ -338,10 +327,6 @@
 
 /* ------------------------------------------------------------------ reduced motion: nothing pops, flies or pulses */
 
-@media (prefers-reduced-motion: reduce) {
-  .pl-card, .pr-stars.is-animated .pr-star.is-on path, .ft-stars, .ft-star.is-new path, .ft-item, .md-count-n, .board-aid, .pl-tip { animation: none !important; transition: none !important; }
-  .ft-bar-fill { transition: none !important; }
-}
 :root[data-reduced-motion="true"] :is(.pl-card, .pr-stars.is-animated .pr-star.is-on path, .ft-stars, .ft-star.is-new path, .ft-item, .md-count-n, .board-aid, .ft-bar-fill, .pl-tip) {
   animation: none !important; transition: none !important;
 }

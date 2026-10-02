@@ -3,13 +3,14 @@
 //   #/kickoff        step 1: a full-bleed pitch with a real authored drill replaying behind the wordmark (dimmed, silent;
 //                    a still frame under reduced motion): tabletop figures, as a small game when the drill can be one
 //                    (js/engine/cast.js bestStage: only the players the drill is about, the camera on them, so the
-//                    figures are big), one big Play button and a small "Coach or parent?" link. 6 words or fewer.
+//                    figures are big) and one big Play button. 6 words or fewer.
 //   #/kickoff/pick   step 2: "What do you play?" with four big players: Defender · Midfielder · Winger · Striker, each
 //                    a figure (js/ui/figures.js) in your kit with its position's number and look (shell.js kidFigure). A tap
 //                    saves the profile (group, its starting role, onboarded; road.js pickGroup) and opens '#/play/first'
 //                    (the onboarding set, owned by js/ui/player/play.js). Play on step 1 opens this step in place and
 //                    pushes its address, so Back returns to step 1.
-//   #/kickoff/kit    step 4: "Make it yours" (skippable): kit colour (unlocked only), shirt number, nickname from the
+//   #/kickoff/kit    step 4: "Make it yours" (skippable): kit colour (locked ones show their level, as in the kit
+//                    locker, so the choice reads as a collection to earn, never a broken one-swatch section),
 //                    pick-list (card.js kitEditor, saved through js/rewards.js setKit) → '#/'.
 //
 // Nothing touches the DOM at import time; STRINGS holds every visible word (tests/copy.test.js).
@@ -32,7 +33,6 @@ export const KICKOFF_DEFAULTS = Object.freeze({
 export const STRINGS = Object.freeze({
   wordmark: 'fotbol',
   play: 'Play',
-  coachAsk: 'Coach or parent?',
   pickTitle: 'What do you play?',
   groups: ROAD_STRINGS.groups,
   kitTitle: 'Make it yours',
@@ -41,9 +41,8 @@ export const STRINGS = Object.freeze({
 });
 
 const reducedMotion = (app) => {
-  if (app?.settings?.reducedMotion) return true;
-  if (globalThis.document?.documentElement?.dataset?.reducedMotion === 'true') return true;
-  try { return !!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+  // main.js resolves the query into the attribute (audit 2026-10-01): read it, with the setting for DOM-less tests.
+  return app?.settings?.reducedMotion === true || globalThis.document?.documentElement?.dataset?.reducedMotion === 'true';
 };
 
 /** The replay behind the wordmark: the first of KICKOFF_DEFAULTS.drills that loads. */
@@ -134,11 +133,6 @@ export function replayCamera(frameOf, duration, step = KICKOFF_DEFAULTS.cameraSt
   return r;
 }
 
-function toCoach(app) {
-  app.setSettings({ mode: 'coach' });
-  app.navigate('#/coach');
-}
-
 /** A position's player on its button: a figure in your kit with the position's number and look (as YOU will be there). */
 function shirt(group) {
   const role = DEFAULT_ROLE[group];
@@ -163,7 +157,7 @@ export async function mount(root, app, params = []) {
         el('h1', { class: 'pm-h1', text: STRINGS.kitTitle }),
         el('a', { class: 'pm-btn pm-btn--quiet', href: '#/', onclick: (e) => { e.preventDefault(); done(); } }, [el('span', { text: STRINGS.skip })]),
       ]),
-      kitEditor(app, { showLocked: false, saveLabel: STRINGS.done, onSaved: done }),
+      kitEditor(app, { showLocked: true, saveLabel: STRINGS.done, onSaved: done }),
     ]));
     return () => {};
   }
@@ -185,10 +179,11 @@ export async function mount(root, app, params = []) {
         showPick();
       },
     }, [playerIcon('play', { size: 30 }), el('span', { text: STRINGS.play })]);
+    // One tappable thing: Play. The "Coach or parent?" door left this screen with the 2026-10-01 audit (it lives in
+    // the settings sheet, behind a grown-up check); a parent can still type #/coach.
     front.replaceChildren(
       el('h1', { class: 'pm-wordmark', text: STRINGS.wordmark }),
       play,
-      el('a', { class: 'pm-kick-coach', href: '#/coach', onclick: (e) => { e.preventDefault(); toCoach(app); } }, [STRINGS.coachAsk]),
     );
   }
 

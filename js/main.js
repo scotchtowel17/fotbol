@@ -13,7 +13,7 @@
 //   Player  '#/' (Player home, or '#/kickoff' until a position is picked), '#/kickoff', '#/play', '#/pass',
 //           '#/matchday', '#/card'                                        → js/ui/player/<name>.js
 //   Coach   '#/coach' (Coach home; '#/' is Coach home in Coach mode), '#/drill', '#/explore', '#/learn', '#/live',
-//           '#/progress', '#/author', '#/trophies', '#/credits', '#/dev'  → js/ui/modes/<mode>.js
+//           '#/progress', '#/trophies', '#/credits', '#/dev'  → js/ui/modes/<mode>.js
 // Every route works in both modes: a Coach route opened in Player mode shows the Coach header, whose "Back to Player
 // mode" returns to '#/'. Each module exports mount(root, app, params) → void | unmount() and is loaded with a dynamic
 // import(), so one that doesn't exist yet shows a friendly "coming soon" card instead of breaking the app.
@@ -44,7 +44,6 @@ export const MODE_INFO = Object.freeze({
   live: { title: 'Live', icon: 'live', blurb: 'Play runs on and you keep adjusting. Your score is how well you held your spot.' },
   progress: { title: 'Progress', icon: 'progress', blurb: 'Your stars for each principle, your history, and export or import of your progress.' },
   trophies: { title: 'Trophies', icon: 'trophy', blurb: 'Your level, badges, sticker album and kit.' },
-  author: { title: 'Author', icon: 'code', blurb: 'Build a scenario, let the engine key it, and export the JSON.' },
   credits: { title: 'Credits', blurb: 'The data, libraries and sources fotbol is built on.' },
   dev: { title: 'Playground', icon: 'pitch', blurb: 'Developer playground for the engine: drag yourself or the ball and see the ghost, score and reasons live.' },
 });
@@ -111,12 +110,15 @@ export function toHash(target = '') {
  */
 export function navigateTo(target, { replace = false } = {}, { location, history, route }) {
   const hash = toHash(target);
+  // Any programmatic route change says so (audit 2026-10-01): a replaceState run never fires hashchange, so an open
+  // modal listening for the route would survive onto the next screen without this (components.js openModal).
+  const announce = () => { try { globalThis.document?.dispatchEvent(new CustomEvent('fotbol:route', { detail: { hash } })); } catch { /* no DOM */ } };
   if (replace) {
     let swapped = false;
     try { history.replaceState(history.state, '', hash); swapped = true; } catch { /* no history API: a plain hash change below */ }
-    if (swapped) { route(); return hash; }
+    if (swapped) { announce(); route(); return hash; }
   }
-  if (location.hash === hash) route();
+  if (location.hash === hash) { announce(); route(); }
   else location.hash = hash;
   return hash;
 }
@@ -216,15 +218,20 @@ const EMPTY_DATA = Object.freeze({
 
 // ---------------------------------------------------------------- browser-only below
 
+const motionQuery = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+
 function applySettings(s) {
   const d = document.documentElement.dataset;
   if (s.theme === 'auto') delete d.theme; else d.theme = s.theme;
   d.wording = s.wording;
   d.appMode = s.mode;
-  if (s.reducedMotion) d.reducedMotion = 'true'; else delete d.reducedMotion;
+  // Resolved once, written always (audit 2026-10-01): CSS reads [data-reduced-motion="true"] alone, with no doubled
+  // @media blocks, and board.js/celebrate.js read this attribute instead of each running their own query.
+  d.reducedMotion = String(s.reducedMotion === true || !!motionQuery?.matches);
 }
 
 function createApp() {
+  motionQuery?.addEventListener?.('change', () => applySettings(app.settings));
   const listeners = new Set();
   const app = {
     data: EMPTY_DATA,

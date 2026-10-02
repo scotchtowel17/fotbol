@@ -205,13 +205,13 @@ export async function mount(root, app) {
     ]));
   }
 
-  /** The way into the trophy room (ARCHITECTURE §5.13): your rewards level and its rank icon. */
+  /** The way into the trophy room (ARCHITECTURE §5.13): your rewards level. */
   function trophiesTile() {
     const c = C();
     const m = levelModel(loadRewards(app));
     return el('a', { class: 'pg-tile pg-tile--trophies', href: '#/trophies' }, [
       el('p', { class: 'pg-tile-label', text: c.trophies }),
-      el('p', { class: 'pg-tile-value' }, [el('span', { 'aria-hidden': 'true', text: m.icon }), rewardCopy(wording()).lv(m.level)]),
+      el('p', { class: 'pg-tile-value' }, [rewardCopy(wording()).lv(m.level)]),
       el('p', { class: 'pg-tile-extra' }, [icon('trophy', { size: 16 }), ` ${c.trophyRoom}`]),
     ]);
   }

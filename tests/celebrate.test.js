@@ -1,5 +1,5 @@
 // The rewards UI's pure parts: js/ui/rewards-store.js (awarding, gains, the kit), js/ui/celebrate.js (what a
-// celebration shows and plays), js/ui/sound.js (never throws) and the trophy room's album (js/ui/modes/trophies.js).
+// celebration shows and plays), js/ui/sound.js (never throws) and the merged trophy room's album (js/ui/player/card.js).
 // No DOM: everything here runs under node --test and in tests.html.
 
 import { test, assert, loadJSON, isNode } from './harness.js';
@@ -9,11 +9,11 @@ import {
 } from '../js/ui/rewards-store.js';
 import {
   celebrationModel, rewardChips, soundPlan, levelUpModel, levelModel, pillModel, starSlots, confettiPieces,
-  rewardCopy, rankIcon, RANK_ICONS, CELEBRATE_DEFAULTS, TIER_ICONS,
+  rewardCopy, CELEBRATE_DEFAULTS, TIER_ICONS,
 } from '../js/ui/celebrate.js';
 import { createSound, SOUND_NAMES } from '../js/ui/sound.js';
-import { albumModel, shortDay } from '../js/ui/modes/trophies.js';
-import { createRewards, applyEvent, BADGES, KIT_PALETTES, LEVEL_XP, RANKS } from '../js/rewards.js';
+import { stickerAlbum, shortDay } from '../js/ui/player/card.js';
+import { createRewards, applyEvent, BADGES, KIT_PALETTES, LEVEL_XP } from '../js/rewards.js';
 import { createStore } from '../js/store.js';
 
 const [principleData, curriculum] = await Promise.all([loadJSON('data/principles.json'), loadJSON('data/curriculum.json')]);
@@ -74,16 +74,14 @@ test('celebrate: award saves the event with the local day and hands the gains to
 });
 
 test('celebrate: gains merge (a rep and its stickers; a whole session) and survive a damaged saved session', () => {
-  const rep = { xp: 70, stars: 2, newBest: true, improved: false, firstTry: false, badges: ['first-rep'], cards: [], levelUp: { from: 1, to: 2, rank: RANKS[0], rankUp: false, unlocks: ['sky'] } };
-  const card = { xp: 30, stars: null, newBest: false, improved: false, badges: ['first-rep', 'collector'], cards: [{ id: 'D3', tier: 1, upgrade: false }], levelUp: { from: 2, to: 3, rankUp: true, unlocks: ['lime'] } };
+  const rep = { xp: 70, stars: 2, newBest: true, improved: false, firstTry: false, badges: ['hat-trick'], cards: [], levelUp: { from: 1, to: 2, unlocks: ['sky'] } };
+  const card = { xp: 30, stars: null, newBest: false, improved: false, badges: ['hat-trick', 'collector'], cards: [{ id: 'D3', tier: 1, upgrade: false }], levelUp: { from: 2, to: 3, unlocks: ['lime'] } };
   const m = mergeGains(rep, card);
   assert.equal(m.xp, 100);
   assert.equal(m.stars, 2, 'the rep\'s stars');
-  assert.deepEqual(m.badges, ['first-rep', 'collector'], 'a badge counts once');
+  assert.deepEqual(m.badges, ['hat-trick', 'collector'], 'a badge counts once');
   assert.deepEqual(m.levelUp.from, 1);
   assert.deepEqual(m.levelUp.to, 3);
-  assert.equal(m.levelUp.rank.id, 'academy');
-  assert.equal(m.levelUp.rankUp, true);
   assert.deepEqual(m.levelUp.unlocks, ['sky', 'lime']);
   const later = mergeGains(m, { xp: 30, cards: [{ id: 'D3', tier: 2, upgrade: true }] });
   assert.deepEqual(later.cards, [{ id: 'D3', tier: 2, upgrade: false }], 'one card per principle: its best tier, new this session');
@@ -155,7 +153,7 @@ test('celebrate: Coach mode shows no rewards: every Coach screen that awards or 
   const coach = { ...fakeApp(), settings: { wording: 'standard', mode: 'coach' } };
   assert.deepEqual(award(coach, { type: 'explore-s' }, { grade: 'S' }), emptyGains());
   assert.deepEqual(coach.shown, [], 'nothing celebrated (no sounds, no burst)');
-  let files = ['home', 'learn', 'explore', 'drill', 'live', 'progress', 'trophies', 'author', 'credits', 'dev'];
+  let files = ['home', 'learn', 'explore', 'drill', 'live', 'progress', 'trophies', 'credits', 'dev'];
   if (isNode) {
     const { readdir } = await import('node:fs/promises');
     files = [...new Set([...files, ...(await readdir(new URL('../js/ui/modes/', import.meta.url))).filter((f) => f.endsWith('.js')).map((f) => f.slice(0, -3))])];
@@ -191,10 +189,11 @@ test('celebrate: badge and sticker chips are six words at most, plus the icon, i
   }
   const [kidCard] = rewardChips({ cards: [{ id: 'D3', tier: 2, upgrade: false }] }, { wording: 'kid', principles: { D3: { id: 'D3', short: 'Cover at an angle', kidName: 'Back up' } } });
   assert.match(kidCard.text, /Back up/, 'Kid wording names the sticker by its kidName');
-  const many = celebrationModel({ xp: 50, badges: BADGES.slice(0, 6).map((b) => b.id) });
+  const many = celebrationModel({ xp: 50, badges: BADGES.map((b) => b.id) });
+  assert.ok(BADGES.length > CELEBRATE_DEFAULTS.maxChips, 'enough badges to overflow the chip row');
   assert.equal(many.chips.length, CELEBRATE_DEFAULTS.maxChips, 'a few chips, then "+N more"');
   assert.equal(many.chips.at(-1).kind, 'more');
-  assert.equal(many.chips.at(-1).text, `+${6 - CELEBRATE_DEFAULTS.maxChips + 1} more`);
+  assert.equal(many.chips.at(-1).text, `+${BADGES.length - CELEBRATE_DEFAULTS.maxChips + 1} more`);
 });
 
 test('celebrate: the star row lights 0-3 stars; the sounds follow the grade and the stars', () => {
@@ -212,29 +211,23 @@ test('celebrate: the star row lights 0-3 stars; the sounds follow the grade and 
   assert.deepEqual(plan('C', 0), [], 'no ding below an A');
 });
 
-test('celebrate: levels, ranks and the level-up screen (one button: "Try it on" with a new kit)', () => {
-  assert.deepEqual(Object.keys(RANK_ICONS).sort(), RANKS.map((r) => r.id).sort(), 'every rank has an icon');
+test('celebrate: levels and the level-up screen (one button: "Try it on" with a new kit)', () => {
   const m1 = levelModel(createRewards());
   assert.equal(m1.level, 1);
-  assert.equal(m1.rank.id, 'rookie');
-  assert.equal(m1.icon, rankIcon('rookie'));
   assert.ok(m1.progress >= 0 && m1.progress < 1);
   const pill = pillModel({ xp: LEVEL_XP[2] }, 'kid');
   assert.equal(pill.text, 'Lv 3');
-  assert.match(pill.aria, /Level 3, Academy/);
-  const up = levelUpModel({ from: 1, to: 2, rank: RANKS[0], rankUp: false, unlocks: ['sky'] }, { wording: 'standard' });
+  assert.match(pill.aria, /Level 3/);
+  const up = levelUpModel({ from: 1, to: 2, unlocks: ['sky'] }, { wording: 'standard' });
   assert.equal(up.level, 2);
-  assert.equal(up.rank, 'Rookie');
   assert.equal(up.button, 'Try it on');
   assert.equal(up.action, 'kit');
   assert.equal(up.kit.id, 'sky');
-  assert.equal(up.ribbon, null);
-  const rankUp = levelUpModel({ from: 4, to: 5, rank: RANKS[2], rankUp: true, unlocks: [] }, { wording: 'kid' });
-  assert.equal(rankUp.action, 'close');
-  assert.equal(rankUp.button, 'Keep playing');
-  assert.equal(rankUp.ribbon, 'New rank!');
-  assert.equal(rankUp.kit, null);
-  assert.ok(words(rankUp.button) <= 3 && words(up.button) <= 3, 'the one button is short');
+  const plain = levelUpModel({ from: 4, to: 5, unlocks: [] }, { wording: 'kid' });
+  assert.equal(plain.action, 'close');
+  assert.equal(plain.button, 'Keep playing');
+  assert.equal(plain.kit, null);
+  assert.ok(words(plain.button) <= 3 && words(up.button) <= 3, 'the one button is short');
 });
 
 test('celebrate: a confetti burst flies up and out, then falls (none under reduced motion: the view skips it)', () => {
@@ -252,25 +245,7 @@ test('celebrate: a confetti burst flies up and out, then falls (none under reduc
   assert.deepEqual(confettiPieces(0), []);
 });
 
-// ---------------------------------------------------------------- trophies.js
-
-test('trophies: the album has one card per principle of the drill modules, with its tier', () => {
-  const taught = [...new Set(curriculum.modules.filter((m) => m.kind === 'drills').flatMap((m) => m.principles))];
-  let s = createRewards();
-  s = applyEvent(s, { type: 'mastery', principleId: 'D3', stars: 2 }, { day: '2026-09-27' }).state;
-  s = applyEvent(s, { type: 'mastery', principleId: 'U4', stars: 3 }, { day: '2026-09-27' }).state;
-  const album = albumModel(curriculum, { byId }, s, 'standard');
-  assert.equal(album.total, taught.length);
-  assert.equal(album.collected, 2);
-  assert.deepEqual(album.tiers, { 1: 0, 2: 1, 3: 1 });
-  assert.deepEqual(album.modules.map((m) => m.id), ['M1', 'M2', 'M3']);
-  const d3 = album.modules[0].cards.find((c) => c.id === 'D3');
-  assert.equal(d3.tier, 2);
-  assert.equal(d3.label, byId.D3.short);
-  const kid = albumModel(curriculum, { D3: { id: 'D3', short: 'Cover at an angle', kidName: 'Back up your friend' } }, s, 'kid');
-  assert.equal(kid.modules[0].cards.find((c) => c.id === 'D3').label, 'Back up your friend');
-  assert.equal(albumModel(null, {}, s).total, 0, 'no curriculum: an empty album');
-});
+// ---------------------------------------------------------------- the merged trophy room (card.js)
 
 test('trophies: a badge\'s day shows as a short date', () => {
   assert.match(shortDay('2026-09-27', 'en-GB'), /27/);

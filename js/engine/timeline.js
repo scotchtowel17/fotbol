@@ -341,7 +341,7 @@ export function learnerBaseAt(scenario, t, opts = {}) {
 }
 
 /** Override positions at t (linear between keys), with the learner pinned to learnerSpot if given. */
-function overridesAt(tl, t, learnerId, learnerSpot) {
+export function overridesAt(tl, t, learnerId, learnerSpot) {
   const out = {};
   for (const o of tl.players?.overrides ?? []) {
     const p = interpKeys(o.keys, t);
@@ -352,7 +352,7 @@ function overridesAt(tl, t, learnerId, learnerSpot) {
 }
 
 /** Cumulative tags at t, plus scenario.phase and a derived ballMovingBack when not authored. */
-function tagsAt(scenario, t, possession, P) {
+export function tagsAt(scenario, t, possession, P) {
   const src = scenario.timeline?.tags;
   const keys = Array.isArray(src) ? src : src && typeof src === 'object' ? [{ ...src, t: -Infinity }] : [];
   const tags = {};

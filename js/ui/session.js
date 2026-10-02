@@ -15,7 +15,7 @@
 //   live     { best: { [role]: { score, grade, seed, at } } }
 // A reset and an import also cover 'tutorial', 'explore' and 'rewards' (RESET_KEYS, IMPORT_KEYS).
 
-import { createSkills, pickNext, mastery, principleTheta, roleTheta, predict, ELO_DEFAULTS } from '../engine/elo.js';
+import { createSkills, mastery, principleTheta, roleTheta, predict, ELO_DEFAULTS } from '../engine/elo.js';
 import { gradeOf } from '../engine/score.js';
 import { ROLE_INFO, LEARNABLE_ROLES, familyOf, sideOf, mirrorRole } from '../engine/roles.js';
 import { dist } from '../engine/geometry.js';
@@ -71,20 +71,19 @@ function cleanMap(m, keep) {
 /**
  * A skills object in the elo.createSkills() shape; anything unreadable starts afresh. Like elo.js, every skill
  * and count must be a finite number (a hand-edited or damaged progress file must not turn them into strings
- * or NaN): a bad global value reads as its default, a bad per-principle, per-role or per-item entry as never
- * practised.
+ * or NaN): a bad global value reads as its default, a bad per-principle or per-role entry as never practised.
+ * A stored `items`/`recent` pair from the removed adaptive half (audit 2026-10-01) is dropped.
  */
 export function normalizeSkills(raw) {
   if (!isObj(raw) || !isObj(raw.theta) || !isObj(raw.counts)) return createSkills();
   const base = createSkills();
+  const { items: _items, recent: _recent, ...rest } = raw;
   const t = raw.theta, c = raw.counts;
   return {
     ...base,
-    ...raw,
+    ...rest,
     theta: { ...base.theta, global: num(t.global, base.theta.global), byPrinciple: cleanMap(t.byPrinciple, finite), byRole: cleanMap(t.byRole, finite) },
     counts: { ...base.counts, global: count(c.global) ?? base.counts.global, byPrinciple: cleanMap(c.byPrinciple, count), byRole: cleanMap(c.byRole, count) },
-    items: cleanMap(raw.items, (v) => (finite(v?.d) !== null && count(v?.n) !== null ? { ...v, d: v.d, n: v.n } : null)),
-    recent: Array.isArray(raw.recent) ? raw.recent.filter((id) => typeof id === 'string') : [],
   };
 }
 
@@ -312,8 +311,9 @@ export function candidatesFor({ index = [], role, module, principle, scenarioId,
 }
 
 /**
- * Next scenario (elo.pickNext: weakest principle first, predicted success nearest the target, the
- * last few seen avoided), preferring ones not yet played this session.
+ * Next scenario: the weakest primary principle first (weakestPrinciple; ties go to fewer attempts, then
+ * candidate order), preferring ones not yet played this session. The 75 %-success targeting that used to
+ * order the pool (elo.pickNext, the adaptive half) went with the 2026-10-01 audit.
  * @param {object} skills
  * @param {object[]} candidates  from candidatesFor()
  * @param {{ exclude?: string[] }} [opts]  baseIds already played this session
@@ -324,8 +324,8 @@ export function pickScenario(skills, candidates, { exclude = [] } = {}) {
   const played = new Set(exclude);
   const fresh = candidates.filter((c) => !played.has(c.baseId));
   const pool = fresh.length ? fresh : candidates;
-  const items = pool.map((c) => ({ id: c.baseId, principles: c.principles, role: c.role, difficulty: c.difficulty, ref: c }));
-  return pickNext(normalizeSkills(skills), items)?.ref ?? null;
+  const weakest = weakestPrinciple(skills, pool.map((c) => c.principles?.[0]).filter(Boolean));
+  return pool.find((c) => c.principles?.[0] === weakest) ?? pool[0];
 }
 
 /**

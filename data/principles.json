@@ -325,7 +325,7 @@
       "ruleIds": ["support-distance"],
       "summary": {
         "standard": "If the carrier is free and facing forward, stay further away to stretch the play; if they are under pressure or facing their own goal, come closer to offer a short, safe pass.",
-        "kid": "Teammate in trouble? Come close. Teammate free? Stay further away."
+        "kid": "The more trouble on the ball, the closer you come."
       },
       "ruleOfThumb": "Carrier unpressured and facing forward: support from 12-25 m (default), holding width or height, or running in behind. Carrier pressed (an opponent within about 3 m) or facing their own goal: players ahead come short to 5-10 m (default).",
       "why": "A pressed player needs a quick short pass to escape, while a free player needs longer options that get past opponents.",
@@ -352,7 +352,7 @@
       "ruleIds": ["occupancy"],
       "summary": {
         "standard": "Spread out across the five vertical lanes and across different horizontal lines, so the team never has too many players in one channel or one row.",
-        "kid": "Don't bunch in one strip or one row; spread out."
+        "kid": "Spread out so the team fills more of the pitch."
       },
       "ruleOfThumb": "Lane edges at y = 0 / 13.84 / 24.84 / 43.16 / 54.16 / 68. At most 2 teammates per vertical lane and at most 3 on one horizontal line (sourced), treating +/- 2.5 m (default) as the same line. If your lane or line is full, move to the next one.",
       "why": "Players in different lanes and lines create diagonal passing angles and force defenders to choose whom to mark.",
@@ -383,7 +383,7 @@
       "ruleIds": [],
       "summary": {
         "standard": "The full-back and winger on one side should not stand in the same strip of pitch: if one holds the touchline, the other moves inside, and the other way round.",
-        "kid": "Winger wide? Full-back goes inside. Full-back wide? Winger goes inside."
+        "kid": "Only one of you stays wide; the other comes inside."
       },
       "ruleOfThumb": "Never both in the wing lane within about 10 m (default) of each other. If the winger hugs the touchline, the full-back comes inside (the half-space, or next to the #6). If the full-back overlaps, the winger moves into the half-space.",
       "why": "Two players in one lane can be marked by one defender; splitting them stretches their full-back and opens the half-space.",
@@ -566,7 +566,7 @@
       "id": "P1",
       "name": "Occupy the half-space",
       "short": "Occupy the half-space",
-      "kidName": "Just Inside the Wing",
+      "kidName": "Hard to Mark",
       "category": "in_possession",
       "section": "8.3",
       "who": "The #8, a #10, or an inverted winger or full-back",
@@ -982,7 +982,7 @@
       "ruleIds": [],
       "summary": {
         "standard": "If you can't win the ball back straight away, or you're outnumbered, back off toward your goal and squeeze toward the middle to slow the attack until help arrives.",
-        "kid": "Can't win it back? Back off, stay central, slow them down."
+        "kid": "Can't win the ball? Back off and slow them down."
       },
       "ruleOfThumb": "If you can't pressure the ball, or you're outnumbered, retreat toward goal and narrow toward the centre lane. Keep more defenders than attackers between the ball and goal. The defender facing the carrier backs off, keeping 3-5 m (default), to slow them and show them wide.",
       "why": "Every second you delay lets teammates recover, while diving in against a numbers advantage lets the attack through.",
@@ -1392,7 +1392,7 @@
       "ruleIds": [],
       "summary": {
         "standard": "The back line steps up when the ball goes backward or the carrier is pressed and facing away, holds while the ball is under pressure, and drops when the carrier is free to play forward.",
-        "kid": "Ball going back? Move forward. Free player facing you? Move back."
+        "kid": "When the ball goes backward, your whole line steps forward."
       },
       "ruleOfThumb": "Step up about 5 m (default) when the ball goes backward, or when the carrier is pressed and facing away. Hold when the ball is under pressure. Drop 5-10 m (default) when the carrier is unpressured and facing forward.",
       "why": "An unpressured passer facing forward can play in behind a high line, while stepping up at the right moment squeezes space and catches attackers offside.",
@@ -1601,7 +1601,7 @@
       "ruleIds": [],
       "summary": {
         "standard": "With the ball on your side, engage the winger and show them outside with your centre-back covering; with the ball on the far side, tuck in toward your centre-back and stay level.",
-        "kid": "Ball on your side? Face the winger. Far side? Come inside."
+        "kid": "Ball on the far side? Come in beside your centre-back."
       },
       "ruleOfThumb": "Ball on your side: engage the winger goal-side and force them outside, with the CB covering. Ball on the far side: tuck in to within 10-15 m (default) of your CB and stay level with the line. Recovery runs go toward the near post first.",
       "why": "The full-back's position decides whether the back four has a gap on the far side or a winger running free on the near side.",

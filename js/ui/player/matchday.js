@@ -7,11 +7,11 @@
 // as "Find your spot" does (js/engine/kidscore.js kidLive): Hot anywhere in the right area round any best spot of the
 // last second (liveMemory: the best spot jumps as the play moves), never colder than Coach mode's heat for the same
 // spot, never Hot past a key line (offside, the wrong side of your man); no numbers, just the ring around YOU in its
-// heat colour and style and one big word with a shape: Hot (a flame), Warm (a sun), Cold (a snowflake). Colour never
+// heat colour and style and one big word: the star word the kid already knows (Spot on at 3 stars). Colour never
 // works alone (R39).
 //
 // The result is Full time (js/ui/player/fulltime.js) with the run's stars (runStars: the share of scored time you were
-// Hot), its word, your best hot streak in seconds and "See your hardest moment" (frozen where you were, the right area
+// Hot), its word and "See your hardest moment" (frozen where you were, the right area
 // in green with the best-spot ring inside it and an arrow into it, one line; "Watch it" plays the lead-up). The chart,
 // the table and the seed stay in Coach mode's Live. A run played to the end earns rewards (award { type: 'live',
 // average, stars }: its average held in the band of its stars, play.js kidScore); the history and your Live best keep
@@ -22,7 +22,7 @@
 //
 // The pitch is the full match with tabletop figures and the easy-to-see ball (docs/PROGRESSIVE_FIELD.md §2, §4).
 //
-// Pure helpers (heatFor, bestHotStreak, hardestMoment) are exported for tests; nothing touches the DOM at import time.
+// Pure helpers (heatFor, hardestMoment) are exported for tests; nothing touches the DOM at import time.
 
 import { el, button, icon, svg, linkButton, announce } from '../components.js';
 import { generateSequence, createPlayback, graceEvents } from '../../engine/sequence.js';
@@ -40,7 +40,7 @@ import * as S from '../session.js';
 import { showFullTime } from './fulltime.js';
 import * as Kid from '../../engine/kidscore.js'; // the right area: kidLive (the heat), kidArea and kidOutline (the hardest moment)
 import { wordForStars, pickLine, cueMarker, praiseOf, bestSpotMarker, PLAY_DEFAULTS, kidScore, zoneMarker, zoneArrowEnd, keyFix, keyCue } from './play.js';
-import { STRINGS as SHARED, roleCard } from './strings.js';
+import { STRINGS as SHARED, roleCard, starWord } from './strings.js';
 
 export const MATCHDAY_DEFAULTS = Object.freeze({
   duration: 45, // [S] §4.6: 45 s of play
@@ -63,18 +63,13 @@ export const MATCHDAY_DEFAULTS = Object.freeze({
 export const STRINGS = Object.freeze({
   title: 'Match day',
   lead: 'Keep moving. Stay in the right area.',
-  ringTip: 'Your ring gets hot in the right area.',
+  ringTip: 'Your ring turns green in the right area.',
   start: 'Start',
   go: 'Go',
   pause: 'Pause',
   resume: 'Play on',
   paused: 'Paused. You can still move.',
   stop: SHARED.stop,
-  hot: SHARED.hot,
-  warm: SHARED.warm,
-  cold: SHARED.cold,
-  streak: (s) => `Best hot streak: ${s} ${s === 1 ? 'second' : 'seconds'}`,
-  noStreak: 'Get hot for longer next time.',
   hardest: 'See your hardest moment',
   watchIt: 'Watch it',
   back: 'Back',
@@ -115,25 +110,6 @@ export function runStars(samples = [], P = MATCHDAY_DEFAULTS) {
   return Kid.kidRunStars(hotShare(samples, P) + 1e-9);
 }
 
-/**
- * The longest time you stayed Hot, in whole seconds: a run of Hot samples (3 stars; a sample without stars: a score of
- * hotAt or more), broken by any scored sample below Hot (a sample in the reaction moment after a pass neither breaks
- * nor starts one). One sample counts as 1/hz s.
- * @param {{ t: number, score: number|null, stars?: number, grace?: boolean }[]} samples
- */
-export function bestHotStreak(samples = [], P = MATCHDAY_DEFAULTS) {
-  const step = 1 / P.sampleHz;
-  let best = 0, from = null, last = null;
-  for (const s of [...samples].filter((x) => Number.isFinite(x?.t)).sort((a, b) => a.t - b.t)) {
-    if (s.grace || !Number.isFinite(s.score)) continue;
-    if (isHot(s, P)) {
-      if (from === null) from = s.t;
-      last = s.t;
-      best = Math.max(best, last - from + step);
-    } else from = last = null;
-  }
-  return Math.round(best);
-}
 
 /**
  * The hardest moment to replay: the lowest-scoring of the run's worst moments (session.js summarizeLive), among those
@@ -151,16 +127,6 @@ export function hardestMoment(result, samples = []) {
 // ---------------------------------------------------------------- the app (browser only below)
 
 const put = (node, ...kids) => node.replaceChildren(...kids.flat().filter((k) => k !== null && k !== undefined && k !== false));
-
-/** The heat shapes (never colour alone): a flame, a sun, a snowflake. */
-function heatShape(level) {
-  const paths = {
-    hot: 'M12.6 2.5c.4 3-1.4 4.6-2.9 6.2C8 10.4 6.5 12.1 6.5 14.8a5.5 5.5 0 0 0 11 0c0-2.6-1.3-4.3-2.3-5.5-.2 1.4-.9 2.4-1.9 2.9.5-3.4-.2-7-2.7-9.7z',
-    warm: 'M12 7.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM12 1.8v3M12 19.2v3M1.8 12h3M19.2 12h3M4.8 4.8l2.1 2.1M17.1 17.1l2.1 2.1M4.8 19.2l2.1-2.1M17.1 6.9l2.1-2.1',
-    cold: 'M12 2v20M3.3 7l17.4 10M3.3 17L20.7 7M12 2l-2.5 2.5M12 2l2.5 2.5M12 22l-2.5-2.5M12 22l2.5-2.5',
-  };
-  return svg('svg', { class: `md-shape md-shape--${level}`, viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' }, [svg('path', { d: paths[level] ?? paths.cold })]);
-}
 
 /** A fresh seed (UI only: the engine stays deterministic from it). */
 function freshSeed() {
@@ -372,13 +338,17 @@ export async function mount(root, app) {
     raf = requestAnimationFrame(step);
   }
 
-  function setHeat(level, force = false) {
-    if (!force && level === run.heat) return;
-    run.heat = level;
+  /** One scoring language (audit 2026-10-01): the big word is the star word the kid already knows (Spot on, Great,
+   *  Close, Not yet), never a third Hot/Warm/Cold vocabulary; the ring keeps its level colour under it. */
+  function setHeat(stars, force = false) {
+    const level = heatForStars(stars);
+    const word = starWord(stars);
+    if (!force && word === run.heat) return;
+    run.heat = word;
     board.setAid({ kind: 'heat', level });
     els.heat.dataset.heat = level;
-    els.heat.replaceChildren(heatShape(level), el('b', { text: STRINGS[level] }));
-    heatAnnouncer.update(level, STRINGS[level]);
+    els.heat.replaceChildren(el('b', { text: word }));
+    heatAnnouncer.update(word, word);
   }
 
   function queueSamples(t) {
@@ -415,7 +385,7 @@ export async function mount(root, app) {
       run.samples.push({ t: s.t, spot: s.spot, score: r.score, grade: r.grade, grace, stars, best });
       latest = stars;
     }
-    if (latest !== null && phase === 'playing') setHeat(heatForStars(latest));
+    if (latest !== null && phase === 'playing') setHeat(latest);
   }
 
   function togglePause() {
@@ -462,11 +432,10 @@ export async function mount(root, app) {
   /** Full time for the run (a run stopped early or too short shows its result, with no rewards). */
   function showResults({ res, gained, xpBefore }) {
     const stars = run.counted ? runStars(run.samples) : 0;
-    const streakS = bestHotStreak(run.samples);
     const worst = run.counted ? hardestMoment(res, run.samples) : null;
+    // The star word and the hardest moment, nothing else: the "best hot streak" row went with the audit (2026-10-01).
     const extra = el('section', { class: 'md-summary' }, [
       el('p', { class: 'md-word', text: run.counted ? wordForStars(stars) : STRINGS.tooShort }),
-      run.counted ? el('p', { class: 'md-streak' }, [heatShape('hot'), el('span', { text: streakS > 0 ? STRINGS.streak(streakS) : STRINGS.noStreak })]) : null,
       worst ? button(STRINGS.hardest, { icon: 'play', className: 'md-hardest', onClick: () => showMoment(worst) }) : null,
     ]);
     els.stage.hidden = true;

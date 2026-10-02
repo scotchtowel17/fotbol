@@ -3,8 +3,6 @@
 
 /** @typedef {{x:number, y:number}} Vec */
 
-/** @returns {Vec} */
-export const vec = (x, y) => ({ x, y });
 export const add = (a, b) => ({ x: a.x + b.x, y: a.y + b.y });
 export const sub = (a, b) => ({ x: a.x - b.x, y: a.y - b.y });
 export const scale = (a, k) => ({ x: a.x * k, y: a.y * k });
@@ -80,8 +78,6 @@ export function band(v, lo, hi, soft = 3) {
   return soft <= 0 ? 0 : clamp(1 - d / soft, 0, 1);
 }
 
-/** 1 when v <= max, falling linearly to 0 at max + soft. */
-export const atMost = (v, max, soft = 3) => band(v, -Infinity, max, soft);
 /** 1 when v >= min, falling linearly to 0 at min - soft. */
 export const atLeast = (v, min, soft = 3) => band(v, min, Infinity, soft);
 

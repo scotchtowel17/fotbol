@@ -647,7 +647,7 @@ export async function mount(root, app, params = []) {
     const { result } = rep.judged.judgement;
     // Elo, history, streaks.
     const before = session.skills;
-    session.skills = eloUpdate(before, { itemId: rep.ref.baseId, principles: s.principles, role: s.learner.role, score01: result.score / 100, prior: Number.isFinite(s.difficulty) ? s.difficulty : 0 });
+    session.skills = eloUpdate(before, { principles: s.principles, role: s.learner.role, score01: result.score / 100 });
     S.saveSkills(store, session.skills);
     session.streak = S.updateStreak(session.streak, { day: S.dayKey(new Date()), score: result.score });
     S.saveStreak(store, session.streak);

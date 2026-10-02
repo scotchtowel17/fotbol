@@ -53,9 +53,8 @@ export const STRINGS = Object.freeze({
   stars: SHARED.stars,
   starsTotal: (n) => `${n} ${n === 1 ? 'star' : 'stars'}`,
   xp: (n) => `+${n} XP`,
-  level: (n, rank) => `Level ${n} · ${rank}`,
+  level: (n) => `Level ${n}`,
   levelUp: 'Level up',
-  newRank: (rank) => `New rank: ${rank}`,
   newSticker: (name) => `New sticker: ${name}`,
   tierSticker: (tier, name) => `${['', 'Bronze', 'Silver', 'Gold'][tier] ?? 'New'} sticker: ${name}`,
   newBadge: (name) => `New badge: ${name}`,
@@ -230,9 +229,9 @@ export function showFullTime(root, app, opts = {}) {
 
   // XP: the gain, the level and the bar.
   const fill = el('span', { class: 'ft-bar-fill' });
-  const levelText = el('span', { class: 'ft-level', text: STRINGS.level(m.before.level, m.before.rank.name) });
-  const levelUp = el('p', { class: 'ft-levelup', hidden: true }, [el('b', { text: STRINGS.levelUp }), m.after.rank.id !== m.before.rank.id ? el('span', { text: STRINGS.newRank(m.after.rank.name) }) : null]);
-  const xp = el('section', { class: 'ft-xp', 'aria-label': [m.xpGain > 0 ? STRINGS.xp(m.xpGain) : '', STRINGS.level(m.after.level, m.after.rank.name)].filter(Boolean).join('. ') }, [
+  const levelText = el('span', { class: 'ft-level', text: STRINGS.level(m.before.level) });
+  const levelUp = el('p', { class: 'ft-levelup', hidden: true }, [el('b', { text: STRINGS.levelUp })]);
+  const xp = el('section', { class: 'ft-xp', 'aria-label': [m.xpGain > 0 ? STRINGS.xp(m.xpGain) : '', STRINGS.level(m.after.level)].filter(Boolean).join('. ') }, [
     el('div', { class: 'ft-xp-top', 'aria-hidden': 'true' }, [m.xpGain > 0 ? el('span', { class: 'ft-xp-gain', text: STRINGS.xp(m.xpGain) }) : null, levelText]),
     el('div', { class: 'ft-bar', 'aria-hidden': 'true' }, [fill]),
     levelUp,
@@ -302,7 +301,7 @@ export function showFullTime(root, app, opts = {}) {
     } else app?.sound?.play?.('good');
   };
   const showLevel = () => {
-    levelText.textContent = STRINGS.level(m.after.level, m.after.rank.name);
+    levelText.textContent = STRINGS.level(m.after.level);
     if (m.levelUp) levelUp.hidden = false;
   };
   if (reduced) {
@@ -333,7 +332,7 @@ export function showFullTime(root, app, opts = {}) {
   }
 
   heading.focus({ preventScroll: true });
-  announce([opts.title ?? STRINGS.fullTime, STRINGS.starsTotal(m.total), m.xpGain > 0 ? STRINGS.xp(m.xpGain) : '', m.levelUp ? `${STRINGS.levelUp}. ${STRINGS.level(m.after.level, m.after.rank.name)}` : ''].filter(Boolean).join('. '));
+  announce([opts.title ?? STRINGS.fullTime, STRINGS.starsTotal(m.total), m.xpGain > 0 ? STRINGS.xp(m.xpGain) : '', m.levelUp ? `${STRINGS.levelUp}. ${STRINGS.level(m.after.level)}` : ''].filter(Boolean).join('. '));
 
   return () => {
     for (const t of timers) clearTimeout(t);

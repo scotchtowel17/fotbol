@@ -202,7 +202,7 @@ test('road: setStarsFor averages the reps: 3 at 2.5, 2 at 1.8, 1 at 1, else 0', 
   assert.equal(R.setStarsFor(['x', null, 3]), 3, 'junk is ignored');
 });
 
-test('road: a node opens when the one before has a star; "Help the ball" and "Pass it right" also open after chapter 1\'s first node', () => {
+test('road: a node opens when the one before has a star or a finished set; "Help the ball" and "Pass it right" also open after chapter 1\'s first node', () => {
   const fresh = R.pickGroup(null, 'DEF');
   const open = (p) => R.roadNodes(road).filter((n) => R.isUnlocked(road, p, n.id)).map((n) => n.id);
   assert.deepEqual(open(fresh), ['close-down']);
@@ -214,13 +214,16 @@ test('road: a node opens when the one before has a star; "Help the ball" and "Pa
   assert.ok(R.isUnlocked(road, withStars('DEF', { 'free-player': 1, 'play-forward': 1, 'free-side': 1, 'safe-back': 1, 'pass-match': 1 }), 'hold-line'), 'the chapter after "Pass it right" opens from its Match');
   assert.ok(R.isUnlocked(road, withStars('DEF', {}, { slide: 1 }), 'slide'), 'a node you have played stays open');
   assert.equal(R.isUnlocked(road, fresh, 'nope'), false);
-  assert.equal(R.isUnlocked(road, withStars('DEF', { 'close-down': 0 }, { 'close-down': 3 }), 'back-up'), false, 'plays without a star do not open the next node');
+  assert.ok(R.isUnlocked(road, withStars('DEF', { 'close-down': 0 }, { 'close-down': 3 }), 'back-up'), 'a finished set opens the next node, stars or not');
+  assert.deepEqual(open(withStars('DEF', {}, { 'close-down': 1 })), ['close-down', 'back-up', 'get-open', 'free-player'],
+    'a starless finished set opens the same doors a star does (stars stay the quality signal)');
 });
 
-test('road: next up: your group\'s lead chapter first, then a fresh or weak node (under 2 stars) before replaying a 2-star one', () => {
+test('road: next up: your group\'s lead chapter first, a never-played node before any replay, then weak nodes (under 2 stars)', () => {
   for (const g of R.GROUPS) assert.equal(R.nextNode(road, R.pickGroup(null, g)).id, 'close-down', `${g} starts at Close Them Down`);
   // Defenders: the Road's order.
-  assert.equal(R.nextNode(road, withStars('DEF', { 'close-down': 1 })).id, 'close-down', 'one star: still weak, next up again');
+  assert.equal(R.nextNode(road, withStars('DEF', { 'close-down': 1 })).id, 'back-up', 'a finished node moves Play forward: the fresh node, not a regrind');
+  assert.equal(R.nextNode(road, withStars('DEF', {}, { 'close-down': 1 })).id, 'back-up', 'even with no stars at all: forward');
   assert.equal(R.nextNode(road, withStars('DEF', { 'close-down': 2 })).id, 'back-up', 'two stars: a 0-star node comes before replaying it');
   assert.equal(R.nextNode(road, withStars('DEF', { 'close-down': 2, 'back-up': 3 })).id, 'goal-side');
   assert.equal(R.nextNode(road, withStars('DEF', { 'close-down': 3, 'back-up': 3, 'goal-side': 3, 'defend-match': 3 })).id, 'get-open');
@@ -239,7 +242,7 @@ test('road: next up: your group\'s lead chapter first, then a fresh or weak node
   }
   assert.deepEqual(firstFour, ['close-down', 'get-open', 'stay-wide', 'between-lines']);
   const helpDone = Object.fromEntries(['get-open', 'stay-wide', 'between-lines', 'crosses', 'help-match'].map((id) => [id, 2]));
-  assert.equal(R.nextNode(road, withStars('WING', { 'close-down': 1, ...helpDone })).id, 'close-down', 'then back to the weak defending node');
+  assert.equal(R.nextNode(road, withStars('WING', { 'close-down': 1, ...helpDone })).id, 'back-up', 'then on into defending: the fresh node, not a regrind of Close Them Down');
   assert.equal(R.nextNode(road, withStars('WING', { 'close-down': 2, ...helpDone })).id, 'back-up');
   const all = Object.fromEntries(R.roadNodes(road).map((n) => [n.id, 3]));
   assert.equal(R.nextNode(road, withStars('MID', all)).id, 'shape-match', 'everything at 3 stars: the last open node');

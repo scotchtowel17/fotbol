@@ -1,37 +1,34 @@
 // '#/card[/<tab>]': Your card (docs/KID_REDESIGN.md §4.7). Tabs: Card · Stickers · Badges · Kit.
 //
-//   #/card            an FC-style player card: nickname, shirt number, kit, rank, level ring, four skill ratings 0-99
-//                     (Defend / Help / Pass / Shape: skillRatings below), stars on your Road, days played this week
+//   #/card            a player card: nickname, shirt number, kit, level ring, your Road stars per chapter
+//                     (Defend / Help / Pass / Shape: chapterStars below), total stars, days played this week
 //   #/card/stickers   the sticker album by chapter: bronze, silver or gold; a mystery silhouette links to its node
 //   #/card/badges     every badge Player mode can earn: icon, short name, progress bar (Coach-only ones once earned)
 //   #/card/kit        the kit locker: shirt colours (locked ones show their level), a big number grid, a nickname
 //                     from the pick-list (js/rewards.js NICKNAMES); Save applies it app-wide (js/ui/rewards-store.js)
 // One line says the stats never leave the device (R38).
 //
-// kitEditor() is shared with the kick-off's "Make it yours" (js/ui/player/kickoff.js). skillRatings(), stickerAlbum()
+// kitEditor() is shared with the kick-off's "Make it yours" (js/ui/player/kickoff.js). chapterStars(), stickerAlbum()
 // and badgeList() are pure and tested (tests/player-shell.test.js). Nothing touches the DOM at import time.
 
 import { el, announce, uid } from '../components.js';
 import * as Rewards from '../../rewards.js';
 import { ROLE_INFO } from '../../engine/roles.js';
-import { predict } from '../../engine/elo.js';
-import { loadSkills } from '../session.js';
 import { loadRewards, saveRewards, onRewards, todayLocal, shirtNumber } from '../rewards-store.js';
 import { kitToken } from '../celebrate.js';
-import { shortDay } from '../modes/trophies.js';
 import { loadProfile, onProfile, loadRoad, roadModel, nodeStars, STRINGS as ROAD_STRINGS, groupOfRole } from './road.js';
 import { playerIcon, levelRing, kidFigure, kitPalette } from './shell.js';
 import { weekCount } from './home.js';
 
 export const CARD_TABS = Object.freeze(['card', 'stickers', 'badges', 'kit']);
 
-export const CARD_DEFAULTS = Object.freeze({
-  ratingBase: 45, // [D] a skill you have not played yet
-  ratingMax: 99, // [S] FC-style ratings top out at 99
-  roadWeight: 0.75, // [D] the share of a rating that comes from your Road stars when your Elo can lift it
-  eloFloor: 0.5, // [D] predicted success on an average drill that counts as nothing yet (a new player's 50 %)...
-  eloSpan: 0.45, // [D] ...and how far above it counts as everything (95 %)
-});
+/** 'YYYY-MM-DD' as a short local date ("27 Sep"); '' for anything else. (Moved from modes/trophies.js in the merge.) */
+export function shortDay(day, locale) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(day ?? ''));
+  if (!m) return '';
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  try { return d.toLocaleDateString(locale, { day: 'numeric', month: 'short' }); } catch { return day; }
+}
 
 /** Fallback pick-list while js/rewards.js has no NICKNAMES (each at most 10 characters). */
 const NICKNAMES_FALLBACK = Object.freeze(['Ace', 'Anchor', 'Blaze', 'Comet', 'Eagle', 'Flash', 'Maestro', 'Rocket', 'The Wall', 'Turbo']);
@@ -41,9 +38,9 @@ export const STRINGS = Object.freeze({
   tabs: Object.freeze({ card: 'Card', stickers: 'Stickers', badges: 'Badges', kit: 'Kit' }),
   privacy: 'Your stats stay on this device.',
   cardSr: 'Your player card',
-  levelSr: (n, rank) => `Level ${n}. ${rank}.`,
+  levelSr: (n) => `Level ${n}.`,
   numberSr: (n, position) => `Number ${n}. ${position}.`,
-  skillSr: (name, n) => `${name}: ${n}.`,
+  skillSr: (name, n, max) => `${name}: ${n} of ${max} stars.`,
   starsSr: (n) => `${n} stars on your road.`,
   weekSr: (n, max) => `Days played this week: ${n} of ${max}.`,
   albumSr: (n, max) => `${n} of ${max} stickers.`,
@@ -68,37 +65,24 @@ export const STRINGS = Object.freeze({
 
 // ---------------------------------------------------------------- pure models
 
-const clamp01 = (v) => Math.max(0, Math.min(1, Number(v) || 0));
-
 /**
- * Skill ratings 0-99 for the card, one per Road chapter (its `skill`: Defend, Help, Pass, Shape):
- *   road   = the chapter's node stars / (3 × its nodes)                                             0..1
- *   elo    = the mean, over the chapter's principles you have practised, of elo.predict(theta, 0) (your chance on an
- *            average drill), mapped by (p - eloFloor) / eloSpan onto 0..1: 50 % is 0, 95 % is 1.   none practised: no Elo part
- *   mix    = max(road, roadWeight × road + (1 - roadWeight) × elo)    (Elo can lift a rating, never pull it below your stars)
- *   rating = round(ratingBase + (ratingMax - ratingBase) × mix)
- * A new player is 45 everywhere; 3 stars on every node of a chapter makes it 99.
- * @returns {{ id: string, label: string, rating: number, road: number, elo: number|null }[]}
+ * Road stars per chapter for the card (its `skill`: Defend, Help, Pass, Shape): the chapter's node stars and their
+ * ceiling, nothing else. These replaced the 0-99 FC-style ratings (audit 2026-10-01): a number out of 99 is the
+ * score out of 100 the kid-mode rules ban, and a new player read "45" four times. Stars the kid has actually earned
+ * say the same thing honestly.
+ * @returns {{ id: string, label: string, stars: number, max: number }[]}
  */
-export function skillRatings({ road, profile, skills } = {}, P = CARD_DEFAULTS) {
-  const theta = skills?.theta?.byPrinciple ?? {};
-  const counts = skills?.counts?.byPrinciple ?? {};
+export function chapterStars({ road, profile } = {}) {
   return (road?.chapters ?? []).map((c) => {
     const nodes = c.nodes ?? [];
-    const roadShare = nodes.length ? nodes.reduce((a, n) => a + nodeStars(profile, n.id), 0) / (3 * nodes.length) : 0;
-    const ids = [...new Set(nodes.filter((n) => n.kind !== 'mix').flatMap((n) => n.principles ?? []))];
-    const practised = ids.filter((id) => (counts[id] ?? 0) > 0 && Number.isFinite(theta[id]));
-    const elo = practised.length
-      ? clamp01((practised.reduce((a, id) => a + predict(theta[id], 0), 0) / practised.length - P.eloFloor) / P.eloSpan)
-      : null;
-    const mix = elo === null ? roadShare : Math.max(roadShare, P.roadWeight * roadShare + (1 - P.roadWeight) * elo);
-    return { id: c.id, label: c.skill ?? c.title, rating: Math.round(P.ratingBase + (P.ratingMax - P.ratingBase) * clamp01(mix)), road: roadShare, elo };
+    return { id: c.id, label: c.skill ?? c.title, stars: nodes.reduce((a, n) => a + nodeStars(profile, n.id), 0), max: 3 * nodes.length };
   });
 }
 
-/** The card's metal: bronze for Rookie, silver for Academy, gold for First Team and Captain, legend for Legend. */
-export function cardMetal(rankId) {
-  return { rookie: 'bronze', academy: 'silver', 'first-team': 'gold', captain: 'gold', legend: 'legend' }[rankId] ?? 'bronze';
+/** The card's metal by level (the thresholds the old ranks drew): bronze to 2, silver to 4, gold to 10, then legend. */
+export function cardMetal(level) {
+  const n = Number(level) || 1;
+  return n >= 11 ? 'legend' : n >= 5 ? 'gold' : n >= 3 ? 'silver' : 'bronze';
 }
 
 /**
@@ -129,15 +113,14 @@ export function stickerAlbum({ road, profile, rewards, principles } = {}) {
 
 const pick = (v) => (v && typeof v === 'object' ? String(v.kid ?? v.standard ?? '') : String(v ?? ''));
 
-/**
- * The badges for the grid: icon, short name, progress (js/rewards.js badgeProgress). A badge only Coach mode's tutorial
- * or Explore can give (`coachOnly`: "Kick-off", "Explorer") cannot be earned in Player mode, so it shows only once
- * earned; `all` lists every badge.
- */
-export function badgeList(rewardsState, { all = false } = {}) {
+const clamp01 = (v) => Math.max(0, Math.min(1, Number(v) || 0));
+
+/** The badges for the grid: icon, short name, progress (js/rewards.js badgeProgress): all five, every one earnable in
+ *  Player mode (the coachOnly badges went with the 2026-10-01 audit's badge cut). */
+export function badgeList(rewardsState) {
   let list = [];
   try { list = Rewards.badgeProgress(rewardsState); } catch { list = []; }
-  return list.filter((b) => all || !b.coachOnly || b.earned).map((b) => ({
+  return list.map((b) => ({
     id: b.id, icon: b.icon, name: pick(b.name), description: pick(b.description), earned: !!b.earned,
     current: b.current ?? 0, goal: b.goal ?? 1, progress: clamp01(b.progress), day: rewardsState?.badges?.[b.id]?.day ?? null,
   }));
@@ -242,10 +225,10 @@ function starsIcons(n, size = 14) {
   return el('span', { class: 'pm-stars', 'aria-hidden': 'true' }, [0, 1, 2].map((i) => playerIcon('star', { size, className: i < n ? 'is-on' : 'is-off' })));
 }
 
-function tabsNav(tab) {
+function tabsNav(tab, base = '#/card') {
   const icons = { card: 'card', stickers: 'star', badges: 'trophy', kit: 'shirt' };
   return el('nav', { class: 'pm-tabs', 'aria-label': STRINGS.title }, CARD_TABS.map((t) => el('a', {
-    class: 'pm-tab', href: t === 'card' ? '#/card' : `#/card/${t}`, 'aria-current': t === tab ? 'page' : null,
+    class: 'pm-tab', href: t === 'card' ? base : `${base}/${t}`, 'aria-current': t === tab ? 'page' : null,
   }, [playerIcon(icons[t], { size: 20 }), el('span', { text: STRINGS.tabs[t] })])));
 }
 
@@ -257,25 +240,24 @@ function cardView(app, road) {
   const number = shirtNumber(state, ROLE_INFO[role]?.num ?? null);
   const group = profile.group ?? groupOfRole(role);
   const position = ROAD_STRINGS.groups[group] ?? '';
-  const skills = skillRatings({ road, profile, skills: loadSkills(app.store) });
+  const skills = chapterStars({ road, profile });
   const stars = (road?.chapters ?? []).flatMap((c) => c.nodes).reduce((a, n) => a + nodeStars(profile, n.id), 0);
   const days = weekCount(state, todayLocal());
   return el('div', { class: 'pm-card-tab' }, [
-    el('article', { class: ['pm-fc', `metal-${cardMetal(lvl.rank.id)}`], 'aria-label': STRINGS.cardSr }, [
+    el('article', { class: ['pm-fc', `metal-${cardMetal(lvl.level)}`], 'aria-label': STRINGS.cardSr }, [
       el('div', { class: 'pm-fc-top' }, [
         el('p', { class: 'pm-fc-num', role: 'img', 'aria-label': STRINGS.numberSr(number ?? '', position) }, [
           el('b', { 'aria-hidden': 'true', text: number ?? '' }),
           el('span', { 'aria-hidden': 'true', text: position }),
         ]),
-        el('p', { class: 'pm-fc-level', role: 'img', 'aria-label': STRINGS.levelSr(lvl.level, lvl.rank.name) }, [
+        el('p', { class: 'pm-fc-level', role: 'img', 'aria-label': STRINGS.levelSr(lvl.level) }, [
           levelRing(lvl.level, lvl.progress, { size: 52 }),
-          el('span', { 'aria-hidden': 'true', text: lvl.rank.name }),
         ]),
       ]),
       el('div', { class: 'pm-fc-token', 'aria-hidden': 'true' }, [kidFigure({ role, number, palette: kitPalette(state), height: 136, className: 'pm-fc-fig' })]),
       state.kit.nickname ? el('p', { class: 'pm-fc-name', text: state.kit.nickname }) : null,
-      el('ul', { class: 'pm-fc-skills' }, skills.map((s) => el('li', { class: 'pm-fc-skill', 'aria-label': STRINGS.skillSr(s.label, s.rating) }, [
-        el('b', { 'aria-hidden': 'true', text: String(s.rating) }),
+      el('ul', { class: 'pm-fc-skills' }, skills.map((s) => el('li', { class: 'pm-fc-skill', 'aria-label': STRINGS.skillSr(s.label, s.stars, s.max) }, [
+        el('b', { 'aria-hidden': 'true' }, [playerIcon('star', { size: 14, className: 'is-on' }), ` ${s.stars}/${s.max}`]),
         el('span', { 'aria-hidden': 'true', text: s.label }),
       ]))),
       el('div', { class: 'pm-fc-foot' }, [
@@ -324,10 +306,14 @@ function badgesView(app) {
   }));
 }
 
-/** Mode contract (ARCHITECTURE §5.9). @returns {() => void} unmount */
+/** The old trophy-room tab names, mapped onto the card's (the two rooms merged, audit 2026-10-01). */
+const TAB_ALIASES = Object.freeze({ overview: 'card', album: 'stickers' });
+
+/** Mode contract (ARCHITECTURE §5.9); serves '#/card' and '#/trophies' alike (modes/trophies.js delegates here). */
 export async function mount(root, app, params = []) {
+  const base = app?.route?.mode === 'trophies' ? '#/trophies' : '#/card';
   const want = String(params[0] ?? '').toLowerCase();
-  const tab = CARD_TABS.includes(want) ? want : 'card';
+  const tab = CARD_TABS.includes(TAB_ALIASES[want] ?? want) ? (TAB_ALIASES[want] ?? want) : 'card';
   const road = await loadRoad(app);
   let alive = true;
   const draw = () => {
@@ -335,7 +321,7 @@ export async function mount(root, app, params = []) {
     const body = tab === 'stickers' ? stickersView(app, road) : tab === 'badges' ? badgesView(app) : tab === 'kit' ? kitEditor(app, { showLocked: true }) : cardView(app, road);
     root.replaceChildren(el('div', { class: 'pm-page pm-cardpage' }, [
       el('h1', { class: 'visually-hidden', text: STRINGS.title }),
-      tabsNav(tab),
+      tabsNav(tab, base),
       el('div', { class: 'pm-tab-body' }, [body]),
       el('p', { class: 'pm-privacy' }, [playerIcon('lock', { size: 16 }), STRINGS.privacy]),
     ]));

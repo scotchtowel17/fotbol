@@ -3,7 +3,7 @@
 import { test, assert, approx, loadJSON, timed, isNode, PERF_SLACK } from './harness.js';
 import {
   PASSDRILL_DEFAULTS, PASS_LESSONS, PASS_YIELD, generatePassDrill, generatePassSet, checkPassDrill, validatePassDrill, passDrillGates,
-  passDrillFrame, passDrillPlayback, passDrillRating, mirrorPassDrill, forwardSlot, passLessons, passMoments, passDrillPicture,
+  passDrillFrame, passDrillPlayback, passDrillRating, mirrorPassDrill, forwardSlot, passLessons, passDrillPicture,
   similarPassDrills, canGeneratePass,
 } from '../js/engine/passdrill.js';
 import { gradePass, explainPass, rateOptions, swapTeams, markedBy, PASS_DEFAULTS } from '../js/engine/passing.js';
@@ -328,17 +328,6 @@ test('playback: the lead-in plays with frameAt (nobody held back), the increment
   assert.deepEqual(mirrorPassDrill(m, { formations }).timeline, d.timeline, 'mirroring twice gives the drill back');
 });
 
-test('passMoments: our receptions in a Live sequence, rated a moment after the touch', () => {
-  const s = generateSequence({ seed: 4, role: 'DM', formations });
-  const moments = passMoments(s, { formations });
-  assert.ok(moments.length >= 3, `${moments.length} moments`);
-  for (const m of moments) {
-    assert.ok(m.carrierId.startsWith('us-') && m.carrierId !== 'us-DM', m.carrierId);
-    assert.ok(m.t > 0 && m.t <= s.timeline.duration);
-    assert.equal(m.rating.carrierId, m.carrierId);
-    assert.ok(m.rating.options.length >= 10);
-  }
-});
 
 test('Live (sequence.js): passes are chosen on the frame the viewer sees, so almost none would be cut out', () => {
   // research/passing.md §5.4: before the fix, 55 of 213 of our passes graded F on the rendered frame (47 body blocks).

@@ -35,11 +35,11 @@
 // only when the idea's recent plays average 2 stars). At the end of the set: the set's stars as a rewards session ("Perfect
 // set"), road.recordSet (Road nodes), then showFullTime (js/ui/player/fulltime.js).
 //
-// The other areas' modules with behaviour (engine passing.js / passdrill.js / cast.js, road.js, reveal.js, fulltime.js) load when the
-// screen opens (only the shared words of ./strings.js and "Find your spot"'s way of naming a player by shirt number,
-// ./play.js nameSpecific, are imported up front), and nothing touches document or window at import time. The pure
-// helpers below (labels, outcomes, option order, the reveal's markers and words, the flight, the set) are tested in
-// tests/player-pass.test.js.
+// Every module is a static import (the audit of 2026-10-01 removed the dynamic loadDeps and its degraded fallbacks:
+// main.js lazy-loads this whole module per route, so the load moment is the same and a missing file now surfaces as
+// main.js's Try-again card instead of a silently degraded screen); nothing touches document or window at import time.
+// The pure helpers below (labels, outcomes, option order, the reveal's markers and words, the flight, the set) are
+// tested in tests/player-pass.test.js.
 
 import { el, button, icon, notice, linkButton, announce } from '../components.js';
 import { timing } from '../../engine/timeline.js';
@@ -55,6 +55,13 @@ import { receiverOf, optionsByReceiver, genuinelyOn, passTargets as targetsFor, 
 import { FIGURE } from '../figures.js';
 // Who a sentence is about, by shirt number, as "Find your spot" says it ("your number 8": play.js nameSpecific).
 import { nameSpecific, groupMembers, KID_GROUPS } from './play.js';
+import * as passing from '../../engine/passing.js';
+import * as passdrill from '../../engine/passdrill.js';
+import * as castMod from '../../engine/cast.js';
+import * as boardMod from '../board.js';
+import * as roadMod from './road.js';
+import { createPlayerReveal } from './reveal.js';
+import { showFullTime } from './fulltime.js';
 
 const { STRINGS: SHARED, starWord, roleCard } = SharedWords;
 
@@ -100,7 +107,6 @@ export const PASS_DEFAULTS = Object.freeze({
   interceptSize: 2.2, // [D] = css/pass.css .ps-intercept (tested): the ✗ where a lane is cut out, in type metres (x the board's label scale)
   revealFull: Object.freeze({ length: 50, width: 34 }), // [D] m: the full match's reveal shows at least this much pitch (along x
   //                                                       across), so the play keeps its context and 22 figures never crowd
-  stageCardMs: 700, // [D] the set card holds this much longer when it names the game's size ("Small game: 3 v 2")
   cameraMin: Object.freeze({ length: 24, width: 16 }), // [D] = board.js CAMERA_MIN (tested equal): the choice's camera frames at least this
   cardGapPx: 12, // [D] = play.js PLAY_DEFAULTS.cardGapPx: the card sits this far in from the top or bottom of the pitch...
   cardClearPx: 8, // [D] = play.js PLAY_DEFAULTS.cardClearPx: ...keeping this far off YOU, the ball and the teammates (cardSpot)...
@@ -130,8 +136,8 @@ export const STRINGS = Object.freeze({
   watchAgain: SHARED.watchAgain,
   stop: SHARED.stop,
   repOf: (i = 1, n = 5) => `Pass ${i} of ${n}`,
-  labels: Object.freeze({ best: 'Best', good: 'Good', risky: 'Risky', 'cut-out': 'Cut out', offside: 'Offside', danger: 'Danger' }),
-  outcomes: Object.freeze({ 'cut-out': 'Cut out!', safe: 'Safe', 'line-broken': 'Line broken!', risky: 'Risky!', offside: 'Offside!', danger: 'Danger!' }),
+  labels: Object.freeze({ best: 'Best', good: 'Good', risky: 'Risky', 'cut-out': 'Cut out' }),
+  outcomes: Object.freeze({ 'cut-out': 'Cut out!', safe: 'Safe', 'line-broken': 'Line broken!', risky: 'Risky!', offside: 'Offside!' }),
   missNote: SHARED.missNote,
   lineGood: 'Good pass. It got to your teammate.',
   lineBad: 'Look for a teammate with nobody close.',
@@ -154,16 +160,12 @@ export const STRINGS = Object.freeze({
   whySummary: 'Pass to a teammate with nobody close and a clear path.',
   emptyTitle: 'No passes ready',
   emptyText: 'Try again in a moment.',
-  soonTitle: 'Passing is coming soon',
-  soonText: 'Go back home and play there for now.',
   back: 'Back home',
   again: SHARED.playAgain,
   next: SHARED.next,
   why: SHARED.why,
   retry: SHARED.tryAgain,
   stars: (n = 0) => SHARED.stars(n),
-  doneTitle: SHARED.fullTime,
-  doneStars: (n = 0, max = 15) => `${n} of ${max} stars`,
 });
 
 /** 'your striker' → 'Your striker' (a template's name at the start of a sentence). */
@@ -184,9 +186,12 @@ export const LABELS = Object.freeze({
   good: Object.freeze({ shape: '✓', tone: 'good', line: 'solid', rank: 1 }),
   risky: Object.freeze({ shape: '!', tone: 'warn', line: 'dashed', rank: 2 }),
   'cut-out': Object.freeze({ shape: '✗', tone: 'bad', line: 'dotted', rank: 3 }),
-  offside: Object.freeze({ shape: '✗', tone: 'bad', line: 'dotted', rank: 4 }),
-  danger: Object.freeze({ shape: '✗', tone: 'bad', line: 'dotted', rank: 5 }),
 });
+/** The engine's critical labels (passing.js: 'offside', 'danger') SHOWN as the fourth word, Cut out: the kid reads
+ *  four option words, never six (audit 2026-10-01). The engine label stays on the option: the outcome still blows the
+ *  whistle and draws the line for an offside pass. Ranked after a plain cut-out. */
+const DISPLAY_LABEL = Object.freeze({ offside: 'cut-out', danger: 'cut-out' });
+const LABEL_RANK = Object.freeze({ offside: 4, danger: 5 });
 
 /** Board marker tones for the colour families (board.js has fix|cue|good|bad|info; css/pass.css turns warn amber). */
 export const BOARD_TONES = Object.freeze({ good: 'good', warn: 'cue', bad: 'bad', info: 'info' });
@@ -196,10 +201,12 @@ export const BOARD_TONES = Object.freeze({ good: 'good', warn: 'cue', bad: 'bad'
  * risky). `cls` is the marker class list css/pass.css styles (colour family and line pattern).
  */
 export function labelStyle(label) {
-  const key = Object.hasOwn(LABELS, label) ? label : 'risky';
+  const shown = DISPLAY_LABEL[label] ?? label;
+  const key = Object.hasOwn(LABELS, shown) ? shown : 'risky';
   const L = LABELS[key];
   const word = STRINGS.labels[key];
-  return { key, ...L, word, text: `${L.shape} ${word}`, boardTone: BOARD_TONES[L.tone], cls: `ps-mk ps-mk--${L.tone} ps-line--${L.line}` };
+  const rank = LABEL_RANK[label] ?? L.rank;
+  return { key, ...L, rank, word, text: `${L.shape} ${word}`, boardTone: BOARD_TONES[L.tone], cls: `ps-mk ps-mk--${L.tone} ps-line--${L.line}` };
 }
 
 /** The outcome of a pass as graded: gradePass's outcome, else read from the option's label. */
@@ -213,9 +220,9 @@ export function outcomeKey(option, graded) {
 /**
  * What the kid sees and hears after the pass (§4.4 step 4): the kind, the big word, a shape and tone (never meaning
  * by sound alone), the sound, whether the ball is cut out on its way (and by whom) and whether a line was broken.
- *   cut out → "Cut out!" + groan (the blocker flashes) · offside → "Offside!" + the whistle · danger (across our goal)
- *   → "Danger!" (or "Cut out!" when it would be) · risky → "Risky!" · completed past a line → "Line broken!" + a lift ·
- *   completed → "Safe" (quiet)
+ *   cut out → "Cut out!" + groan (the blocker flashes) · offside → "Offside!" + the whistle · danger (across our
+ *   goal) → "Cut out!" (the fourth word; the blocker flashes when it would be cut) · risky → "Risky!" · completed
+ *   past a line → "Line broken!" + a lift · completed → "Safe" (quiet)
  */
 export function passOutcome(option, graded) {
   const key = outcomeKey(option, graded);
@@ -226,7 +233,7 @@ export function passOutcome(option, graded) {
   if (intercepted) return out('cut-out', '✗', 'bad', 'groan');
   if (key === 'cut-out') return out('cut-out', '✗', 'bad', 'groan');
   if (key === 'offside') return out('offside', '✗', 'bad', 'whistle');
-  if (key === 'danger') return out('danger', '✗', 'bad', null);
+  if (key === 'danger') return out('cut-out', '✗', 'bad', null); // across our goal: shown with the fourth word
   if (key === 'risky') return out('risky', '!', 'warn', null);
   if (option?.lineBroken) return out('line-broken', '✓', 'good', 'lift');
   return out('safe', '✓', 'good', null);
@@ -735,69 +742,8 @@ export function flightCamera(cam, flight) {
   return rectOf([{ x: cam.x0, y: cam.y0 }, { x: cam.x1, y: cam.y1 }, ...pts]);
 }
 
-/**
- * Where the set card ("Small game: 3 v 2", "You've got the ball") goes over the pitch (pure; CSS px; as play.js
- * cardSpot): 'top', 'bottom' or 'middle' of the stage, the first of them that covers nobody in `avoid` (YOU with YOUR
- * tag, the ball, the teammates to pass to, the rest of the cast: where the board will draw them, board.clientBox);
- * else ('free') the middle of the tallest band between them that covers nobody (a game spread over the pitch has one:
- * YOU at the top, a teammate at the bottom, a gap between); else the place whose cover costs least (each box's
- * overlap, within cardClearPx of it, times its weight: cardWeights), the named places first on a tie. The card was
- * always in the middle, and the camera, centred on the play, put YOU (a midfielder most of all) or the ball under it.
- * Given the room across the stage (`room`), the card may also slide to the left or right edge (cardGapPx in), where the
- * play leaves a corner free (in a phone's bigger game, YOU low on one side and the players spread up the middle once
- * left no clear band a centred card fitted in): the named places centred, then at an edge, then the bands the same way.
- * @param {{ top: number, bottom: number }} stage  the pitch's box on the screen
- * @param {number} height  the card's height
- * @param {({ box?: { left, right, top, bottom }, weight?: number } | { left, right, top, bottom } | null)[]} avoid  a
- *   box with its weight, or a bare box (weight 1)
- * @param {{ left?: number, right?: number, room?: { left: number, right: number } | null }} [across]  left, right: the
- *   card's box across the screen, centred (default: all of it); room: the stage's (default: none, the card stays centred)
- * @returns {{ at: 'top'|'bottom'|'middle'|'free', top: number, side: 'center'|'left'|'right' }}  top: the card's top edge,
- *   from the stage's (css/pass.css places a 'free' card there: --ps-card-top); side: centred, or at the left or right edge
- */
-export function cardSpot(stage, height, avoid = [], { left = -Infinity, right = Infinity, room = null } = {}, P = PASS_DEFAULTS) {
-  const fine = (b) => b && [b.left, b.right, b.top, b.bottom].every(Number.isFinite);
-  const items = (avoid ?? []).map((a) => (fine(a?.box) ? { b: a.box, w: Number.isFinite(a.weight) ? a.weight : 1 } : fine(a) ? { b: a, w: 1 } : null))
-    .filter((a) => a && a.w > 0);
-  const h = Math.max(0, height || 0), g = P.cardGapPx, c = P.cardClearPx;
-  const lo = stage.top + g, hi = Math.max(lo, stage.bottom - g - h);
-  const named = { top: lo, bottom: hi, middle: (stage.top + stage.bottom) / 2 - h / 2 };
-  // Across: centred; then, with room, slid to either edge (only when that moves it).
-  const xs = [{ side: 'center', l: left, r: right }];
-  const w = right - left;
-  if (Number.isFinite(w) && Number.isFinite(room?.left) && Number.isFinite(room?.right)) {
-    const l = room.left + g, r = room.right - g;
-    if (l + w <= r) {
-      if (l < left - 1) xs.push({ side: 'left', l, r: l + w });
-      if (r > right + 1) xs.push({ side: 'right', l: r - w, r });
-    }
-  }
-  const cost = (y, x) => items.reduce((a, { b, w: k }) => a + k * Math.max(0, Math.min(x.r, b.right + c) - Math.max(x.l, b.left - c)) * Math.max(0, Math.min(y + h, b.bottom + c) - Math.max(y, b.top - c)), 0);
-  const out = (at, y, x) => ({ at, top: y - stage.top, side: x.side });
-  let best = null;
-  const weigh = (at, y, x) => {
-    const a = cost(y, x);
-    if (!best || a < best.a - 1e-6) best = { at, y, x, a };
-    return a;
-  };
-  // The named places, centred first, then at either edge (a corner the play leaves free reads better than a card in
-  // the middle of it).
-  for (const x of xs) for (const k of ['top', 'bottom', 'middle']) if (weigh(k, named[k], x) <= 1e-6) return out(k, named[k], x);
-  for (const x of xs) {
-    // A band between the players: every place from the top to the bottom, 4 px apart; the middle of the tallest run
-    // that covers nobody (centred first, then at either edge).
-    let run = null, tallest = null;
-    for (let y = lo; y <= hi + 1e-9; y += 4) {
-      if (weigh('free', y, x) <= 1e-6) {
-        run = run ? { from: run.from, to: y } : { from: y, to: y };
-        if (!tallest || run.to - run.from > tallest.to - tallest.from) tallest = { ...run };
-      } else run = null;
-    }
-    if (tallest) return out('free', (tallest.from + tallest.to) / 2, x);
-  }
-  // Nowhere clear: the cheapest place (centred and a named one on a tie).
-  return out(best.at, best.y, best.x);
-}
+// cardSpot is play.js's (the 44-line twin here went with the 2026-10-01 audit; the card tunables match).
+export { cardSpot } from './play.js';
 
 /**
  * The dotted preview line from the ball to a teammate (§4.4 step 3): it points at the player, never at the engine's aim;
@@ -1229,33 +1175,8 @@ const QUICK_STARS = 1;
 
 // ---------------------------------------------------------------- the app (browser only below)
 
-const tryImport = async (url) => {
-  try { return await import(url); } catch (err) { console.warn(`[fotbol] pass: ${url} is not available`, err); return null; }
-};
-
-/** The other areas' modules (engine, shell, play), loaded when the screen opens. */
-async function loadDeps() {
-  const [passing, passdrill, road, reveal, fulltime, board, cast] = await Promise.all([
-    tryImport('../../engine/passing.js'), tryImport('../../engine/passdrill.js'), tryImport('./road.js'), tryImport('./reveal.js'), tryImport('./fulltime.js'),
-    tryImport('../board.js'), tryImport('../../engine/cast.js'),
-  ]);
-  return { passing, passdrill, road, reveal, fulltime, board, cast };
-}
-
-/** The Road (data/road.json): the app's copy, else road.js's loader, else the file. */
-async function getRoad(app, roadMod) {
-  if (app?.data?.road) return app.data.road;
-  for (const fn of ['loadRoad', 'getRoad']) {
-    if (typeof roadMod?.[fn] === 'function') {
-      try { const r = await roadMod[fn](app); if (r) return r; } catch { /* next */ }
-    }
-  }
-  try {
-    const res = await fetch(new URL('../../../data/road.json', import.meta.url));
-    if (res.ok) return await res.json();
-  } catch { /* no road */ }
-  return null;
-}
+/** The Road (data/road.json): the app's copy, else road.js's loader (the three-tier fallback went with the audit). */
+const getRoad = async (app) => app?.data?.road ?? roadMod.loadRoad(app);
 
 /** Mode contract (ARCHITECTURE §5.9). @returns {Promise<() => void>} unmount */
 export async function mount(root, app, params = []) {
@@ -1265,47 +1186,31 @@ export async function mount(root, app, params = []) {
   root.classList.add('ps-view');
   root.replaceChildren(el('div', { class: 'ps-loading', role: 'status' }, [el('p', { text: STRINGS.loading })]));
 
-  const deps = await loadDeps();
-  if (!root.isConnected) return () => {}; // a newer route took over while this one loaded
-  const passing = deps.passing, passdrill = deps.passdrill;
-  if (typeof passing?.gradePass !== 'function' || typeof passing?.explainPass !== 'function' || typeof passdrill?.generatePassDrill !== 'function'
-    || typeof passdrill?.passDrillFrame !== 'function' || typeof passdrill?.passDrillPlayback !== 'function') {
-    root.replaceChildren(notice({ title: STRINGS.soonTitle, text: STRINGS.soonText, actions: [linkButton(STRINGS.back, '#/', { variant: 'primary', icon: 'arrow' })] }));
-    return () => { alive = false; };
-  }
-
   const formations = app.data?.formations;
   const principles = app.data?.principles?.byId ?? {};
   const nodeId = params[0] ?? null;
-  const roadMod = deps.road;
   // The Road: a node's set, and the quick set's lessons (road.quickPass; without it, road.js falls back to the app it
   // was bound to, else any lesson).
-  const roadData = await getRoad(app, roadMod);
+  const roadData = await getRoad(app);
   let node = null;
   if (nodeId && roadData) {
-    try { node = roadMod?.nodeById?.(roadData, nodeId) ?? null; } catch { node = null; }
+    node = roadMod.nodeById(roadData, nodeId);
     if (!node) node = (roadData.chapters ?? []).flatMap((c) => c.nodes ?? []).find((n) => n.id === nodeId) ?? null;
   }
-  let profile = null;
-  try { profile = roadMod?.loadProfile?.(app) ?? null; } catch { profile = null; }
+  const profile = roadMod.loadProfile(app);
   // A locked node (opened by its address) is not played or recorded, as in play.js.
-  if (node) {
-    try { if (typeof roadMod?.isUnlocked === 'function' && !roadMod.isUnlocked(roadData, profile, node.id)) node = null; } catch { /* keep it */ }
-  }
+  if (node && !roadMod.isUnlocked(roadData, profile, node.id)) node = null;
   // A bad or locked node id never dead-ends: it plays a quick set, and the address says so.
   if (nodeId && !node) { try { history.replaceState(null, '', '#/pass'); } catch { /* keep the address */ } }
   const role = roleFor(profile);
   // A spot node plays in #/play: go there before any set is built, replacing this address (Back skips it).
-  let spotNode = false;
-  try { spotNode = !!node && typeof roadMod?.repKind === 'function' && roadMod.repKind(roadData, node) === 'spot'; } catch { spotNode = false; }
+  const spotNode = !!node && roadMod.repKind(roadData, node) === 'spot';
   if (spotNode) { app.navigate(`#/play/${encodeURIComponent(node.id)}`, { replace: true }); return () => { alive = false; }; }
   // A node's n-th set (its start counter: road.js counts a set when it begins, so a reload deals new reps).
-  let attempt = node ? profile?.road?.[node.id]?.plays ?? 0 : 0;
-  try { if (node && typeof roadMod?.nodeAttempt === 'function') attempt = roadMod.nodeAttempt(profile, node.id); } catch { /* the plays */ }
+  const attempt = node ? roadMod.nodeAttempt(profile, node.id) : 0;
   const seed = node ? nodeSeed(node.id, attempt) : (Date.now() % 2147483647) >>> 0;
   // The node's stars before the set: its stage plan (docs/PROGRESSIVE_FIELD.md §2; road.js tags its reps with it).
-  let nodeStarsBefore = 0;
-  try { if (node && typeof roadMod?.nodeStars === 'function') nodeStarsBefore = roadMod.nodeStars(profile, node.id); } catch { /* 0 */ }
+  const nodeStarsBefore = node ? roadMod.nodeStars(profile, node.id) : 0;
 
   await new Promise((r) => setTimeout(r, 30)); // let "Getting the pitch ready" paint: generating a set takes a moment
   const { reps, redirect } = await assembleSet(
@@ -1314,7 +1219,7 @@ export async function mount(root, app, params = []) {
       rewards: loadRewards(app), skills: S.loadSkills(app.store), app, stars: nodeStarsBefore,
     },
     {
-      buildSet: roadMod?.buildSet, buildQuickPassSet: roadMod?.buildQuickPassSet, repKind: roadMod?.repKind, stagePlan: roadMod?.stagePlan,
+      buildSet: roadMod.buildSet, buildQuickPassSet: roadMod.buildQuickPassSet, repKind: roadMod.repKind, stagePlan: roadMod.stagePlan,
       generatePassSet: passdrill.generatePassSet, generatePassDrill: passdrill.generatePassDrill,
     },
   );
@@ -1331,9 +1236,8 @@ export async function mount(root, app, params = []) {
   els.where = el('span', { class: 'visually-hidden' });
   els.exit = el('a', { class: 'btn btn--ghost btn--icon ps-exit', href: '#/', 'aria-label': STRINGS.stop, title: STRINGS.stop }, [icon('close')]);
   els.board = el('div', { class: 'ps-board' });
-  els.cardStage = el('p', { class: 'ps-card-stage', hidden: true });
   els.cardText = el('p', { class: 'ps-card-text' });
-  els.card = el('div', { class: 'ps-card', hidden: true }, [els.cardStage, els.cardText]);
+  els.card = el('div', { class: 'ps-card', hidden: true }, [els.cardText]);
   els.card.style.setProperty('--ps-card-gap', `${P.cardGapPx}px`); // (cardSpot's gap: css/pass.css places the card there)
   els.bannerShape = el('span', { class: 'ps-banner-shape', 'aria-hidden': 'true' });
   els.bannerText = el('span', { class: 'ps-banner-text' });
@@ -1356,16 +1260,16 @@ export async function mount(root, app, params = []) {
   const board = app.createBoard(els.board, { orientation: 'auto', labels: 'number', youNumber, figures: true });
   /** A teammate's number as the board draws it (board.js shirtNumberOf: YOUR kit number swapped in), else §5's. */
   const numberOf = (id) => {
-    try { if (typeof deps.board?.shirtNumberOf === 'function') return deps.board.shirtNumberOf(id, { learnerId: rep?.carrierId ?? null, youNumber }) ?? shirtOf(id); } catch { /* §5's */ }
+    const n = boardMod.shirtNumberOf(id, { learnerId: rep?.carrierId ?? null, youNumber });
+    if (n !== null && n !== undefined) return n;
     return shirtOf(id);
   };
-  const reveal = typeof deps.reveal?.createPlayerReveal === 'function' ? deps.reveal.createPlayerReveal(els.reveal, { app }) : fallbackReveal(els.reveal);
+  const reveal = createPlayerReveal(els.reveal, { app });
   cleanups.push(() => { try { reveal.destroy?.(); } catch { /* gone */ } }, () => { try { board.destroy(); } catch { /* gone */ } });
 
   const set = {
     reps, results: [], gained: emptyGains(), xpBefore: loadRewards(app).xp ?? 0, skills: S.loadSkills(app.store), streak: S.loadStreak?.(app.store),
     index: 0, startedAt: performance.now(), missNoted: false,
-    stageTop: -1, // the biggest stage the set has shown so far (strings.js stageLine: "Now 6 v 5!" once when it grows)
   };
   let rep = null;
   let raf = 0, backstop = 0, timer = 0, cardTimer = 0;
@@ -1418,7 +1322,7 @@ export async function mount(root, app, params = []) {
   // waits for it, and the reveal's labels are placed again then (until it lands the board tells where it draws everyone
   // in the view it is leaving, and draws them on the way there).
   let camLands = 0;
-  const cameraMs = () => Number(deps.board?.BOARD_DEFAULTS?.cameraMs) || 450;
+  const cameraMs = () => Number(boardMod.BOARD_DEFAULTS.cameraMs) || 450;
   const moveCamera = (rect) => {
     const was = board.camera ?? null;
     const had = !!board.viewBox;
@@ -1438,11 +1342,9 @@ export async function mount(root, app, params = []) {
   }
   const setActions = (...nodes) => els.actions.replaceChildren(...nodes.filter(Boolean));
   const setLine = (text) => { els.line.textContent = text ?? ''; els.line.hidden = !text; };
-  function showCard(text, stageText = '', grew = false) {
+  function showCard(text, stage = '') {
     els.cardText.textContent = text;
-    els.cardStage.textContent = stageText;
-    els.cardStage.hidden = !stageText;
-    els.card.classList.toggle('is-bigger', !!grew);
+    els.card.dataset.stage = stage || ''; // not shown: the staging checks in the mount tests read it
     els.card.hidden = false;
   }
   const hideCard = () => { els.card.hidden = true; };
@@ -1495,8 +1397,8 @@ export async function mount(root, app, params = []) {
     const wanted = r.stage ?? 'full';
     let st = null;
     try { st = roadMod?.stagedRep?.(r, wanted, { formations }) ?? null; } catch { st = null; }
-    if (!st && typeof deps.cast?.bestStage === 'function') {
-      try { st = deps.cast.bestStage(r, wanted, { formations, principles: app.data?.principles }); } catch (err) { console.warn('[fotbol] pass: could not stage', r.drill?.id, err); }
+    if (!st) {
+      try { st = castMod.bestStage(r, wanted, { formations, principles: app.data?.principles }); } catch (err) { console.warn('[fotbol] pass: could not stage', r.drill?.id, err); }
     }
     r.staged = st ?? null;
     return r.staged;
@@ -1514,7 +1416,7 @@ export async function mount(root, app, params = []) {
     // Played as the engine checked it, at the rep's stage (passScene: a small or bigger game shows and judges only its cast).
     let scene;
     try {
-      scene = passScene(drill, stageOf(set.reps[i]), { formations, passdrill, reduceFrame: deps.cast?.reduceFrame });
+      scene = passScene(drill, stageOf(set.reps[i]), { formations, passdrill, reduceFrame: castMod.reduceFrame });
     } catch (err) {
       console.warn('[fotbol] pass: could not rate', drill?.id, err);
       return nextRep();
@@ -1545,16 +1447,6 @@ export async function mount(root, app, params = []) {
   /** Who is lit while the play runs: the full match spotlights the ball, YOU and the teammates to pass to; a smaller
    *  game shows only players who matter already. */
   const lit = () => (rep.stage === 'full' ? [BALL_ID, rep.carrierId, ...rep.targets] : null);
-  /** The card's stage line (strings.js stageLine): "Small game: 3 v 2", "Now 6 v 5!" the first time the set grows, "Full match". */
-  function stageCard() {
-    if (typeof SharedWords.stageLine !== 'function') return { text: '', now: false };
-    try {
-      const out = SharedWords.stageLine(set.stageTop, rep.stage, rep.cast);
-      set.stageTop = out.top;
-      return out;
-    } catch { return { text: '', now: false }; }
-  }
-
   function nextRep() {
     if (set.index + 1 < set.reps.length) startRep(set.index + 1);
     else finish();
@@ -1573,11 +1465,10 @@ export async function mount(root, app, params = []) {
     rep.setFrame = rep.at(rep.from);
     draw(rep.setFrame);
     spotlight(lit());
-    // The game's size ("Small game: 3 v 2"); a rep played as a teammate in your group (road.js: a full-back's "free
-    // side" is a centre-back's) says so.
+    // A rep played as a teammate in your group (road.js: a full-back's "free side" is a centre-back's) says so.
+    // (The stage line, "Small game: 3 v 2", went with the 2026-10-01 audit: the pitch shows how many players there are.)
     const card = roleCard(roleOfDrill(rep.drill), role);
     const text = card.changed ? card.text : STRINGS.setCard;
-    const size = stageCard();
     const r0 = rep;
     // The card waits for the camera to land (easing in on a small game from the reveal before, or back out to the full
     // match's length crop) and the board to have its size, as play.js's role card: until then the board draws everyone
@@ -1586,14 +1477,14 @@ export async function mount(root, app, params = []) {
     const wait = landsIn() + P.cardSettleMs;
     cardTimer = setTimeout(() => {
       if (!alive || rep !== r0 || view.dataset.phase !== 'set') return;
-      showCard(text, size.text, size.now);
+      showCard(text, rep.stage);
       els.card.classList.toggle('is-changed', card.changed);
       placeCard();
     }, wait);
-    announce([size.text, text].filter(Boolean).join('. '));
+    announce(text);
     const go = () => { if (rep && view.dataset.phase === 'set') showWatch(); };
     els.card.onclick = go;
-    later(wait + (card.changed ? P.roleChangedMs : P.setCardMs) + (size.text ? P.stageCardMs : 0), go);
+    later(wait + (card.changed ? P.roleChangedMs : P.setCardMs), go);
   }
 
   /**
@@ -1759,7 +1650,7 @@ export async function mount(root, app, params = []) {
     const place = () => setMarkers(revealMarkers({ ...area, targets: rep.byReceiver, ...layout(), drawnAt }));
     place();
     const r0 = rep;
-    const slide = Number(deps.board?.BOARD_DEFAULTS?.declutterEaseMs) || 250; // (a figure moved clear of another slides there)
+    const slide = Number(boardMod.BOARD_DEFAULTS.declutterEaseMs) || 250; // (a figure moved clear of another slides there)
     later(Math.max(landsIn(), slide) + P.revealSettleMs, () => { if (rep === r0 && view.dataset.phase === 'reveal') place(); });
   }
 
@@ -1776,7 +1667,7 @@ export async function mount(root, app, params = []) {
     const score = Number.isFinite(a.graded?.score) ? a.graded.score : 0;
     const grade = a.graded?.grade ?? null;
     try {
-      set.skills = eloUpdate(set.skills, { itemId: passRecordId(drill), principles: drill.principles ?? [], role, score01: score / 100, prior: Number.isFinite(drill.difficulty) ? drill.difficulty : 0 });
+      set.skills = eloUpdate(set.skills, { principles: drill.principles ?? [], role, score01: score / 100 });
       S.saveSkills(app.store, set.skills);
       if (typeof S.updateStreak === 'function' && set.streak) {
         set.streak = S.updateStreak(set.streak, { day: S.dayKey(new Date()), score });
@@ -1815,10 +1706,7 @@ export async function mount(root, app, params = []) {
       budget: reveal.budget, playedMs: performance.now() - set.startedAt, // the set's one big celebration; play time today (R22)
     };
     teardownStage();
-    if (typeof deps.fulltime?.showFullTime === 'function') {
-      try { ftCleanup = deps.fulltime.showFullTime(root, app, opts); return; } catch (err) { console.error('[fotbol] pass: full time failed', err); }
-    }
-    root.replaceChildren(fallbackFullTime(opts));
+    ftCleanup = showFullTime(root, app, opts);
   }
 
   let stageUp = true;
@@ -1856,44 +1744,4 @@ export async function mount(root, app, params = []) {
 
 // ---------------------------------------------------------------- fallbacks (when the play area's screens are missing)
 
-/** A plain reveal with the createPlayerReveal contract (docs/KID_REDESIGN.md §8.1). */
-function fallbackReveal(container) {
-  const clear = () => container.replaceChildren();
-  return {
-    show({ stars = 0, word = '', line = '', why = null, onNext, onRetry }) {
-      const whyBox = el('div', { class: 'ps-fb-why', hidden: true }, [
-        why?.title ? el('p', { class: 'ps-fb-why-title', text: why.title }) : null,
-        why?.summary ? el('p', { text: why.summary }) : null,
-        ...(why?.reasons ?? []).map((r) => el('p', { text: r })),
-        ...(why?.praise ?? []).map((r) => el('p', { text: r })),
-      ]);
-      container.replaceChildren(el('div', { class: 'ps-fb-reveal' }, [
-        el('p', { class: 'ps-fb-stars' }, [el('span', { 'aria-hidden': 'true', text: '★'.repeat(stars) + '☆'.repeat(3 - stars) }), el('span', { class: 'visually-hidden', text: STRINGS.stars(stars) })]),
-        el('p', { class: 'ps-fb-word', text: word }),
-        el('p', { class: 'ps-fb-line', text: line }),
-        whyBox,
-        el('div', { class: 'ps-fb-actions' }, [
-          button(STRINGS.next, { variant: 'primary', icon: 'arrow', onClick: () => onNext?.() }),
-          button(STRINGS.why, { onClick: () => { whyBox.hidden = !whyBox.hidden; } }),
-          onRetry ? button(STRINGS.retry, { onClick: () => onRetry() }) : null,
-        ]),
-      ]));
-      container.querySelector('.btn--primary')?.focus({ preventScroll: true });
-    },
-    clear,
-    destroy: clear,
-  };
-}
 
-/** A plain Full time with the showFullTime options. */
-function fallbackFullTime({ reps = [], onHome, onAgain }) {
-  const stars = reps.reduce((a, r) => a + (r.stars ?? 0), 0);
-  return el('div', { class: 'ps-fb-full' }, [
-    el('h1', { text: STRINGS.doneTitle }),
-    el('p', { class: 'ps-fb-stars', text: STRINGS.doneStars(stars, reps.length * 3) }),
-    el('div', { class: 'ps-fb-actions' }, [
-      button(STRINGS.back, { variant: 'primary', icon: 'arrow', onClick: () => onHome?.() }),
-      button(STRINGS.again, { onClick: () => onAgain?.() }),
-    ]),
-  ]);
-}

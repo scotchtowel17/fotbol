@@ -1431,7 +1431,7 @@ test('board: the halo keeps its strength through its pulse (only its size pulses
   assert.match(css, /\.token-you \.you-chevron\s*\{[^}]*fill:\s*var\(--learner\)/);
   // YOUR tag slides where it goes, at once under reduced motion.
   assert.match(css, /\.token-you-shift\s*\{[^}]*transition:\s*transform/);
-  assert.match(css, /prefers-reduced-motion[\s\S]*\.token-you-shift\s*\{\s*transition:\s*none/);
+  assert.match(css, /data-reduced-motion="true"[\s\S]*\.token-you-shift\s*\{\s*transition:\s*none/); // the attribute selector alone (audit 2026-10-01: main.js resolves the OS query into it)
   assert.match(css, /data-reduced-motion="true"\] \.token-you-shift\s*\{\s*transition:\s*none/);
   // The run cycle's length comes from FIGURE_DEFAULTS.runMs, set on the board.
   assert.doesNotMatch(css, /\d\s*ms\s+steps\(/, 'no run-cycle length written into the CSS');

@@ -24,14 +24,14 @@ No account, no ads, no tracking. Your progress stays on your device.
 
 **Player mode** is what everyone sees first, and it is built for young players (the design and the research behind it are in [docs/KID_REDESIGN.md](docs/KID_REDESIGN.md)):
 
-- **The Road**: four chapters (Defend together, Help the ball, Pass it right, Move as one) of short sets of five plays, each about one to three ideas like "Back Up Your Buddy" or "Stay in Line". Stars on a stop open the next one, each chapter ends with a match, and midfielders, wingers and strikers get the attacking chapter early. Stop a set whenever you like: the plays you finished still count.
+- **The Road**: four chapters (Defend together, Help the ball, Pass it right, Move as one) of short sets of five plays, each about one to three ideas like "Back Up Your Buddy" or "Stay in Line". Finishing a stop opens the next one, stars or not (the stars stay your quality signal, and Play always offers a fresh stop before a replay); each chapter ends with a match, and midfielders, wingers and strikers get the attacking chapter early. The home shows the chapter you are in with its stops, and the other chapters fold up behind their names. Stop a set whenever you like: the plays you finished still count.
 - **Small games first**: a new stop starts with small games (2 v 2, 3 v 2, just the players the idea is about, so they are big and easy to see) and builds up to a bigger game and then the full 11 v 11 match as you earn its stars. The players are little figures in their kits, faces left blank, and the ball is big, with a bright yellow ring, so you can always find it.
 - **Who's open?**: now you have the ball. Tap the teammate you'd pass to, watch the ball go, and see the options marked on the pitch: ★ Best, ✓ Good, ! Risky or ✗ Cut out.
-- **Match day**: 45 seconds of play where you keep moving to the best spot, with your ring telling you Hot, Warm or Cold.
-- **Your card**: a player card with your ratings, a sticker album, badges and your kit.
+- **Match day**: 45 seconds of play where you keep moving to the best spot. Your ring turns green in the right area, and the big word is one you already know: Spot on, Great, Close or Not yet.
+- **Your card**: a player card with your Road stars for each chapter, a sticker album, five badges and your kit.
 - Words kids can read (checked for reading age), no codes or jargon on screen (when two players of a kind are on show, the words name the one they mean by shirt number: "their number 7"), and rewards that are fair: stars come from good positions, the days-played-this-week dots only fill up, nothing is left to chance, and nothing compares you with anyone else.
 
-**Coach mode** is for coaches and parents: open the settings and choose "Coach or parent? Open Coach mode" (and "Back to Player mode" to return). It is the full tool (round player tokens instead of figures, with the same easy-to-see ball), and playing in it never changes the player's card (stars, XP, stickers and badges are earned in Player mode only):
+**Coach mode** is for coaches and parents: open the settings, choose "Coach or parent? Open Coach mode" and answer a quick grown-up sum ("Back to Player mode" returns). It is the full tool (round player tokens instead of figures, with the same easy-to-see ball), and playing in it never changes the player's card (stars, XP, stickers and badges are earned in Player mode only):
 
 - **Drill**: the 36 authored situations, scored out of 100 with a grade, the principle behind each reason, a cue question before the answer, and a summary per session.
 - **Learn**: a seven-step guided tour of the pitch, plus a library of every principle with sources and a reading list.
@@ -72,7 +72,7 @@ The engine lives in `js/engine/`. It is plain JavaScript that runs the same in t
 2. **What the situation asks of you (layer B).** First, fotbol works out your job from the ball: first, second or third defender, or supporting attacker. Then 17 small geometric rules check the principles that apply, for example "goal-side of your man", "cover behind and inside the presser", "level with your back line", "out of the passing shadow" or "stay onside". Each rule gives a 0-1 score and a sentence.
 3. **The best spot (layer C).** A grid search around your zone finds the highest-scoring spot. That spot is the ghost ring you see after the reveal, drawn over a heatmap.
 
-Your score is 55% "how close to your zone" and 45% "which principles you met". Breaking a hard rule, such as being offside or playing their striker onside, caps it at 59. Coach mode shows that score and its grade. Player mode never shows the number and judges the right area instead (`js/engine/kidscore.js`): 3 stars anywhere in an area round the best spot about as big as your position's zone, fewer further out (never fewer than the score would give), none where you started, and at most one for a mistake no distance forgives, such as the wrong side of your man, offside at a pass or the drill's own lesson clearly missed. The other 21 players move automatically as an authored ball path plays out, so each drill is a moving scene with no physics engine behind it.
+Your score is 55% "how close to your zone" and 45% "which principles you met". Breaking a hard rule, such as being offside or playing their striker onside, caps it at 59. Coach mode shows that score and its grade. Player mode never shows the number and judges the right area instead (`js/engine/kidscore.js`): 3 stars anywhere in an area round the best spot about as big as your position's zone, fewer further out (the score can lift the band a little, never to 3: three stars live in the green and nowhere else), none where you started, and at most one for a mistake no distance forgives, such as the wrong side of your man, offside at a pass or the drill's own lesson clearly missed. The other 21 players move automatically as an authored ball path plays out, so each drill is a moving scene with no physics engine behind it.
 
 When you have the ball ("Who's open?"), `js/engine/passing.js` rates every pass you could play: how likely it is to arrive (the lane, who can get there first, the pressure on your teammate) and what it gains (lines broken, space, the danger if it is lost). A risky pass is starred only when it is worth clearly more than the best safe one, and a safe pass earns two stars or more unless a clearly better forward pass was on. `js/engine/passdrill.js` builds those drills from match-like scenes and keeps only the ones with a clear best pass and a tempting wrong one. `js/engine/spotdrill.js` builds new "Find your spot" drills the same way, so the Road never runs out of plays, and keeps only the ones that pass the same quality checks as the 36 hand-made drills.
 
@@ -94,13 +94,13 @@ npm run sanity         # rewrite docs/sanity-output.txt: the engine's answers on
 
 Start with [AGENTS.md](AGENTS.md) (commands, hard rules, where things live), then [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (the binding module contracts and data shapes) and [docs/ROADMAP.md](docs/ROADMAP.md) (status, what's next, known issues).
 
-To add a scenario:
+To add a scenario (the in-app editor left the shipped app with the 2026-10-01 audit; scenarios are authored as files):
 
-1. Open `#/author` in the app. Script the ball, override the players who create the situation, and set when play freezes.
-2. Read the engine's answer in the Answer tab. It warns you when the drill is trivial, when the principle is not actually tested, or when the best spot does not score an S.
+1. Copy `data/scenarios/_example.json` to `data/scenarios/<id>.json`. Script the ball, override the players who create the situation, and set when play freezes.
+2. Run `npm run check`: it prints the engine's answer per drill and warns you when the drill is trivial, when the principle is not actually tested, or when the best spot does not score an S.
 3. Write the brief, question, takeaway and misconceptions in both detailed and simple wording (the `*Kid` fields: Player mode shows only these, and `tests/copy.test.js` holds them to a reading age of 9 and the word budgets). The text must never name a side, because every scenario is also played mirrored.
-4. Check it with **Play as learner**.
-5. Download the JSON to `data/scenarios/<id>.json` and add the id to its module in `data/curriculum.json`.
+4. Check it in the app (`#/drill/s/<id>` plays one scenario).
+5. Add the id to its module in `data/curriculum.json`.
 6. Run `npm run index`, `npm run check` and `npm test`. Every scenario must give an S-grade best spot at least 5 m from where you start, and must pass the copy rules in `tests/scenarios-content.test.js`. `npm run check` also fails a drill that can be played as neither a small nor a bigger game, unless its `"stages"` note says why (docs/PROGRESSIVE_FIELD.md). Player mode's Road picks new drills up by their principles (`data/road.json`), and `tests/road-sets-*.test.js` checks that every stop still builds a full set for every position.
 
 ## Credits and licence

@@ -23,7 +23,7 @@
       var p = JSON.parse(localStorage.getItem('fotbol:player') || '{}') || {};
       var d = document.documentElement.dataset;
       if (s.theme === 'light' || s.theme === 'dark') d.theme = s.theme;
-      if (s.reducedMotion === true) d.reducedMotion = 'true';
+      d.reducedMotion = String(s.reducedMotion === true || (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches));
       var coach = s.mode === 'coach';
       var detail = typeof s.detail === 'boolean' ? s.detail : s.wording !== 'kid';
       d.appMode = coach ? 'coach' : 'player';

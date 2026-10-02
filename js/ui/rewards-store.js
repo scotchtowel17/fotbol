@@ -17,7 +17,7 @@
 // Everything that touches the store or the document goes through `app` or a guarded global, so the pure
 // helpers (todayLocal, mergeGains, cleanGains, kitVars, youLabel, totalStars) run under node --test.
 
-import { normalizeRewards, applyEvent, paletteById, baseScenarioId, rankFor, weekDaysPlayed, stickerReady, BADGES_BY_ID, KIT_PALETTES } from '../rewards.js';
+import { normalizeRewards, applyEvent, paletteById, baseScenarioId, weekDaysPlayed, stickerReady, BADGES_BY_ID, KIT_PALETTES } from '../rewards.js';
 import { loadHistory } from './session.js';
 
 export const REWARDS_KEY = 'rewards';
@@ -115,10 +115,8 @@ function cleanLevelUp(u) {
   if (!u || typeof u !== 'object') return null;
   const from = Number(u.from), to = Number(u.to);
   if (!Number.isInteger(from) || !Number.isInteger(to) || from < 1 || to <= from) return null;
-  const rank = rankFor(to);
   return {
-    from, to, rank,
-    rankUp: u.rankUp === true || rankFor(from).id !== rank.id,
+    from, to,
     unlocks: Array.isArray(u.unlocks) ? [...new Set(u.unlocks.filter((id) => PALETTE_IDS.has(id)))] : [],
   };
 }
@@ -156,7 +154,7 @@ export function mergeGains(a, b) {
   let levelUp = A.levelUp ?? B.levelUp;
   if (A.levelUp && B.levelUp) {
     const to = Math.max(A.levelUp.to, B.levelUp.to), from = Math.min(A.levelUp.from, B.levelUp.from);
-    levelUp = cleanLevelUp({ from, to, rankUp: A.levelUp.rankUp || B.levelUp.rankUp, unlocks: [...A.levelUp.unlocks, ...B.levelUp.unlocks] });
+    levelUp = cleanLevelUp({ from, to, unlocks: [...A.levelUp.unlocks, ...B.levelUp.unlocks] });
   }
   return {
     xp: A.xp + B.xp,

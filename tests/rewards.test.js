@@ -68,34 +68,28 @@ test('rewards: XP comes from stars and improvement only (R28), never from taking
   // Finishing a session, the tutorial and a Live run earn nothing by themselves.
   const none = play([{ type: 'session', stars: [0, 0, 1] }, { type: 'tutorial-complete' }, { type: 'live', average: 20 }]);
   assert.deepEqual(none.gains.map((g) => g.xp), [0, 0, 0]);
-  assert.ok(none.state.badges['first-steps'], 'the tutorial is marked, with no XP');
-  assert.deepEqual(none.gains[2].badges, [], 'finishing a Live run earns no badge (R28)');
-  // A Live run (Match day) earns by its stars (and its badges: 2 stars, 3 stars).
-  const liveBadges = (average) => play([{ type: 'live', average }]).gains[0].badges.reduce((a, id) => a + BADGES_BY_ID[id].xp, 0);
-  assert.deepEqual([40, 60, 80, 95].map((average) => play([{ type: 'live', average }]).gains[0].xp - liveBadges(average)), X.liveStarXp);
-  // Days on their own never earn: five training days with 0-star plays.
+  assert.deepEqual(Object.keys(none.state.badges), [], 'the tutorial and a weak run earn nothing, not even a badge (R28)');
+  // A Live run (Match day) earns by its stars alone: there is no badge for finishing or starring in one.
+  assert.deepEqual([40, 60, 80, 95].map((average) => play([{ type: 'live', average }]).gains[0].xp), X.liveStarXp);
+  // Days on their own never earn: five training days with 0-star plays, no XP and no badge.
   const days = ['2026-09-21', '2026-09-22', '2026-09-23', '2026-09-24', '2026-09-25'];
   let s = createRewards();
   for (const day of days) s = applyEvent(s, rep(10, day), { day }).state;
-  assert.ok(s.badges.regular, 'five different days');
   assert.equal(s.xp, 0);
-  for (const id of ['first-steps', 'regular']) assert.equal(BADGES_BY_ID[id].xp, 0, `${id}: taking part earns no XP`);
+  assert.deepEqual(Object.keys(s.badges), [], 'showing up on days earns no badge (the Regular badge is gone)');
 });
 
 test('rewards: every badge is for a skill: no badge for a first play or for finishing a Live run (R28)', () => {
   const zero = play([rep(10, 'a'), { type: 'live', average: 10 }, { type: 'session', stars: [0, 0, 0] }]);
   assert.deepEqual(Object.keys(zero.state.badges), [], 'taking part earns nothing');
-  // "Boots on" (a first play) is now Top form: 3 stars on 10 plays; "Went the distance" (finish a run) is Red hot.
-  assert.equal(BADGES_BY_ID['first-rep'].name.kid, 'Top form');
-  assert.equal(BADGES_BY_ID['first-rep'].goal, 10);
-  assert.equal(BADGES_BY_ID['live-finisher'].name.kid, 'Red hot');
-  for (const b of BADGES) assert.doesNotMatch(`${b.name.kid} ${b.description.kid}`, /\b(?:finish|first play|boots)\b/i, `${b.id}: "${b.description.kid}"`);
+  // Five badges, every one earned by stars (the 2026-10-01 audit cut the attendance, rank and restatement badges).
+  assert.deepEqual(BADGES.map((b) => b.id), ['first-s', 'hat-trick', 'perfect-session', 'all-rounder', 'collector']);
+  for (const b of BADGES) assert.doesNotMatch(`${b.name.kid} ${b.description.kid}`, /\b(?:finish|first play|boots|days?|rank|level)\b/i, `${b.id}: "${b.description.kid}"`);
 });
 
-test('rewards: level 2 comes within the first set, later levels cost more, ranks and kits unlock', () => {
+test('rewards: level 2 comes within the first set, later levels cost more, kits unlock', () => {
   assert.deepEqual([...LEVEL_XP.slice(0, 5)], [0, 50, 250, 700, 1600], 'the retuned pace [D] (rewards.js)');
   assert.equal(levelFor(0).level, 1);
-  assert.equal(levelFor(0).rank.id, 'rookie');
   const steps = LEVEL_XP.slice(1).map((x, i) => x - LEVEL_XP[i]);
   assert.ok(steps.every((d, i) => d > 0 && (i === 0 || d >= steps[i - 1])), `each level costs at least as much as the last: ${steps}`);
   // Five one-star plays (a weak first set) reach level 2; five 0-star plays do not.
@@ -105,11 +99,7 @@ test('rewards: level 2 comes within the first set, later levels cost more, ranks
   assert.equal(levelFor(play(['a', 'b', 'c', 'd', 'e'].map((id) => rep(20, id))).state.xp).level, 1);
   assert.ok(levelFor(play(['a', 'b'].map((id) => rep(95, id))).state.xp).level >= 2, 'two 3-star plays');
   assert.equal(levelFor(LEVEL_XP[2]).level, 3);
-  assert.equal(levelFor(LEVEL_XP[2]).rank.id, 'academy');
-  assert.equal(levelFor(LEVEL_XP[4]).rank.id, 'first-team');
-  assert.equal(levelFor(LEVEL_XP[7]).rank.id, 'captain');
-  assert.equal(levelFor(LEVEL_XP[10]).rank.id, 'legend');
-  assert.ok(LEVEL_XP[10] >= 100 * REWARDS_DEFAULTS.starXp[2], 'Legend takes many sets, not a few days');
+  assert.ok(LEVEL_XP[10] >= 100 * REWARDS_DEFAULTS.starXp[2], 'the top levels take many sets, not a few days');
   const beyond = levelFor(LEVEL_XP.at(-1) + 1);
   assert.equal(beyond.level, LEVEL_XP.length);
   assert.ok(levelFor(LEVEL_XP.at(-1) + 10000).level > LEVEL_XP.length, 'levels go on past the table');
@@ -126,22 +116,10 @@ test('rewards: level 2 comes within the first set, later levels cost more, ranks
 
 test('rewards: badge conditions (in stars)', () => {
   const earned = (events) => Object.keys(play(events).state.badges);
-  assert.ok(!earned([rep(20)]).includes('first-rep'), 'a first play earns nothing');
-  const tens = (n, score = 95) => Array.from({ length: n }, (_, i) => rep(score, `t${i}`));
-  assert.ok(earned(tens(10)).includes('first-rep'), 'Top form: 3 stars on 10 plays');
-  assert.ok(!earned(tens(9)).includes('first-rep'), '9 is not 10');
-  assert.ok(!earned(tens(12, 85)).includes('first-rep'), '2 stars is not 3');
-  assert.equal(play(tens(4)).state.counters.threes, 4);
   assert.ok(earned([rep(92)]).includes('first-s'));
   assert.ok(!earned([rep(89)]).includes('first-s'), '2 stars is not 3');
   assert.ok(earned([rep(92), rep(93, 'a'), rep(91, 'b')]).includes('hat-trick'));
   assert.ok(!earned([rep(92), rep(88, 'a'), rep(91, 'b')]).includes('hat-trick'), '2 stars breaks the 3-star run');
-  assert.ok(earned(['a', 'b', 'c', 'd', 'e'].map((id) => rep(56, id))).includes('on-a-roll'), 'a star or more, five times in a row');
-  assert.ok(!earned(['a', 'b', 'c', 'd', 'e'].map((id, i) => rep(i === 2 ? 50 : 80, id))).includes('on-a-roll'));
-  assert.ok(earned([rep(40, 'x'), rep(80, 'x')]).includes('comeback'), 'no stars, then 2 on the same drill');
-  assert.ok(!earned([rep(60, 'x'), rep(95, 'x')]).includes('comeback'), 'a star is not a miss');
-  assert.ok(!earned([rep(40, 'x'), rep(70, 'x')]).includes('comeback'), 'one star is not enough of a comeback');
-  assert.ok(earned([coachRep('D', 50, 'y'), coachRep('A', 85, 'y')]).includes('comeback'), 'Coach mode: D to A');
   const roles = ['LCB', 'LB', 'DM', 'RCM', 'LW', 'ST'];
   assert.ok(earned(roles.map((r, i) => rep(60, `s${i}`, r))).includes('all-rounder'), 'a star in every kind of position');
   assert.ok(!earned(roles.map((r, i) => rep(i === 5 ? 30 : 60, `s${i}`, r))).includes('all-rounder'), 'just playing a position is not enough');
@@ -150,21 +128,17 @@ test('rewards: badge conditions (in stars)', () => {
   assert.ok(earned([{ type: 'session', scores: [60, 80, 95] }]).includes('perfect-session'));
   assert.ok(!earned([{ type: 'session', stars: [2, 0, 3] }]).includes('perfect-session'));
   assert.ok(!earned([{ type: 'session', stars: [3, 3] }]).includes('perfect-session'), 'too short');
-  assert.ok(earned([{ type: 'live', average: 76 }]).includes('live-star'), '2 stars in a Live run');
-  assert.ok(!earned([{ type: 'live', average: 70 }]).includes('live-star'));
-  assert.ok(earned([{ type: 'live', average: 91 }]).includes('live-finisher'), 'Red hot: 3 stars in a Live run');
-  assert.ok(!earned([{ type: 'live', average: 89 }]).includes('live-finisher'));
-  assert.ok(earned([{ type: 'tutorial-complete' }]).includes('first-steps'));
-  assert.ok(earned(Array(5).fill({ type: 'explore-s' })).includes('explorer'));
+  assert.deepEqual(earned([{ type: 'tutorial-complete' }]), [], 'the tutorial earns no badge');
+  assert.deepEqual(earned([{ type: 'live', average: 95 }]), [], 'a Live run earns no badge');
+  assert.deepEqual(earned(Array(5).fill({ type: 'explore-s' })), [], 'Explore earns no badge');
 });
 
 test('rewards: training days only add up (a missed day costs nothing)', () => {
   let state = createRewards();
   for (const day of ['2026-09-01', '2026-09-03', '2026-09-10', '2026-09-20']) state = applyEvent(state, rep(60, day), { day }).state;
-  assert.ok(!state.badges.regular);
   state = applyEvent(state, rep(60, 'z'), { day: '2026-10-02' }).state;
-  assert.ok(state.badges.regular, 'fifth distinct day');
-  assert.equal(Object.keys(state.days).length, 5);
+  assert.equal(Object.keys(state.days).length, 5, 'five distinct days, each kept');
+  assert.ok(!('regular' in state.badges), 'and no badge for them: days are the week dots, not a prize');
 });
 
 test('rewards: days played this week count the Monday-to-Sunday week, only fill up, and start again on Monday', () => {
@@ -197,7 +171,6 @@ test('rewards: Explore XP is capped per day, but finds still count', () => {
   const { state, gains } = play(Array(8).fill({ type: 'explore-s' }));
   assert.equal(gains.filter((g) => g.xp >= REWARDS_DEFAULTS.exploreXp).length >= REWARDS_DEFAULTS.exploreXpPerDay, true);
   assert.equal(gains.at(-1).xp, 0, 'past the daily cap');
-  assert.equal(state.counters.exploreS, 8);
   const next = applyEvent(state, { type: 'explore-s' }, { day: '2026-09-28' });
   assert.equal(next.gained.xp, REWARDS_DEFAULTS.exploreXp, 'a new day resets the cap');
 });
@@ -208,7 +181,6 @@ test('rewards: sticker cards upgrade bronze → silver → gold, never down', ()
   assert.equal(gains[1].cards[0].upgrade, true);
   assert.equal(gains[0].xp, REWARDS_DEFAULTS.cardXp, 'a sticker card earns XP');
   assert.equal(cardTier(state, 'D3'), 3);
-  assert.ok(state.badges['gold-card']);
   ({ state } = play(['D1', 'D2', 'D4', 'D5', 'U1', 'U2', 'U3', 'U4', 'B1'].map((principleId) => ({ type: 'mastery', principleId, stars: 1 })), state));
   assert.ok(state.badges.collector, '10 cards');
 });
@@ -237,12 +209,10 @@ test('rewards: normalizeRewards survives junk, keeps valid data and reads record
   assert.deepEqual(s.best.c, { score: 64, stars: 1, low: 64 }, 'a Player-mode record has no grade');
   assert.deepEqual(s.best.old, { score: 84, stars: 2, low: 50, grade: 'A' }, 'the worst grade becomes the lowest score');
   assert.deepEqual(Object.keys(s.badges), ['first-s']);
-  // Version 1 states: "Boots on" and "Went the distance" meant taking part; their records go (the ids are skill badges now).
-  const v1 = normalizeRewards({ badges: { 'first-rep': { day: '2026-09-20' }, 'live-finisher': {}, 'first-s': {} } });
-  assert.deepEqual(Object.keys(v1.badges), ['first-s']);
-  const v2 = normalizeRewards({ version: 2, badges: { 'first-rep': { day: '2026-09-20' }, 'live-finisher': {} } });
-  assert.deepEqual(Object.keys(v2.badges), ['first-rep', 'live-finisher'], 'earned as skill badges: kept');
-  assert.deepEqual(normalizeRewards(v2), v2, 'stable on a round trip');
+  // Badges the 2026-10-01 audit cut (ranks, attendance, Live, Explore, gold) are unknown ids now and drop away.
+  const old = normalizeRewards({ version: 2, badges: { 'first-rep': { day: '2026-09-20' }, regular: {}, captain: {}, 'first-s': {} } });
+  assert.deepEqual(Object.keys(old.badges), ['first-s']);
+  assert.deepEqual(normalizeRewards(old), old, 'stable on a round trip');
   assert.deepEqual(Object.keys(s.cards), ['D3']);
   assert.equal(s.counters.reps, 0);
   assert.deepEqual(Object.keys(s.families), ['CB']);
@@ -287,10 +257,8 @@ test('rewards: badge progress for the trophy room', () => {
   const { state } = play([rep(72, 'a'), rep(72, 'b'), rep(95, 'c')]);
   const p = Object.fromEntries(badgeProgress(state).map((b) => [b.id, b]));
   assert.equal(p['first-s'].earned, true);
-  assert.deepEqual([p['first-rep'].earned, p['first-rep'].current, p['first-rep'].goal], [false, 1, 10], 'Top form: 1 of 10');
-  assert.equal(p['on-a-roll'].current, 3);
-  assert.equal(p['on-a-roll'].goal, 5);
-  assert.ok(Math.abs(p['on-a-roll'].progress - 0.6) < 1e-9);
+  assert.deepEqual([p['hat-trick'].earned, p['hat-trick'].current, p['hat-trick'].goal], [false, 1, 3], 'Hat-trick: 1 of 3');
+  assert.ok(Math.abs(p['hat-trick'].progress - 1 / 3) < 1e-9);
   assert.equal(BADGES.length, badgeProgress(createRewards()).length);
 });
 

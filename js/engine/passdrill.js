@@ -806,27 +806,3 @@ function writeDrill({ seed, role, rating, built, primary, taught, asked, want, d
     },
   };
 }
-
-// ---------------------------------------------------------------- pass moments in Live sequences
-
-/**
- * Every reception by us in a sequence (sequence.js generateSequence), rated `after` seconds after the touch
- * while the receiver still has the ball: the moments a "Pass Live" mode would pause on (research §4.6).
- * @returns {{ t:number, carrierId:string, rating: object }[]}
- */
-export function passMoments(sequence, { formations, after = 0.4, params } = {}) {
-  const keys = sequence.timeline?.carrier ?? [];
-  const pb = createPlayback(sequence, { formations, learnerId: null });
-  const out = [];
-  for (let i = 0; i < keys.length; i++) {
-    const k = keys[i];
-    if (!k.id || parsePlayerId(k.id).team !== 'us' || (i > 0 && keys[i - 1].id === k.id)) continue;
-    const t = k.t + after;
-    if (i + 1 < keys.length && keys[i + 1].t <= t) continue; // passed on (or lost) first
-    if (t > (sequence.timeline.duration ?? Infinity)) continue;
-    const frame = pb.frameAt(t);
-    if (frame.carrierId !== k.id || frame.possession !== 'us') continue;
-    out.push({ t, carrierId: k.id, rating: rateOptions(frame, k.id, params) });
-  }
-  return out;
-}

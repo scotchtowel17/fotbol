@@ -19,7 +19,7 @@
 // Nothing runs at import time; STRINGS holds every visible word (tests/copy.test.js).
 
 import { el, svg, segmented, toggleSwitch, announce } from '../components.js';
-import { levelFor, normalizeRewards, paletteById } from '../../rewards.js';
+import { normalizeRewards, paletteById } from '../../rewards.js';
 import { ROLE_INFO, LEARNABLE_ROLES } from '../../engine/roles.js';
 import { loadRewards, onRewards, shirtNumber } from '../rewards-store.js';
 import { drawFigure, figureLook, FIGURE } from '../figures.js';
@@ -36,7 +36,8 @@ export const STRINGS = Object.freeze({
   coachAsk: 'Coach or parent?',
   openCoach: 'Open Coach mode',
   coachOn: 'Coach mode is on.',
-  level: (n, rank) => `Level ${n}. ${rank}.`,
+  grownUp: (a, b) => `For a grown-up: what is ${a} + ${b}?`,
+  grownUpGo: 'Open',
   me: (name, number) => [name, number ? `Number ${number}` : ''].filter(Boolean).join('. '),
   soonTitle: 'Coming soon',
   soonText: 'This part is not ready yet.',
@@ -46,10 +47,14 @@ export const STRINGS = Object.freeze({
   titles: Object.freeze({ home: 'fotbol', kickoff: 'Kick-off', play: 'Play', pass: "Who's open?", matchday: 'Match day', card: 'Your card' }),
 });
 
+/** Player routes with no header at all (the pitch owns the screen); the rest of Player mode shows the player bar.
+ *  One table: main.js PLAYER_ROUTES minus the card (tests pin index.html's inline copy to these, audit 2026-10-01). */
+export const BARE_PLAYER_ROUTES = Object.freeze(['kickoff', 'play', 'pass', 'matchday']);
+
 /** Which header a route shows (see the file comment). */
 export function chromeFor(route) {
   if (route?.kind !== 'player') return 'coach';
-  return ['kickoff', 'play', 'pass', 'matchday'].includes(route.module) ? 'none' : 'player';
+  return BARE_PLAYER_ROUTES.includes(route.module) ? 'none' : 'player';
 }
 
 /** The page title of a Player route. */
@@ -57,19 +62,15 @@ export const playerTitle = (module) => (module === 'home' ? STRINGS.titles.home 
 
 /**
  * What the top bar shows (pure): your figure (your position's look, your shirt number: the kit's, else your
- * position's), nickname, level and rank.
+ * position's) and nickname. The level and XP live on the card, not in the persistent top bar: the most visible
+ * status is never the points total (audit 2026-10-01; the card is one tap away).
  */
 export function topBarModel({ rewards, profile, settings } = {}) {
   const s = normalizeRewards(rewards);
-  const l = levelFor(s.xp);
   const role = profile?.role ?? settings?.role ?? null;
   return {
     number: shirtNumber(s, ROLE_INFO[role]?.num ?? null),
     nickname: s.kit.nickname || '',
-    level: l.level,
-    rank: l.rank.name,
-    rankId: l.rank.id,
-    progress: Math.max(0, Math.min(1, Number(l.progress) || 0)),
     role: LEARNABLE_ROLES.includes(role) ? role : null,
     look: kidLook(role),
     palette: kitPalette(s),
@@ -235,10 +236,6 @@ export function createPlayerShell(app, { bar } = {}) {
         el('span', { class: 'pm-me-token' }, [kidFigure({ role: m.role, number: m.number, palette: m.palette, crop: 'bust', height: 40 })]),
         m.nickname ? el('span', { class: 'pm-me-name', text: m.nickname }) : null,
       ]),
-      el('p', { class: 'pm-level', role: 'img', 'aria-label': STRINGS.level(m.level, m.rank) }, [
-        levelRing(m.level, m.progress, { size: 40 }),
-        el('span', { class: 'pm-rank', 'aria-hidden': 'true', text: m.rank }),
-      ]),
       el('a', { class: 'pm-icon-btn pm-card-link', href: '#/card', 'aria-label': STRINGS.card, title: STRINGS.card }, [playerIcon('card')]),
       cog,
     );
@@ -272,11 +269,26 @@ export function createPlayerShell(app, { bar } = {}) {
         el('p', { class: 'pm-sheet-ask', text: STRINGS.coachAsk }),
         el('button', {
           type: 'button', class: 'pm-btn pm-sheet-coach-btn',
-          onclick: () => {
-            closeSettings();
-            app.setSettings({ mode: 'coach' });
-            announce(STRINGS.coachOn);
-            app.navigate('#/coach');
+          onclick: (e) => {
+            // A grown-up check (audit 2026-10-01): one curious tap no longer flips the whole app into Coach mode.
+            const row = e.currentTarget.parentElement;
+            if (row.querySelector('.pm-sheet-sum')) return;
+            const a = 2 + Math.floor(Math.random() * 7), b = 2 + Math.floor(Math.random() * 7);
+            const input = el('input', { class: 'pm-sheet-sum-in', inputmode: 'numeric', autocomplete: 'off', 'aria-label': STRINGS.grownUp(a, b) });
+            const go = () => {
+              if (Number(input.value) !== a + b) { input.value = ''; input.focus(); return; }
+              closeSettings();
+              app.setSettings({ mode: 'coach' });
+              announce(STRINGS.coachOn);
+              app.navigate('#/coach');
+            };
+            input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') go(); });
+            row.append(el('div', { class: 'pm-sheet-sum' }, [
+              el('p', { class: 'pm-sheet-ask', text: STRINGS.grownUp(a, b) }),
+              input,
+              el('button', { type: 'button', class: 'pm-btn', onclick: go }, [el('span', { text: STRINGS.grownUpGo })]),
+            ]));
+            input.focus();
           },
         }, [el('span', { text: STRINGS.openCoach })]),
       ]),

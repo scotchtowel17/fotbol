@@ -47,8 +47,8 @@ test('skills: load a fresh learner from an empty or damaged store, round-trip th
   const partial = loadSkills(store);
   assert.equal(partial.theta.global, 0.4);
   assert.deepEqual(partial.theta.byPrinciple, {});
-  assert.deepEqual(partial.recent, []);
-  const s = update(createSkills(), { itemId: 'a', principles: ['D3'], role: 'LCB', score01: 0.9 });
+  assert.ok(!('recent' in partial) && !('items' in partial), 'the removed adaptive half leaves no fields behind');
+  const s = update(createSkills(), { principles: ['D3'], role: 'LCB', score01: 0.9 });
   assert.equal(saveSkills(store, s), true);
   assert.deepEqual(loadSkills(store), s);
   assert.deepEqual(normalizeSkills(null), createSkills());
@@ -419,7 +419,7 @@ test('import: damaged live bests and skills never show as undefined or NaN, and 
   assert.deepEqual(skills.theta.byPrinciple, {});
   assert.equal(skills.counts.global, 0);
   assert.deepEqual(skills.counts.byRole, { LB: 3 });
-  assert.deepEqual(Object.keys(skills.items), ['b']);
+  assert.ok(!('items' in skills), 'a stored difficulty ladder is dropped (the adaptive half is gone)');
   const roles = roleAbilities(skills);
   assert.deepEqual(roles.map((r) => r.role), ['LB']);
   assert.ok(roles.every((r) => Number.isFinite(r.p) && Number.isFinite(r.attempts)), 'no NaN on the Progress page');

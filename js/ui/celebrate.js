@@ -90,8 +90,6 @@ export function playerMilestone({ stars = 0, firstThreeOfSet = false, gained = n
   return null;
 }
 
-export const RANK_ICONS = Object.freeze({ rookie: '🌱', academy: '⚽', 'first-team': '👕', captain: '🧢', legend: '🏆' });
-export const rankIcon = (rank) => RANK_ICONS[rank?.id ?? rank] ?? '⭐';
 export const TIER_ICONS = Object.freeze({ 1: '🥉', 2: '🥈', 3: '🥇' });
 export const CONFETTI_COLORS = Object.freeze(['#2fd07f', '#ffc53d', '#5fe2ff', '#ff70b3', '#ffa91a', '#9d8cff']);
 
@@ -113,13 +111,12 @@ const COPY = {
     dismiss: 'Dismiss',
     levelUp: 'Level up!',
     lv: (n) => `Lv ${n}`,
-    newRank: 'New rank!',
     newKit: 'New kit!',
     tryKit: 'Try it on',
     carryOn: 'Keep going',
-    levelSr: (n, rank, kit) => `Level ${n}. Rank: ${rank}.${kit ? ` New kit: ${kit}.` : ''}`,
-    levelBar: (n, rank, xp, next) => `Level ${n}, ${rank}: ${xp} of ${next} XP`,
-    pill: (n, rank) => `Level ${n}, ${rank}. Trophies`,
+    levelSr: (n, kit) => `Level ${n}.${kit ? ` New kit: ${kit}.` : ''}`,
+    levelBar: (n, xp, next) => `Level ${n}: ${xp} of ${next} XP`,
+    pill: (n) => `Level ${n}. Trophies`,
     stars: (n) => `${n} ${n === 1 ? 'star' : 'stars'}`,
     trophies: 'Trophies',
     sessionXp: 'XP this session',
@@ -143,13 +140,12 @@ const COPY = {
     dismiss: 'Close',
     levelUp: 'Level up!',
     lv: (n) => `Lv ${n}`,
-    newRank: 'New rank!',
     newKit: 'New kit!',
     tryKit: 'Try it on',
     carryOn: 'Keep playing',
-    levelSr: (n, rank, kit) => `Level ${n}! You are ${rank}.${kit ? ` New kit: ${kit}.` : ''}`,
-    levelBar: (n, rank, xp, next) => `Level ${n}, ${rank}: ${xp} of ${next} XP`,
-    pill: (n, rank) => `Level ${n}, ${rank}. Trophies`,
+    levelSr: (n, kit) => `Level ${n}!${kit ? ` New kit: ${kit}.` : ''}`,
+    levelBar: (n, xp, next) => `Level ${n}: ${xp} of ${next} XP`,
+    pill: (n) => `Level ${n}. Trophies`,
     stars: (n) => `${n} ${n === 1 ? 'star' : 'stars'}`,
     trophies: 'Trophies',
     sessionXp: 'XP this time',
@@ -229,34 +225,32 @@ export function soundPlan(model, P = CELEBRATE_DEFAULTS) {
   return out;
 }
 
-/** The level and rank of a rewards state, for bars, pills and cards. */
+/** The level of a rewards state, for bars, pills and cards. */
 export function levelModel(state) {
   const l = levelFor(normalizeRewards(state).xp);
-  return { level: l.level, rank: l.rank, icon: rankIcon(l.rank), xp: l.xp, levelXp: l.levelXp, nextXp: l.nextXp, progress: Math.max(0, Math.min(1, l.progress)) };
+  return { level: l.level, xp: l.xp, levelXp: l.levelXp, nextXp: l.nextXp, progress: Math.max(0, Math.min(1, l.progress)) };
 }
 
-/** The header pill: "Lv 3" with the rank's icon. */
+/** The header pill: "Lv 3". */
 export function pillModel(state, wording = 'standard') {
   const C = COPY[W(wording)];
   const m = levelModel(state);
-  return { text: C.lv(m.level), icon: m.icon, aria: C.pill(m.level, m.rank.name), level: m.level };
+  return { text: C.lv(m.level), aria: C.pill(m.level), level: m.level };
 }
 
 /**
- * The level-up screen (pure): the new level, the rank, and one button ("Try it on" when a kit was unlocked).
- * @param {{ from, to, rank, rankUp, unlocks }} levelUp
+ * The level-up screen (pure): the new level and one button ("Try it on" when a kit was unlocked).
+ * @param {{ from, to, unlocks }} levelUp
  */
 export function levelUpModel(levelUp, { wording = 'standard' } = {}) {
   const C = COPY[W(wording)];
   const to = Number(levelUp?.to) || 1;
-  const rank = levelUp?.rank ?? levelFor(0).rank;
   const kitId = (levelUp?.unlocks ?? []).at(-1) ?? null; // the newest kit, when two levels came at once
   const kit = kitId ? paletteById(kitId) : null;
   return {
-    level: to, title: C.levelUp, rank: rank.name, icon: rankIcon(rank), rankUp: !!levelUp?.rankUp,
-    ribbon: levelUp?.rankUp ? C.newRank : null, kit, kitText: kit ? C.newKit : null,
+    level: to, title: C.levelUp, kit, kitText: kit ? C.newKit : null,
     button: kit ? C.tryKit : C.carryOn, action: kit ? 'kit' : 'close',
-    sr: C.levelSr(to, rank.name, kit?.name ?? null),
+    sr: C.levelSr(to, kit?.name ?? null),
   };
 }
 
@@ -348,7 +342,7 @@ export function kitToken(palette, { number = null, label = null, size = 56, titl
 export function levelBar(state, { wording = 'standard', compact = false } = {}) {
   const C = COPY[W(wording)];
   const m = levelModel(state);
-  return el('div', { class: ['rw-level', compact && 'rw-level--compact'], role: 'img', 'aria-label': C.levelBar(m.level, m.rank.name, m.xp, m.nextXp) }, [
+  return el('div', { class: ['rw-level', compact && 'rw-level--compact'], role: 'img', 'aria-label': C.levelBar(m.level, m.xp, m.nextXp) }, [
     el('span', { class: 'rw-level-n', 'aria-hidden': 'true' }, [el('small', { text: 'Lv' }), String(m.level)]),
     el('span', { class: 'rw-level-bar', 'aria-hidden': 'true' }, [el('span', { style: { width: `${Math.round(m.progress * 100)}%` } })]),
     compact ? null : el('span', { class: 'rw-level-xp', 'aria-hidden': 'true', text: `${m.xp} / ${m.nextXp} XP` }),
@@ -386,7 +380,6 @@ export function playerCard(app, state, { trophies = true } = {}) {
     el('div', { class: 'rw-card-token' }, [kitToken(null, { number: shirtNumber(s, ROLE_INFO[app?.settings?.role]?.num), size: 64 })]),
     el('div', { class: 'rw-card-main' }, [
       name ? el('p', { class: 'rw-card-name', text: name }) : null,
-      el('p', { class: 'rw-card-rank' }, [el('span', { 'aria-hidden': 'true', text: m.icon }), ` ${m.rank.name}`]),
       levelBar(s, { wording: w }),
     ]),
     el('div', { class: 'rw-card-side' }, [
@@ -430,8 +423,6 @@ export function sessionCard({ gained, stars = 0, maxStars = 0, state }, { wordin
 function levelUpView(m) {
   return el('div', { class: 'cb-lu' }, [
     el('div', { class: 'cb-lu-num', 'aria-hidden': 'true' }, [el('small', { text: 'Lv' }), el('b', { text: String(m.level) })]),
-    el('p', { class: 'cb-lu-rank', 'aria-hidden': 'true' }, [el('span', { class: 'cb-lu-rank-icon', text: m.icon }), el('span', { text: m.rank })]),
-    m.ribbon ? el('p', { class: 'cb-lu-ribbon', 'aria-hidden': 'true', text: m.ribbon }) : null,
     m.kit ? el('p', { class: 'cb-lu-kit', 'aria-hidden': 'true' }, [kitToken(m.kit, { size: 40 }), el('span', { text: m.kitText })]) : null,
     el('p', { class: 'visually-hidden', text: m.sr }),
   ]);
@@ -440,9 +431,8 @@ function levelUpView(m) {
 // ---------------------------------------------------------------- the app-wide instance
 
 export function reducedMotion(app) {
-  if (app?.settings?.reducedMotion) return true;
-  if (globalThis.document?.documentElement?.dataset?.reducedMotion === 'true') return true;
-  try { return !!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+  // main.js resolves the query into the attribute (audit 2026-10-01): read it, with the setting for DOM-less tests.
+  return app?.settings?.reducedMotion === true || globalThis.document?.documentElement?.dataset?.reducedMotion === 'true';
 }
 
 /**
@@ -581,7 +571,7 @@ export function createCelebrations(app) {
     let go = null;
     modal = openModal({
       title: m.title,
-      className: m.rankUp ? 'cb-levelup is-rank-up' : 'cb-levelup',
+      className: 'cb-levelup',
       content: levelUpView(m),
       actions: (close) => [go = button(m.button, {
         variant: 'primary', icon: 'arrow', className: 'cb-lu-go',

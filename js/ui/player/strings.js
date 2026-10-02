@@ -48,55 +48,12 @@ export function roleCard(role, profileRole) {
 }
 
 /** The stages, smallest first (= js/engine/cast.js STAGES, tested; a copy, so the words load without the engine). */
-const STAGE_ORDER = Object.freeze(['small', 'medium', 'full']);
-
-/** How many of ours and theirs a staged cast shows (cast.js castLabel's ours and theirs; the full match 11 v 11). */
-function sidesOf(stage, cast) {
-  const n = (v, d) => (Number.isInteger(v) && v >= 0 ? v : d);
-  return stage === 'full' ? { ours: n(cast?.ours, 11), theirs: n(cast?.theirs, 11) } : { ours: n(cast?.ours, 0), theirs: n(cast?.theirs, 0) };
-}
-
-/**
- * The words for a rep's stage on the role card (docs/PROGRESSIVE_FIELD.md §2): "Small game: 3 v 2", "Bigger game: 6 v 5"
- * or "Full match"; '' for no stage (or a cast with nobody counted).
- * @param {'small'|'medium'|'full'} stage
- * @param {{ ours: number, theirs: number }} [cast]  the staged cast (cast.js castLabel)
- */
-export function stageWords(stage, cast) {
-  if (stage === 'full') return STRINGS.fullMatch;
-  const { ours, theirs } = sidesOf(stage, cast);
-  if (!(ours > 0 && theirs > 0)) return '';
-  return stage === 'small' ? STRINGS.smallGame(ours, theirs) : stage === 'medium' ? STRINGS.biggerGame(ours, theirs) : '';
-}
-
-/**
- * The role card's stage line for a rep of a set (pure), and what the set has shown so far (§2): the first rep of a
- * stage bigger than any before it in the set says "Now 6 v 5!" (once: a later rep at that stage, or a smaller one,
- * names its stage as usual); the set's first rep names its stage. `top`: the biggest stage the set has shown so far
- * (its index in small, medium, full; -1 before the first rep). A rep played again (Try again) passes `again`: its
- * stage's words, and the set's `top` is left as it was.
- * @returns {{ text: string, now: boolean, top: number }}
- */
-export function stageLine(top, stage, cast, { again = false } = {}) {
-  const k = STAGE_ORDER.indexOf(stage);
-  const was = Number.isInteger(top) ? top : -1;
-  if (k < 0) return { text: '', now: false, top: was };
-  const now = !again && was >= 0 && k > was;
-  const { ours, theirs } = sidesOf(stage, cast);
-  const text = now && ours > 0 && theirs > 0 ? STRINGS.nowGame(ours, theirs) : stageWords(stage, cast);
-  return { text, now: now && !!text, top: again ? was : Math.max(was, k) };
-}
 
 export const STRINGS = Object.freeze({
   starWords: STAR_WORDS,
   roleNames: ROLE_NAMES,
   youAre: (name) => `You're the ${name}`,
   nowYou: (name) => `Now you're the ${name}`,
-  // the stage of a rep (docs/PROGRESSIVE_FIELD.md §2): a small game, a bigger game, the full match
-  smallGame: (ours, theirs) => `Small game: ${ours} v ${theirs}`,
-  biggerGame: (ours, theirs) => `Bigger game: ${ours} v ${theirs}`,
-  fullMatch: 'Full match',
-  nowGame: (ours, theirs) => `Now ${ours} v ${theirs}!`,
   // the rep
   question: 'Where do you go now?',
   lockIt: 'Lock it',
@@ -118,7 +75,4 @@ export const STRINGS = Object.freeze({
   gotIt: 'Got it',
   loading: 'Getting the pitch ready',
   // heat (Match day and the glow aid): kids read these at once (audit §5 keeps them)
-  hot: 'Hot',
-  warm: 'Warm',
-  cold: 'Cold',
 });

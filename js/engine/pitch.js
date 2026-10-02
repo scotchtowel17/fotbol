@@ -50,8 +50,6 @@ export const isWingLane = (y) => { const l = laneOf(y); return l === 0 || l === 
 
 /** True if p is inside our own penalty area. */
 export const inOwnBox = (p) => p.x <= PENALTY_AREA.depth && Math.abs(p.y - MID_Y) <= PENALTY_AREA.width / 2;
-/** True if p is inside the opponent's penalty area. */
-export const inOppBox = (p) => p.x >= LENGTH - PENALTY_AREA.depth && Math.abs(p.y - MID_Y) <= PENALTY_AREA.width / 2;
 
 /** Clamp a point onto the pitch (optionally with an inner margin in metres). */
 export function clampToPitch(p, margin = 0) {
@@ -62,10 +60,6 @@ export const onPitch = (p, slack = 0) => p.x >= -slack && p.x <= LENGTH + slack 
 
 /** Point reflection through the centre spot (swaps attacking direction AND sides). */
 export const mirrorPoint = (p) => ({ x: LENGTH - p.x, y: WIDTH - p.y });
-/** Reflection across the halfway line only (x flips, y kept). */
-export const flipX = (p) => ({ x: LENGTH - p.x, y: p.y });
 /** Reflection across the long axis only (left/right swap, x kept). Used to make left/right variants of scenarios. */
 export const flipY = (p) => ({ x: p.x, y: WIDTH - p.y });
 
-/** Signed "inside" distance: how much closer to y=34 point b is than point a (positive = b is more central). */
-export const insideDelta = (a, b) => Math.abs(a.y - MID_Y) - Math.abs(b.y - MID_Y);

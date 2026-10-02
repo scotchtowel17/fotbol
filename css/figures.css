@@ -97,12 +97,6 @@
 
 /* ------------------------------------------------------------------ reduced motion: figures stand, the halo stays still */
 
-@media (prefers-reduced-motion: reduce) {
-  .token.is-running .fig-pose-stand { display: inline; }
-  .token.is-running .fig-pose-a, .token.is-running .fig-pose-b { display: none; animation: none; }
-  .ball-halo { animation: none; }
-  .token-you-shift { transition: none; }
-}
 :root[data-reduced-motion="true"] .token.is-running .fig-pose-stand { display: inline; }
 :root[data-reduced-motion="true"] .token.is-running .fig-pose-a,
 :root[data-reduced-motion="true"] .token.is-running .fig-pose-b { display: none; animation: none; }

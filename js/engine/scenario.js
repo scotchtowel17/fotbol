@@ -2,7 +2,7 @@
 // Contract: docs/ARCHITECTURE.md §5.3 (the scenario format). Rationale: docs/RESEARCH.md §9.4, §7.2 step 9.
 //
 // Validation returns human-readable strings (empty array = valid) so `npm run check` and the
-// authoring tool can print them as they are. It accepts the raw authored JSON: anything
+// scripts can print them as they are. It accepts the raw authored JSON: anything
 // normalizeScenario() would fill in (brief, carrier, tags, answer, ...) may be missing.
 
 import { dist } from './geometry.js';
@@ -233,7 +233,7 @@ export function validateScenario(s, { principles, params } = {}) {
       regionErrors(m.region, `${path}.region`, point).forEach(err);
     });
   }
-  // The progressive field's optional block (docs/PROGRESSIVE_FIELD.md §3): npm run check and #/author catch it alike.
+  // The progressive field's optional block (docs/PROGRESSIVE_FIELD.md §3): npm run check catches it.
   stagesErrors(s.stages).forEach(err);
   return errs;
 }
@@ -245,7 +245,7 @@ export const STAGES_FIELDS = Object.freeze(['note', 'keep']);
  * The problems with a scenario's optional `"stages"` block (pure; empty = fine, and so is no block): an object with
  * `note`, a non-empty string (why the drill has no small or medium stage, or hides a player its words name), and
  * `keep`, an array of player ids the cast always shows (us-LB, them-ST: one of ours or theirs by role; cast.js mirrors
- * them with the drill), and no other field. validateScenario reports them, so #/author and npm run check agree
+ * them with the drill), and no other field. validateScenario reports them, so npm run check
  * (scripts/check-scenarios.mjs stagesProblems is this).
  * @param {unknown} stages  the scenario's `stages` (undefined: none)
  * @returns {string[]}

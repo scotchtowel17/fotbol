@@ -75,7 +75,6 @@ export const CAST_DEFAULTS = Object.freeze({
   //   pads and headroom) at 13 px/m, where figures stand about 55 px tall; castExtent's `over` is how far a cast spills over it
   passBoxSlack: 0.05, // [D] casts whose spill over passBox is within this are as compact as each other (the plain order's then)
   passSearch: 40, // [D] the small game's compact search judges at most this many casts (the most compact first)
-  passCompact: true, // [D] false: a pass rep's smaller game is the relevance order's first cast that passes, as before (reports, tests)
   praiseDepth: 3, // [D] spot reps: the praise at the answer is the full game's, this deep: the line (1) and the Why? sheet's two more
   //                 (js/ui/player/play.js pickLine and whyFor: the rules met at explain's praiseAt, the drill's own ideas first)
 });
@@ -779,7 +778,7 @@ function prepareSpot(scenario, { formations, principles: catalogue, params } = {
   const praise = praiseRuleOf(ghost.result, s.principles, P.praiseDepth);
   const hold = s.answer?.hold === true;
   const still = evaluate(ctx, start, { center: centre, tol }).score;
-  return { P, s, t, learnerId, frame, base, ctx, tol, centre, ghost, start, clipIds, keep, lesson, praise, hold, still, decisive: null };
+  return { P, s, t, learnerId, frame, base, ctx, tol, centre, ghost, start, clipIds, keep, lesson, praise, hold, still, decisive: {} };
 }
 
 /**
@@ -872,16 +871,17 @@ function stageSpot(prep, stage, trace) {
   let found = grow(prep.frame, order, stage, cap, limits, P, (ids) => spotGate(prep, ids, stage), trace, seen);
   if (!found) {
     // The plain order failed: rank first the players the full game's answer depends on, and grow again.
-    prep.decisive ??= decisiveIds(prep.frame, { learnerId, base, centre, tol, start, skip: new Set(order.must), ghost: prep.ghost.spot, still: prep.still }, P);
+    // Memoised per stage: the skip list is the stage's own must list, so a cross-stage memo could go stale.
+    prep.decisive[stage] ??= decisiveIds(prep.frame, { learnerId, base, centre, tol, start, skip: new Set(order.must), ghost: prep.ghost.spot, still: prep.still }, P);
     // (From the stage's fewest players: the decisive players first may teach it in a smaller cast than the plain order;
     // with none, the plain order again from there, since a bigger game starts growing at its lesson's players.)
-    found = grow(prep.frame, orderOf(prep.decisive), stage, cap, limits, P, (ids) => spotGate(prep, ids, stage), trace, seen, { from: minOf(stage, cap, P) });
+    found = grow(prep.frame, orderOf(prep.decisive[stage]), stage, cap, limits, P, (ids) => spotGate(prep, ids, stage), trace, seen, { from: minOf(stage, cap, P) });
   }
   if (!found && !prep.hold) {
     // Still failing: standing still may look fine in a smaller game (the teammates whose line or spacing the start
     // spoils are hidden). Rank first the players who bring it back below stillMax, and grow once more.
     const fix = stillIds(prep, [...order.must, ...order.lines], cap, P);
-    if (fix.length) found = grow(prep.frame, orderOf([...fix, ...(prep.decisive ?? [])]), stage, cap, limits, P, (ids) => spotGate(prep, ids, stage), trace, seen, { from: minOf(stage, cap, P) });
+    if (fix.length) found = grow(prep.frame, orderOf([...fix, ...(prep.decisive[stage] ?? [])]), stage, cap, limits, P, (ids) => spotGate(prep, ids, stage), trace, seen, { from: minOf(stage, cap, P) });
   }
   if (!found) return null;
   const { ids, g, tries } = found;
@@ -1145,8 +1145,8 @@ function stagePass(prep, stage, trace) {
   const limits = teamsOf(prep.rating, cap, P);
   const teaches = (g) => g.lesson !== false;
   const plain = grow(prep.frame, order, stage, cap, limits, P, gate, log, new Set(), { from, prefer: teaches });
-  const compact = P.passCompact ? grow(prep.frame, compactOrder(prep.frame, order, P), stage, cap, limits, P, gate, log, new Set(), { from, prefer: teaches }) : null;
-  const search = P.passCompact && stage === 'small' ? compactSearch(prep, order, stage, cap, P, gate, log) : null;
+  const compact = grow(prep.frame, compactOrder(prep.frame, order, P), stage, cap, limits, P, gate, log, new Set(), { from, prefer: teaches });
+  const search = stage === 'small' ? compactSearch(prep, order, stage, cap, P, gate, log) : null;
   const found = mostCompact([plain, compact, search], prep.frame, P);
   if (!found) return null;
   const { ids, g } = found;

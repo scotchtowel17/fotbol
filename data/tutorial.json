@@ -81,7 +81,7 @@
       "title": "Five lanes and the half-spaces",
       "text": {
         "standard": "The pitch also splits into five long lanes: two wings, two half-spaces and the centre. A player in a half-space, between the centre and a wing, can see the goal and both sides of the pitch. Zone 14 is the central area just outside their box, where many assists start.",
-        "kid": "There are five long strips: two wings, two in-between strips and the middle."
+        "kid": "The pitch has the two wings, the middle, and the spaces between."
       },
       "principles": [],
       "setup": {
@@ -97,15 +97,15 @@
         "to": { "x": 62, "y": 48.66, "r": 5 },
         "prompt": {
           "standard": "Drag the ball into our right half-space, just inside their half.",
-          "kid": "Move the ball into the strip next to our right wing."
+          "kid": "Move the ball just in from our right wing."
         },
         "success": {
           "standard": "That's the right half-space. A player who receives here can turn toward goal, and their full-back and centre-back have to decide who steps out.",
-          "kid": "Yes! That in-between strip is a great place to get the ball."
+          "kid": "Yes! Just in from the wing is a great place to get the ball."
         },
         "hint": {
           "standard": "Start from our right touchline: the first lane is the wing, the next one in is the half-space. Aim just past halfway.",
-          "kid": "Start at our right sideline. Skip the wing strip. Stop in the next one."
+          "kid": "Start at our right sideline. Come in past the wing. Stop there."
         }
       }
     },

@@ -4,12 +4,12 @@
 //     every branch of each template, and the zone reason (js/engine/explain.js ZONE_REASON);
 //   - the drills' kid fields (data/scenarios: titleKid, briefKid, questionKid, takeaway.kid, misconceptions' textKid);
 //   - the principles' kidName and summary.kid (every category, the passing ones included), and the tutorial's kid text;
-//   - the Road's titles (data/road.json), the rewards' words (stars, badges, ranks, kits, nicknames), the passing
+//   - the Road's titles (data/road.json), the rewards' words (stars, badges, kits, nicknames), the passing
 //     texts (js/engine/passing.js allPassTexts) and the STRINGS export of every js/ui/player/*.js module.
 // Optional sources (the Road, the passing engine, generated drills, the Player modules) are skipped until they exist.
 // Each string must:
 //   - fit its word budget (R2): a brief or question 12 words, a reveal line or one-liner 14, a principle's summary 15,
-//     a principle's or rule's name 2-4 words, a drill title 8, a label (Road, badge, rank, kit, nickname) 5;
+//     a principle's or rule's name 2-4 words, a drill title 8, a label (Road, badge, kit, nickname) 5;
 //   - read at age 9 (R1): Flesch-Kincaid grade 4 or lower over each source's sentences (and no single sentence of 6+
 //     words above grade 8), with a small allow-list of football words every player knows;
 //   - avoid what Player mode never says: "kid", "!!!", principle and role codes, grades and "/100", metres, pressure
@@ -24,7 +24,7 @@ import { evaluate } from '../js/engine/score.js';
 import { LEARNABLE_ROLES, playerId } from '../js/engine/roles.js';
 import { onPitch } from '../js/engine/pitch.js';
 import { SITUATIONS, sceneOptions } from './situations.js';
-import { BADGES, RANKS, KIT_PALETTES, NICKNAMES, STAR_WORDS } from '../js/rewards.js';
+import { BADGES, KIT_PALETTES, NICKNAMES, STAR_WORDS } from '../js/rewards.js';
 
 // ---------------------------------------------------------------- the checks
 
@@ -37,7 +37,7 @@ const BUDGETS = Object.freeze({
   ui: { max: 14, fk: true }, // any other Player-mode string (a key naming a question or brief: 12)
   name: { min: 2, max: 4, fk: false }, // R3: an idea's name in 2-4 plain football words
   title: { max: 8, fk: false }, // a drill's title
-  label: { max: 5, fk: false }, // Road titles, badge names, ranks, kits, nicknames, star words
+  label: { max: 5, fk: false }, // Road titles, badge names, kits, nicknames, star words
 });
 const MAX_GROUP_GRADE = 4; // R1: reading age 9
 const MAX_SENTENCE_GRADE = 8; // no single hard sentence (of SENTENCE_MIN_WORDS or more) hides in an easy group
@@ -348,7 +348,6 @@ function rewardItems() {
     items.push({ src: `rewards.js badge ${b.id} name.kid`, text: b.name.kid, kind: 'label' });
     items.push({ src: `rewards.js badge ${b.id} description.kid`, text: b.description.kid, kind: 'line', group: 'rewards.js badges (kid)' });
   }
-  for (const r of RANKS) items.push({ src: `rewards.js rank ${r.id}`, text: r.name, kind: 'label' });
   for (const p of KIT_PALETTES) items.push({ src: `rewards.js kit ${p.id}`, text: p.name, kind: 'label' });
   for (const n of NICKNAMES) items.push({ src: 'rewards.js NICKNAMES', text: n, kind: 'label' });
   STAR_WORDS.forEach((w, i) => items.push({ src: `rewards.js STAR_WORDS[${i}]`, text: w, kind: 'label' }));
@@ -370,7 +369,7 @@ async function roadItems() {
 const PLAYER_MODULES = ['shell', 'home', 'kickoff', 'card', 'road', 'play', 'reveal', 'fulltime', 'matchday', 'strings', 'pass'];
 /** Arguments to render STRINGS templates with (a template gets whichever fits: counts, a name, a title, an object). */
 const SAMPLE_ARGS = [[], [3], [3, 5], [1, 5], [2, 'Rookie'], ['Rocket'], ['Rocket', 3], ['Back Up Your Buddy', 5], ['Great', 2],
-  [{ n: 3, count: 3, stars: 2, max: 3, total: 5, name: 'Rocket', title: 'Back Up Your Buddy', word: 'Great', level: 2, rank: 'Rookie', role: 'left back', number: 9, days: 3, xp: 20, tier: 2 }]];
+  [{ n: 3, count: 3, stars: 2, max: 3, total: 5, name: 'Rocket', title: 'Back Up Your Buddy', word: 'Great', level: 2, role: 'left back', number: 9, days: 3, xp: 20, tier: 2 }]];
 const UNRENDERED = /\bundefined\b|\bNaN\b|\[object |\bnull\b|\bfunction\b|=>/;
 
 async function playerModuleItems() {
@@ -507,7 +506,7 @@ test('copy: the tutorial\'s kid text', async (t) => {
   report(await tutorialItems(), 'tutorial kid text', t);
 });
 
-test('copy: the rewards\' words (star words, badges, ranks, kits, nicknames)', (t) => {
+test('copy: the rewards\' words (star words, badges, kits, nicknames)', (t) => {
   report(rewardItems(), 'rewards', t);
 });
 

@@ -11,7 +11,7 @@
 //   - the green (3 stars) never straddles a hard line (the offside line, the goal-side line, the keeps-onside line).
 import { test, assert, approx, loadJSON, timed, PERF_SLACK } from './harness.js';
 import {
-  KID_SCORING_DEFAULTS, KID_DEFAULTS, KID_LEVELS, KID_WORDS, kidArea, kidStars, kidOutline, kidNearest, kidLive, kidRunStars, bandOf, relationship,
+  KID_DEFAULTS, KID_LEVELS, KID_WORDS, kidArea, kidStars, kidOutline, kidNearest, kidLive, kidRunStars, bandOf, relationship,
 } from '../js/engine/kidscore.js';
 import { STAGES, CAST_DEFAULTS, stagesOf, stageSpotDrill, lessonOf } from '../js/engine/cast.js';
 import { SPOT_DEFAULTS, SPOT_PRINCIPLES, generateSpotDrill, canGenerateSpot, checkSpotDrill } from '../js/engine/spotdrill.js';
@@ -31,7 +31,7 @@ import { dist } from '../js/engine/geometry.js';
 import { REWARDS_DEFAULTS, STAR_WORDS } from '../js/rewards.js';
 import { makeFrame, posOf } from './fixtures.js';
 
-const K = KID_SCORING_DEFAULTS;
+const K = KID_DEFAULTS;
 const F = createFormation(await loadJSON('data/formations/helios-433.json'));
 const formations = { us: F, them: F };
 const catalogue = await loadJSON('data/principles.json');
@@ -86,7 +86,6 @@ test('kidscore: the corpus covers every stage of authored and generated drills',
 });
 
 test('kidscore: the defaults, and the numbers other modules must agree with', async () => {
-  assert.equal(KID_DEFAULTS, KID_SCORING_DEFAULTS, 'the design name is the same object');
   assert.ok(Object.isFrozen(K));
   assert.equal(K.stillRadius, SPOT_DEFAULTS.stillRadius);
   assert.deepEqual([...K.starAt], [...REWARDS_DEFAULTS.starAt]);
@@ -106,7 +105,7 @@ test('kidscore: the defaults, and the numbers other modules must agree with', as
   assert.ok(least + K.grow2 >= 5 && least + K.grow1 >= 7, 'the 2- and 1-star bands');
   // ...and toward the start the area stops short of it (the green at 45 % of the way at most).
   assert.ok(K.capFrac[3] <= 0.45 && K.capFrac[3] <= K.capFrac[2] && K.capFrac[2] <= K.capFrac[1] && K.capFrac[1] < 1);
-  assert.ok(K.keyCap <= 1 && K.lessonCap <= 1 && K.softCap <= 2 && K.coachMaxCap <= 2, 'keys and Coach mode never give 3 stars outside the green');
+  assert.ok(K.keyCap <= 1 && K.lessonCap <= 1 && K.softCap <= 2 && K.coachLiftTo <= 2, 'keys and Coach mode never give 3 stars outside the green');
 });
 
 test('kidscore: the best spot earns 3 stars and standing still 0 in every staged rep (and the stage gates say so)', () => {
@@ -307,7 +306,7 @@ test('kidscore: Coach mode is untouched: kidStars carries evaluate() as it is, a
       if (k.stars === 3) assert.equal(k.band, 3);
       const coach = K.starAt.filter((s) => k.coach.score >= s).length;
       if (!k.keys.length && k.band < 3) {
-        assert.ok(k.stars >= Math.min(coach, K.coachMaxCap), `${q.label} ${q.stage}: ${k.stars} < Coach ${coach}`);
+        assert.ok(k.stars >= Math.min(coach, K.coachLiftTo), `${q.label} ${q.stage}: ${k.stars} < Coach ${coach}`);
         if (k.stars > k.band) { lifted++; assert.equal(k.reason, 'coach'); }
       }
       assert.equal(k.inArea, k.stars === 3);

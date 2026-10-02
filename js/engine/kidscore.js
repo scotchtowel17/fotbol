@@ -33,7 +33,7 @@ import { goalSideRef } from './rules/goal-side.js';
 import { OFFSIDE_DEFAULTS } from './rules/offside.js';
 import { PRESS_DEFAULTS } from './rules/press.js';
 
-export const KID_SCORING_DEFAULTS = Object.freeze({
+export const KID_DEFAULTS = Object.freeze({
   // The area (distance): an ellipse round the best spot, sized from the rep's zone tolerance.
   mult: 1, // [D] the 3-star semi-axes = the zone tolerance (tx along x, ty across y) x this...
   floor: 3.5, // [D] ...at least this many metres (3 m off is inside, with room left for the lines)...
@@ -48,8 +48,8 @@ export const KID_SCORING_DEFAULTS = Object.freeze({
   edge: 1e-9, // [D] m of slack on an ellipse or cap edge, so a spot and its mirror image land in the same band
   // The stars.
   starAt: Object.freeze([55, 75, 90]), // [S] = rewards.js REWARDS_DEFAULTS.starAt (tested equal): Coach mode's score for 1, 2, 3 stars
-  coachMax: true, // [D] outside the green, never fewer stars than Coach mode's score gives...
-  coachMaxCap: 2, // [D] ...up to this many (3 stars only in the green: "Anywhere in the green is right", and only there)
+  coachLift: true, // [D] outside the green, Coach mode's score can LIFT the band's stars...
+  coachLiftTo: 2, // [D] ...up to this many, never to 3 (3 stars only in the green: "Anywhere in the green is right", and only there)
   keyCap: 1, // [D] stars at most past a hard key: offside at a pass, keeping an attacker onside, the wrong side of your man
   //              or of the ball you press, any other critical rule
   lessonCap: 1, // [D] stars at most when the rep's own lesson is clearly failed (its rule's line, the drill's misconception)
@@ -87,7 +87,6 @@ export const KID_SCORING_DEFAULTS = Object.freeze({
   liveRunStars: Object.freeze({ 3: 0.75, 2: 0.5, 1: 0.3 }), // [D] a run's stars from its share of scored time Hot
 });
 /** The design's name for the same object. */
-export const KID_DEFAULTS = KID_SCORING_DEFAULTS;
 
 /** The glow level for 0-3 stars (board.js setAid's levelAt: KID_LEVELS[kidStars(...).stars]). */
 export const KID_LEVELS = Object.freeze(['cold', 'cool', 'warm', 'hot']);
@@ -96,7 +95,7 @@ export const KID_WORDS = Object.freeze(['Not yet', 'Close', 'Great', 'Spot on'])
 /** kidStars' reason when no key capped the stars: the band the spot is in (0-3). */
 const BAND_REASONS = Object.freeze(['far', 'close', 'near', 'area']);
 
-const P_OF = (params) => (params ? { ...KID_SCORING_DEFAULTS, ...params } : KID_SCORING_DEFAULTS);
+const P_OF = (params) => (params ? { ...KID_DEFAULTS, ...params } : KID_DEFAULTS);
 const starsOf = (score, P) => (Number.isFinite(score) ? P.starAt.filter((at) => score >= at).length : 0);
 const capOfLevel = (level, P) => (level === 'soft' ? P.softCap : level === 'lesson' ? P.lessonCap : P.keyCap);
 
@@ -123,7 +122,7 @@ function inRegion(r, p) {
  *   best: the best spot (ghost.spot); centre, tol: the zone Coach mode judges (ghost.result.center / .tol: the base or
  *   answer.ideal, toleranceFor(role, answer.tol)), default the learner's base and role tolerance; start: where the
  *   learner stood (null in Live); hold: answer.hold (no start cap, no standing still); lesson: cast.js lessonOf's result
- *   (the staged rep's .lesson); misconceptions: scenario.misconceptions; params: KID_SCORING_DEFAULTS overrides (shallow)
+ *   (the staged rep's .lesson); misconceptions: scenario.misconceptions; params: KID_DEFAULTS overrides (shallow)
  * @returns {{ P, center, zone: { center, tol }, angle: 0, bands: { 3: {rx, ry}, 2: {rx, ry}, 1: {rx, ry} },
  *   cap: { u, D, max: { 3, 2, 1 } } | null, start, lesson, goalSide: { id, x, y, weight, sideOnly } | null, misconceptions, stage }}
  */
@@ -157,7 +156,7 @@ export function kidArea(ctx, { best, centre, tol, start = null, hold = false, st
  */
 export function bandOf(area, spot) {
   const { center: c, bands, cap } = area;
-  const e = area.P?.edge ?? KID_SCORING_DEFAULTS.edge;
+  const e = area.P?.edge ?? KID_DEFAULTS.edge;
   const proj = cap ? (spot.x - c.x) * cap.u.x + (spot.y - c.y) * cap.u.y : -Infinity;
   for (const b of [3, 2, 1]) {
     const { rx, ry } = bands[b];
@@ -187,7 +186,7 @@ const offsideLesson = (area, P) => !!area.lesson && (P.offsidePrinciples.include
  * @returns {{ key: string, level: 'hard'|'lesson'|'soft' } | null}
  */
 export function relationship(ctx, spot, r, area, isLesson) {
-  const P = area.P ?? KID_SCORING_DEFAULTS;
+  const P = area.P ?? KID_DEFAULTS;
   const v = r.vars ?? {};
   const K = (key, level) => ({ key, level });
   const own = (key) => K(key, isLesson ? 'lesson' : 'soft');
@@ -242,7 +241,7 @@ export function relationship(ctx, spot, r, area, isLesson) {
 
 /**
  * Player mode's stars for a spot: 3 only in the green (band 3); outside it the band, lifted to Coach mode's stars up to
- * coachMaxCap; standing still (within stillRadius of the start, not a hold drill) 0; then capped by the worst key the
+ * coachLiftTo; standing still (within stillRadius of the start, not a hold drill) 0; then capped by the worst key the
  * spot breaks (relationship; a drill's misconception region is a lesson key).
  * @param {object} ctx
  * @param {{x:number,y:number}} spot
@@ -254,13 +253,13 @@ export function relationship(ctx, spot, r, area, isLesson) {
  *   or the rule id (or 'misconception') whose key capped the stars; coach: evaluate() at the spot, unchanged
  */
 export function kidStars(ctx, spot, area) {
-  const P = area.P ?? KID_SCORING_DEFAULTS;
+  const P = area.P ?? KID_DEFAULTS;
   const coach = evaluate(ctx, spot, { center: area.zone.center, tol: area.zone.tol });
   const band = bandOf(area, spot);
   if (area.start && dist(spot, area.start) <= P.stillRadius) {
     return { stars: 0, word: KID_WORDS[0], band, inArea: false, broken: ['start'], keys: ['stood-still'], levels: ['hard'], reason: 'start', coach };
   }
-  let stars = band === 3 ? 3 : P.coachMax ? Math.max(band, Math.min(starsOf(coach.score, P), P.coachMaxCap)) : band;
+  let stars = band === 3 ? 3 : P.coachLift ? Math.max(band, Math.min(starsOf(coach.score, P), P.coachLiftTo)) : band;
   let reason = band >= stars ? BAND_REASONS[band] : 'coach';
   const broken = [], keys = [], levels = [];
   const lessonIds = area.lesson?.rules ?? [];
@@ -282,11 +281,11 @@ export function kidStars(ctx, spot, area) {
  * spot the trace cannot see (an island past a gap) is left out of the drawing, and it never straddles a key line.
  * @param {object} ctx
  * @param {object} area  kidArea's
- * @param {{ min?: number, rays?: number, maxR?: number, step?: number, tol?: number }} [opts]  default KID_SCORING_DEFAULTS.outline
+ * @param {{ min?: number, rays?: number, maxR?: number, step?: number, tol?: number }} [opts]  default KID_DEFAULTS.outline
  * @returns {{x:number, y:number, r:number}[]}  one vertex per ray, in order round the best spot (r: its distance)
  */
 export function kidOutline(ctx, area, opts = {}) {
-  const { min, rays, maxR, step, tol } = { ...(area.P ?? KID_SCORING_DEFAULTS).outline, ...opts };
+  const { min, rays, maxR, step, tol } = { ...(area.P ?? KID_DEFAULTS).outline, ...opts };
   const c = area.center, pts = [];
   const ok = (p) => onPitch(p) && kidStars(ctx, p, area).stars >= min;
   for (let i = 0; i < rays; i++) {
@@ -357,7 +356,7 @@ export function kidLive(ctx, spot, { recent, centre, tol, coachScore, stage = 'f
 /**
  * A Match day run's stars from the share of its scored time that was Hot (kidLive heat 'hot'): liveRunStars.
  * @param {number} hotShare  0..1
- * @param {object} [params]  KID_SCORING_DEFAULTS overrides
+ * @param {object} [params]  KID_DEFAULTS overrides
  * @returns {0|1|2|3}
  */
 export function kidRunStars(hotShare, params) {

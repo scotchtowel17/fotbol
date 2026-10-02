@@ -243,9 +243,8 @@ export function createLiveAnnouncer({ delay = REVEAL_DEFAULTS.liveAnnounceMs, sa
 }
 
 const prefersReducedMotion = (app) => {
-  if (app?.settings?.reducedMotion) return true;
-  if (typeof document !== 'undefined' && document.documentElement?.dataset?.reducedMotion === 'true') return true;
-  try { return !!globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+  // main.js resolves the query into the attribute (audit 2026-10-01): read it, with the setting for DOM-less tests.
+  return app?.settings?.reducedMotion === true || globalThis.document?.documentElement?.dataset?.reducedMotion === 'true';
 };
 
 /**

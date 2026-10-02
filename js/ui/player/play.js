@@ -81,13 +81,15 @@ import * as Rewards from '../../rewards.js';
 import { award, loadRewards, mergeGains, emptyGains } from '../rewards-store.js';
 import { reducedMotion } from '../celebrate.js';
 import * as S from '../session.js';
+import * as roadMod from './road.js';
 import { createPlayerReveal } from './reveal.js';
 import { showFullTime, addPlayTime, sentenceCase } from './fulltime.js';
-import { STRINGS as SHARED, roleCard, starWord, stageLine } from './strings.js';
+import { STRINGS as SHARED, roleCard, starWord } from './strings.js';
 
 export const PLAY_DEFAULTS = Object.freeze({
   setReps: 5, // [S] §3: a set is 5 reps
   firstReps: 3, // [S] §4.1: the first set is 3 easy reps
+  starsAt: Rewards.REWARDS_DEFAULTS.starAt, // [S] = rewards.js starAt (one source: the duplicate table went with the 2026-10-01 audit); kidScore's band edges
   roleCardMs: 1300, // [S] §4.3 step 1: the role card shows for about 1 s...
   roleChangedMs: 2300, // [D] ...longer when the position changed ("Now you're the striker")
   exampleDelayMs: 700, // [D] the worked example's hand starts this long after the freeze
@@ -105,7 +107,6 @@ export const PLAY_DEFAULTS = Object.freeze({
   briefMaxWords: 12, // [S] R2
   lineMaxWords: 14, // [S] R2
   maxRepMs: 3 * 60 * 1000, // [D] one rep counts at most this much play time (a tab left open is not play)
-  starsAt: Object.freeze([55, 75, 90]), // [S] §6.3 starsForScore: 1, 2 and 3 stars (used if rewards.js lacks it)
   whyMaxWords: 20, // [D] a reason, praise line or summary longer than this never goes on the Why? sheet
   moveMaxWords: 12, // [D] Full time's "Best move: ..." (2 words) stays within a 14-word line (R2)
   cueLabelSide: 6, // [D] metres in from the touchline away from the ball: where a cue line's label sits
@@ -149,10 +150,11 @@ export const STRINGS = Object.freeze({
   watchThis: 'Watch this.',
   yourTurnHint: 'Your turn: drag YOU, or tap a spot.',
   ringIsBest: 'Anywhere in the green is right. Move YOU there.',
-  glowHint: 'Your ring gets hot in the right area.',
+  glowHint: 'Your ring turns green in the right area.',
   greenIsRight: SHARED.greenIsRight, // the tip on the set's first reveal: the green zone is the answer, not one exact spot
   otherSide: 'Same play, other side',
   practiceNote: 'Practice only. Your first try counts.',
+  warmupNote: 'Warm-up. Stars count from the next play.',
   missNote: SHARED.missNote,
   // The reveal's line when no reason or praise fits (pickLine), by stars
   lineInGreen: 'You found the right area.', // 3 stars
@@ -204,25 +206,13 @@ export function usableText(s, max = PLAY_DEFAULTS.lineMaxWords) {
   return words(s) <= max && !METRES.test(s) && !CODES.test(s) && !GRADE.test(s);
 }
 
-/** Stars for a score (§6.3): rewards.js starsForScore when it exists, else 3 at 90, 2 at 75, 1 at 55. */
+/** Stars for a score (§6.3): rewards.js starsForScore (a static import: no fallback band table, audit 2026-10-01). */
 export function starsForScore(score) {
-  if (typeof Rewards.starsForScore === 'function') {
-    const n = Rewards.starsForScore(score);
-    if (Number.isFinite(n)) return Math.max(0, Math.min(3, Math.round(n)));
-  }
-  const [one, two, three] = PLAY_DEFAULTS.starsAt;
-  const s = Number(score);
-  return !Number.isFinite(s) ? 0 : s >= three ? 3 : s >= two ? 2 : s >= one ? 1 : 0;
+  return Math.max(0, Math.min(3, Math.round(Rewards.starsForScore(score)) || 0));
 }
 
-/** The word for 0-3 stars (§6.3): rewards.js wordForStars when it exists, else strings.js. */
-export function wordForStars(stars) {
-  if (typeof Rewards.wordForStars === 'function') {
-    const w = Rewards.wordForStars(stars);
-    if (typeof w === 'string' && w) return w;
-  }
-  return starWord(stars);
-}
+/** The word for 0-3 stars (§6.3): rewards.js wordForStars. */
+export const wordForStars = (stars) => Rewards.wordForStars(stars);
 
 /** The question at the freeze: the scenario's simple one when it fits (≤ 12 words, no codes), else the default. */
 export function questionFor(scenario) {
@@ -719,13 +709,17 @@ export function missNote(tally, stars) {
 
 /**
  * The reveal's note (pure): Try again says it is practice ("Practice only. Your first try counts."); else the set's
- * first reveal says what the green is ("Anywhere in the green is right."); else, after a miss, once a set, "Hard one.
- * Pros miss it too." (missNote, R20: a miss on the first reveal keeps it for the next one).
+ * first reveal says what the green is ("Anywhere in the green is right."); else a first-set warm-up rep says its stars
+ * are not counted yet ("Warm-up. Stars count from the next play.", the same honesty as Try again's note); else, after
+ * a miss the kid actually played (not locked in at the start: that line already says what happened), once a set,
+ * "Hard one. Pros miss it too." (missNote, R20: a miss on the first reveal keeps it for the next one).
  * @returns {{ note: string, tally }}
  */
-export function revealNote(tally, { stars = 0, practice = false } = {}) {
+export function revealNote(tally, { stars = 0, practice = false, warmup = false, still = false } = {}) {
   if (practice) return { note: STRINGS.practiceNote, tally };
   if (!tally.greenTold) return { note: STRINGS.greenIsRight, tally: { ...tally, greenTold: true } };
+  if (warmup) return { note: STRINGS.warmupNote, tally };
+  if (still) return { note: '', tally };
   return missNote(tally, stars);
 }
 
@@ -1226,24 +1220,8 @@ export function redirectTo(app, hash) {
 
 const put = (node, ...kids) => node.replaceChildren(...kids.flat().filter((k) => k !== null && k !== undefined && k !== false));
 
-const tryImport = async (url) => {
-  try { return await import(url); } catch (err) { console.warn(`[fotbol] play: ${url} is not available`, err); return null; }
-};
-
-/** The Road (data/road.json): the app's copy, else road.js's loader, else the file. */
-async function getRoad(app, roadMod) {
-  if (app?.data?.road) return app.data.road;
-  for (const fn of ['loadRoad', 'getRoad']) {
-    if (typeof roadMod?.[fn] === 'function') {
-      try { const r = await roadMod[fn](app); if (r) return r; } catch { /* next */ }
-    }
-  }
-  try {
-    const res = await fetch(new URL('../../../data/road.json', import.meta.url));
-    if (res.ok) return await res.json();
-  } catch { /* no road */ }
-  return null;
-}
+/** The Road (data/road.json): the app's copy, else road.js's loader (the three-tier fallback went with the audit). */
+const getRoad = async (app, roadMod) => app?.data?.road ?? roadMod.loadRoad(app);
 
 const roadNodesOf = (road) => (road?.chapters ?? []).flatMap((c) => c.nodes ?? []);
 
@@ -1259,11 +1237,9 @@ export async function mount(root, app, params = []) {
   root.classList.add('pl-view');
   root.replaceChildren(el('div', { class: 'pl-loading', role: 'status' }, [el('p', { text: STRINGS.loading })]));
 
-  const roadMod = await tryImport('./road.js');
   const roadData = await getRoad(app, roadMod);
   if (!root.isConnected) return () => { alive = false; };
-  let profile = null;
-  try { profile = roadMod?.loadProfile?.(app) ?? null; } catch { profile = null; }
+  const profile = roadMod.loadProfile(app);
   const myRole = profile?.role ?? app.settings?.role ?? 'LB';
 
   // ---- what to play
@@ -1362,7 +1338,7 @@ export async function mount(root, app, params = []) {
   els.dots = el('ol', { class: 'pl-dots', 'aria-hidden': 'true' }, reps.map(() => el('li')));
   els.where = el('p', { class: 'visually-hidden', 'aria-live': 'polite' });
   els.board = el('div', { class: 'pl-board' });
-  els.card = el('div', { class: 'pl-card', hidden: true }, [el('p', { class: 'pl-card-text' }), el('p', { class: 'pl-card-stage' })]);
+  els.card = el('div', { class: 'pl-card', hidden: true }, [el('p', { class: 'pl-card-text' })]);
   els.line = el('p', { class: 'pl-line' });
   els.tip = el('p', { class: 'pl-tip', hidden: true });
   els.actions = el('div', { class: 'pl-actions' });
@@ -1385,7 +1361,6 @@ export async function mount(root, app, params = []) {
   const set = {
     tally: createTally(reps.length), results: [], gained: emptyGains(), skills: S.loadSkills(store), streak: S.loadStreak?.(store),
     xpBefore: loadRewards(app).xp ?? 0, playedMs: 0, tapHintShown: false, glowHintShown: false,
-    top: -1, // the biggest stage the set has shown (index in small, medium, full): "Now 6 v 5!" once a bigger one comes (stageLine)
   };
   let rep = null; // the rep on the pitch
   let raf = 0;
@@ -1563,14 +1538,12 @@ export async function mount(root, app, params = []) {
    * The role card (§4.3 step 1), placed off YOU, the ball and the other players (placeCard) once the camera has landed
    * and the dock has its set height: until then the board draws everyone on the way there, and a card placed for where
    * they land covered YOU or the ball for a quarter of a second mid-ease (the verifier). It then shows for its usual
-   * time (roleCardMs; roleChangedMs for a changed position or "Now 6 v 5!").
+   * time (roleCardMs; roleChangedMs for a changed position). The card names the role only: the stage line ("Small
+   * game: 3 v 2") went with the 2026-10-01 audit, since the pitch already shows how many players there are.
    */
   function showRoleCard() {
     setPhase('set');
     const card = repCard({ role: rep.s.learner.role, profileRole: myRole, retry: rep.retry });
-    // The stage in a few words ("Small game: 3 v 2"); the first rep of a bigger stage in the set says "Now 6 v 5!".
-    const stage = stageLine(set.top, rep.stage, rep.cast, { again: rep.retry });
-    set.top = stage.top;
     // The dock first (the pitch takes the room it leaves), then the picture.
     put(els.line);
     setTip('');
@@ -1579,14 +1552,10 @@ export async function mount(root, app, params = []) {
     board.setMarkers([{ type: 'ring', id: rep.learnerId, tone: card.changed ? 'cue' : 'info', pulse: true }]);
     els.card.hidden = true;
     els.card.querySelector('.pl-card-text').textContent = card.text;
-    const stageEl = els.card.querySelector('.pl-card-stage');
-    stageEl.textContent = stage.text;
-    stageEl.hidden = !stage.text;
     els.card.classList.toggle('is-changed', card.changed);
-    els.card.classList.toggle('is-bigger', stage.now);
     els.card.dataset.stage = rep.stage;
     view.classList.toggle('is-role-change', card.changed);
-    announce([card.text, stage.text].filter(Boolean).join('. '));
+    announce(card.text);
     const r0 = rep;
     const wait = landsIn() + P.cardSettleMs;
     later(() => {
@@ -1597,7 +1566,7 @@ export async function mount(root, app, params = []) {
     let gone = false;
     const go = () => { if (gone || !alive || rep !== r0 || rep.phase !== 'set') return; gone = true; els.card.hidden = true; view.classList.remove('is-role-change'); showWatch(); };
     els.card.onclick = go;
-    later(go, wait + (card.changed || stage.now ? P.roleChangedMs : P.roleCardMs));
+    later(go, wait + (card.changed ? P.roleChangedMs : P.roleCardMs));
   }
 
   /**
@@ -1856,7 +1825,7 @@ export async function mount(root, app, params = []) {
     const { id, stars, score, score01, event } = recordOf(s, judged);
     try {
       if (pol.elo) {
-        set.skills = eloUpdate(set.skills, { itemId: id, principles: s.principles, role: s.learner.role, score01, prior: Number.isFinite(s.difficulty) ? s.difficulty : 0 });
+        set.skills = eloUpdate(set.skills, { principles: s.principles, role: s.learner.role, score01 });
         S.saveSkills(store, set.skills);
       }
       if (pol.streak && typeof S.updateStreak === 'function' && set.streak) {
@@ -1914,15 +1883,17 @@ export async function mount(root, app, params = []) {
     board.setGhost(rep.ghost.spot);
     if (rep.answerCam) moveCamera(rep.answerCam); // (back from "See what happens", which plays on the clip's camera)
     // Words about the sideline keep it in view (the one by the best spot), as the question's did.
+    // One answerMarks() for the cue and zone (the extra marker set that was built and thrown away here went with the
+    // 2026-10-01 audit); the markers place once now and once more when the camera has landed and the reveal has its
+    // height (the words' size and everyone's place are the landed view's).
     const { cue, zone } = answerMarks();
     const side = mentionsSideline(line, why?.summary, ...(why?.reasons ?? []), cue?.label) ? touchlineBy(rep.ghost.spot) : null;
     keepInView(rep.spot, rep.ghost.spot, side, ...zone); // (the whole green in view)
-    board.setMarkers(answerMarks().marks); // (placed for the view keepInView may have widened)
+    const place = () => board.setMarkers(answerMarks().marks);
+    place(); // placed for the view keepInView may have widened
     if (cue?.type === 'player' && !rep.camera) board.setSpotlight([rep.learnerId, ...rep.key, cue.id]);
-    // Placed again once the camera has landed and the reveal has its height (the words' size and everyone's place are
-    // the landed view's).
     const r0 = rep, ph = rep.phase;
-    later(() => { if (rep === r0 && rep.phase === ph) board.setMarkers(answerMarks().marks); }, landsIn() + P.cardSettleMs);
+    if (landsIn() > 0) later(() => { if (rep === r0 && rep.phase === ph) place(); }, landsIn() + P.cardSettleMs);
   }
 
   function showReveal() {
@@ -1932,9 +1903,10 @@ export async function mount(root, app, params = []) {
     put(els.line);
     setTip('');
     setActions();
-    // Try again says it is practice; the set's first reveal says the green is the answer; a first try may get the
-    // once-a-set "Hard one" after a miss (R20).
-    const miss = revealNote(set.tally, { stars, practice: pol.practice });
+    // Try again says it is practice; the set's first reveal says the green is the answer; a warm-up rep says its
+    // stars are not counted yet; a first try the kid actually played may get the once-a-set "Hard one" after a miss
+    // (R20; never for locking in at the start, where the line already says what happened).
+    const miss = revealNote(set.tally, { stars, practice: pol.practice, warmup: !pol.practice && !pol.rewards, still: rep.judged.still });
     set.tally = miss.tally;
     const retry = stars <= 1 && !rep.retry;
     stageAhead(rep.slot, { twin: retry }); // the next rep (and a Try again twin) while the reveal is up

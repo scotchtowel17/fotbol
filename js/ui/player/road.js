@@ -398,23 +398,25 @@ export const nodePlays = (profile, id) => int(profile?.road?.[id]?.plays, 0, 1e6
 export const nodeAttempt = (profile, id) => Math.max(int(profile?.road?.[id]?.starts, 0, 1e6), nodePlays(profile, id));
 
 /**
- * A node is open when it is the first on the Road, when the node before it has a star, when you have played it, or,
- * for the first node of a chapter with `opensAfter`, when that node has a star ("Pass it right" opens after chapter 1's
- * first node).
+ * A node is open when it is the first on the Road, when the node before it has a star OR a finished set (any result:
+ * finishing moves you on, stars stay the quality signal), when you have played it, or, for the first node of a chapter
+ * with `opensAfter`, when that node has a star or a finished set ("Pass it right" opens after chapter 1's first node).
  */
 export function isUnlocked(road, profile, nodeId, P = ROAD_DEFAULTS) {
   const nodes = roadNodes(road);
   const i = nodes.findIndex((n) => n.id === nodeId);
   if (i < 0) return false;
   if (i === 0 || nodeStars(profile, nodeId) > 0 || nodePlays(profile, nodeId) > 0) return true;
-  if (nodeStars(profile, nodes[i - 1].id) >= P.unlockStars) return true;
+  const opens = (id) => nodeStars(profile, id) >= P.unlockStars || nodePlays(profile, id) > 0;
+  if (opens(nodes[i - 1].id)) return true;
   const ch = chapterOf(road, nodeId);
-  return !!(ch?.opensAfter && ch.nodes[0]?.id === nodeId && nodeStars(profile, ch.opensAfter) >= P.unlockStars);
+  return !!(ch?.opensAfter && ch.nodes[0]?.id === nodeId && opens(ch.opensAfter));
 }
 
 /**
  * Next up (§3, as play-tested): in your group's chapter order (chapterOrder: the lead chapter first), the first open
- * node under nextStars (2) stars, so a new or weak node comes before replaying a 2-star one; then the first under 3;
+ * node you have never played, so finishing a set always moves Play forward (replaying an old node is a Road tap, and
+ * each set's recall rep keeps old ideas warm); then the first under nextStars (2) stars; then the first under 3;
  * with every open node at 3 stars, the last open one in the Road's order.
  */
 export function nextNode(road, profile, P = ROAD_DEFAULTS) {
@@ -422,7 +424,8 @@ export function nextNode(road, profile, P = ROAD_DEFAULTS) {
   const open = new Set(nodes.filter((n) => isUnlocked(road, profile, n.id, P)));
   const group = GROUPS.includes(profile?.group) ? profile.group : groupOfRole(profile?.role, road?.groups);
   const order = chapterOrder(road, group).flatMap((c) => c.nodes ?? []).filter((n) => open.has(n));
-  return order.find((n) => nodeStars(profile, n.id) < P.nextStars)
+  return order.find((n) => nodeStars(profile, n.id) === 0 && nodePlays(profile, n.id) === 0)
+    ?? order.find((n) => nodeStars(profile, n.id) < P.nextStars)
     ?? order.find((n) => nodeStars(profile, n.id) < P.maxStars)
     ?? [...open].at(-1) ?? nodes[0] ?? null;
 }

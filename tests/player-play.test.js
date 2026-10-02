@@ -4,7 +4,7 @@
 // the mount test at the end, which plays a whole set through play.js mount on a fake page (Node only).
 
 import { test, assert, approx, loadJSON, isNode } from './harness.js';
-import { STRINGS as SHARED, STAR_WORDS, ROLE_NAMES, roleName, starWord, roleCard, stageWords, stageLine } from '../js/ui/player/strings.js';
+import { STRINGS as SHARED, STAR_WORDS, ROLE_NAMES, roleName, starWord, roleCard } from '../js/ui/player/strings.js';
 import {
   STRINGS as PLAY, PLAY_DEFAULTS, usableText, starsForScore, wordForStars, questionFor, briefFor, takeawayFor, pickLine, whyFor,
   keyPlayers, firstSetStep, setStep, createTally, tallyTry, tallyStars, missNote, repTitle, seedFor, recordIdOf, recordPolicy,
@@ -26,7 +26,7 @@ import { STRINGS as REVEAL, REVEAL_DEFAULTS, whyModel, revealWordCount, burstFor
 import {
   STRINGS as FULLTIME, FULLTIME_DEFAULTS, sentenceCase, addToday, minutesOn, breakDue, fullTimeModel, earnedItems, bestMoveName, TODAY_KEY,
 } from '../js/ui/player/fulltime.js';
-import { STRINGS as MATCHDAY, MATCHDAY_DEFAULTS, heatFor, heatForStars, hotShare, runStars, bestHotStreak, hardestMoment } from '../js/ui/player/matchday.js';
+import { STRINGS as MATCHDAY, MATCHDAY_DEFAULTS, heatFor, heatForStars, hotShare, runStars, hardestMoment } from '../js/ui/player/matchday.js';
 import { PLAYER_CELEBRATE, playerStarPlan, playerAckMs, createBurstBudget, playerMilestone } from '../js/ui/celebrate.js';
 import { SOUND_NAMES } from '../js/ui/sound.js';
 import { ROLES } from '../js/engine/roles.js';
@@ -309,29 +309,20 @@ test('player play: play time adds up over the day (a new day starts again); the 
 
 // ---------------------------------------------------------------- Match day
 
-test('player play: Match day heat is Hot (70+), Warm (50+) or Cold, never a number', () => {
+test('player play: Match day speaks the star words, never a number and never a Hot/Warm/Cold vocabulary (audit 2026-10-01)', () => {
   assert.equal(heatFor(95), 'hot');
   assert.equal(heatFor(70), 'hot');
   assert.equal(heatFor(69), 'warm');
   assert.equal(heatFor(50), 'warm');
   assert.equal(heatFor(49), 'cold');
   assert.equal(heatFor(null), 'cold');
-  for (const k of ['hot', 'warm', 'cold']) assert.ok(MATCHDAY[k] && !/\d/.test(MATCHDAY[k]));
+  for (const k of ['hot', 'warm', 'cold']) assert.equal(MATCHDAY[k], undefined, 'no heat words on screen: the star words carry it');
+  assert.ok(!('streak' in MATCHDAY), 'no "best hot streak": the run has stars and a hardest moment, nothing more');
+  assert.equal(MATCHDAY.ringTip, 'Your ring turns green in the right area.');
   assert.equal(MATCHDAY_DEFAULTS.duration, 45);
 });
 
-test('player play: the best hot streak in seconds (a reaction moment after a pass never breaks it)', () => {
-  const at = (t, score, grace = false) => ({ t, score, grace });
-  const run = [];
-  for (let i = 0; i < 30; i++) run.push(at(i / 10, 80)); // 3 s hot
-  run.push(at(3.0, 60, true)); // a pass: not scored
-  for (let i = 31; i < 60; i++) run.push(at(i / 10, 75)); // still hot: 6 s in all
-  run.push(at(6.0, 40)); // cold: broken
-  for (let i = 61; i < 81; i++) run.push(at(i / 10, 90)); // 2 s hot
-  assert.equal(bestHotStreak(run), 6);
-  assert.equal(bestHotStreak([]), 0);
-  assert.equal(bestHotStreak([at(0, 30), at(0.1, 20)]), 0);
-  assert.equal(bestHotStreak([at(1, 71)]), 0, 'one sample is a tenth of a second');
+test('player play: the hardest moment is the worst scored sample', () => {
   assert.deepEqual(hardestMoment({ worst: [{ t: 3, score: 40 }, { t: 9, score: 22 }, { t: 20, score: 35 }] }), { t: 9, score: 22 });
   assert.equal(hardestMoment({ worst: [] }), null);
   assert.equal(hardestMoment(null), null);
@@ -348,9 +339,9 @@ test('player play: Match day judges the right area: Hot at 3 stars, the run\'s s
   approx(hotShare(run(60, 100, [{ t: 11, score: 20, stars: 3, grace: true }])), 0.6, 1e-9, 'grace samples do not count');
   assert.deepEqual([80, 75, 60, 50, 40, 30, 10, 0].map((h) => runStars(run(h))), [3, 3, 2, 2, 1, 1, 0, 0]);
   assert.equal(runStars([]), 0);
-  // Stars rule over the score: a 60 in the green is Hot, a 95 past a key line is not.
-  assert.equal(bestHotStreak([...Array.from({ length: 30 }, (_, i) => ({ t: i / 10, score: 60, stars: 3 }))]), 3);
-  assert.equal(bestHotStreak([...Array.from({ length: 30 }, (_, i) => ({ t: i / 10, score: 95, stars: 1 }))]), 0);
+  // Stars rule over the score: a 60 in the green is Hot, a 95 past a key line is not (hotShare reads stars first).
+  approx(hotShare(Array.from({ length: 30 }, (_, i) => ({ t: i / 10, score: 60, stars: 3 }))), 1, 1e-9);
+  approx(hotShare(Array.from({ length: 30 }, (_, i) => ({ t: i / 10, score: 95, stars: 1 }))), 0, 1e-9);
   // The hardest moment: the lowest-scoring of the worst moments the ring showed Cold (else the lowest).
   const worst = { worst: [{ t: 3, score: 40 }, { t: 9, score: 22 }, { t: 20, score: 35 }] };
   assert.deepEqual(hardestMoment(worst, [{ t: 3, stars: 1 }, { t: 9, stars: 2 }, { t: 20, stars: 0 }]), { t: 20, score: 35 }, 'the 22 was Warm');
@@ -662,43 +653,7 @@ test('player play: a pass node opened in "Find your spot" goes on to #/pass in p
 });
 
 // ---------------------------------------------------------------- stages: a small game, a bigger game, the full match
-
-test('player play: the role card names the stage in a few words ("Small game: 3 v 2", "Bigger game: 6 v 5", "Full match")', () => {
-  assert.equal(stageWords('small', { ours: 3, theirs: 2 }), 'Small game: 3 v 2');
-  assert.equal(stageWords('medium', { ours: 6, theirs: 5 }), 'Bigger game: 6 v 5');
-  assert.equal(stageWords('full', { ours: 11, theirs: 11 }), 'Full match');
-  assert.equal(stageWords('full'), 'Full match');
-  assert.equal(stageWords('small'), '', 'no cast: nothing to say');
-  assert.equal(stageWords('huge', { ours: 3, theirs: 2 }), '');
-  for (const t of [stageWords('small', { ours: 3, theirs: 2 }), stageWords('medium', { ours: 6, theirs: 5 }), SHARED.fullMatch, SHARED.nowGame(6, 5)]) {
-    assert.ok(words(t) <= 5, `${t}: a few words`);
-    assert.doesNotMatch(t, /\bm\b|\d+\s?m\b|metre/i);
-  }
-  assert.equal(SHARED.nowGame(6, 5), 'Now 6 v 5!');
-  assert.deepEqual([...STAGES], ['small', 'medium', 'full'], 'the stages strings.js counts in (a copy of cast.js STAGES)');
-});
-
-test('player play: the first rep of a bigger stage in a set says "Now 6 v 5!" once; Try again never does', () => {
-  const cast = (ours, theirs) => ({ ours, theirs });
-  // The 0-star plan (small, small, small, medium, medium), a rep falling back bigger, then the full match.
-  const reps = [['small', cast(3, 2)], ['small', cast(2, 2)], ['medium', cast(4, 4)], ['small', cast(3, 3)], ['medium', cast(6, 5)], ['medium', cast(7, 5)], ['full', cast(11, 11)], ['full', cast(11, 11)]];
-  let top = -1;
-  const said = [];
-  for (const [stage, c] of reps) {
-    const l = stageLine(top, stage, c);
-    said.push(l.now ? `NOW ${l.text}` : l.text);
-    top = l.top;
-  }
-  assert.deepEqual(said, [
-    'Small game: 3 v 2', 'Small game: 2 v 2', 'NOW Now 4 v 4!', 'Small game: 3 v 3', 'Bigger game: 6 v 5', 'Bigger game: 7 v 5', 'NOW Now 11 v 11!', 'Full match',
-  ]);
-  // The set's first rep only names its stage, whatever it is.
-  assert.deepEqual(stageLine(-1, 'medium', cast(6, 5)), { text: 'Bigger game: 6 v 5', now: false, top: 1 });
-  assert.deepEqual(stageLine(-1, 'full', null), { text: 'Full match', now: false, top: 2 });
-  // Try again (the twin at the first try's stage): its stage's words, never "Now", and the set's top is left alone.
-  assert.deepEqual(stageLine(0, 'medium', cast(6, 5), { again: true }), { text: 'Bigger game: 6 v 5', now: false, top: 0 });
-  assert.deepEqual(stageLine(1, 'nope', cast(6, 5)), { text: '', now: false, top: 1 }, 'no stage: no line');
-});
+// (The stage LINE on the role card went with the 2026-10-01 audit: the pitch shows how many players there are.)
 
 test('player play: the stage each rep wants: the road\'s tag, else the plan\'s for its slot; the first set small, else the full match', () => {
   assert.equal(wantedStage({ stage: 'medium' }, 0, { plan: ['small'] }), 'medium', 'the road tagged it');
@@ -1294,7 +1249,7 @@ test('player play: mounted, a whole set draws, freezes, judges and replays only 
   const root = page.doc.createElement('div');
   page.doc.body.append(root);
   const phaseOf = () => root.querySelector('.pl')?.dataset.phase ?? null;
-  const cardOf = () => `${root.querySelector('.pl-card-text')?.textContent ?? ''}|${root.querySelector('.pl-card-stage')?.textContent ?? ''}`;
+  const cardOf = () => `${root.querySelector('.pl-card-text')?.textContent ?? ''}|${root.querySelector('.pl-card')?.dataset.stage ?? ''}`;
   let board = null, ghostAt = null;
   const app = {
     data: {
@@ -1386,7 +1341,7 @@ test('player play: mounted, a whole set draws, freezes, judges and replays only 
       segs.at(-1)?.push(r);
     }
     assert.equal(segs.length, reveals, 'a role card for every rep');
-    const stageOf = (card) => (/Full match|11 v 11/.test(card) ? 'full' : /Small game/.test(card) ? 'small' : /Bigger game/.test(card) ? 'medium' : null);
+    const stageOf = (card) => (/\|full$/.test(card) ? 'full' : /\|small$/.test(card) ? 'small' : /\|medium$/.test(card) ? 'medium' : null);
     const played = [];
     for (const [i, seg] of segs.entries()) {
       // The card as the watch began (the role card's words are written just after its first frame is drawn).
@@ -1398,15 +1353,10 @@ test('player play: mounted, a whole set draws, freezes, judges and replays only 
       for (const r of seg) assert.equal(r.ids.join(','), ids, `rep ${i + 1} (${card}): the ${r.ph} draws only the cast (${r.ids.length} players, not ${seg[0].ids.length})`);
       assert.ok(seg.every((r) => r.learner && seg[0].ids.includes(r.learner)), `rep ${i + 1}: YOU are in it`);
       const n = seg[0].ids.length;
-      const vs = /(\d+) v (\d+)/.exec(card);
-      let stage = stageOf(card);
-      if (/Now \d+ v \d+!/.test(card) && vs) stage = +vs[1] + +vs[2] === 22 ? 'full' : n <= 6 ? 'small' : 'medium';
-      assert.ok(stage, `rep ${i + 1}: the card names the game (${card})`);
+      const stage = stageOf(card);
+      assert.ok(stage, `rep ${i + 1}: the card carries the stage (${card})`);
       if (stage === 'full') assert.equal(n, 22, `rep ${i + 1}: the full match`);
-      else {
-        assert.ok(vs && +vs[1] + +vs[2] === n, `rep ${i + 1}: "${card}" and ${n} players drawn`);
-        assert.ok(stage === 'small' ? n >= 3 && n <= 6 : n >= 6 && n <= 12, `rep ${i + 1}: ${n} players in a ${stage} game`);
-      }
+      else assert.ok(stage === 'small' ? n >= 3 && n <= 6 : n >= 6 && n <= 12, `rep ${i + 1}: ${n} players in a ${stage} game`);
       played.push({ card, stage, n, twin: /Same play, other side/.test(card), ids: seg[0].ids });
     }
     // Try again's twin: the same stage and the same number of players as its first try.

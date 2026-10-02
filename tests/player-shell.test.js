@@ -7,7 +7,7 @@ import * as Home from '../js/ui/player/home.js';
 import * as Kickoff from '../js/ui/player/kickoff.js';
 import * as Card from '../js/ui/player/card.js';
 import { resolveRoute, parseHash } from '../js/main.js';
-import { createRewards, RANKS, NICKNAMES } from '../js/rewards.js';
+import { createRewards, NICKNAMES } from '../js/rewards.js';
 
 const road = R.normalizeRoad(await loadJSON('data/road.json'));
 const principlesFile = await loadJSON('data/principles.json');
@@ -31,14 +31,22 @@ test('shell: each route shows its header: Coach routes the Coach header, home an
   assert.equal(Shell.playerTitle('card'), 'Your card · fotbol');
 });
 
-test('shell: the top bar shows your shirt number (kit, else position), nickname, level and rank word', () => {
+test('shell: the route tables agree: BARE_PLAYER_ROUTES + card = main.js PLAYER_ROUTES, and index.html\'s inline copy matches', async () => {
+  const { PLAYER_ROUTES } = await import('../js/main.js');
+  assert.deepEqual([...Shell.BARE_PLAYER_ROUTES, 'card'].sort(), [...PLAYER_ROUTES].sort(), 'one route list');
+  const html = await (await import('node:fs/promises')).readFile(new URL('../index.html', import.meta.url), 'utf8');
+  const m = /\^\((.*?)\)\$/.exec(html);
+  assert.ok(m, 'index.html carries the inline chrome regex');
+  assert.deepEqual(m[1].split('|').sort(), [...Shell.BARE_PLAYER_ROUTES].sort(), 'the inline copy is the same list (it cannot import, so this test is the lock)');
+});
+
+test('shell: the top bar shows your shirt number (kit, else position) and nickname, never the level (that lives on the card)', () => {
   const fresh = Shell.topBarModel({ rewards: createRewards(), profile: R.pickGroup(null, 'MID'), settings: { role: 'LCB' } });
-  assert.deepEqual([fresh.number, fresh.nickname, fresh.level, fresh.rank], [8, '', 1, RANKS[0].name], 'a midfielder starts as the #8');
+  assert.deepEqual([fresh.number, fresh.nickname], [8, ''], 'a midfielder starts as the #8');
+  assert.ok(!('level' in fresh) && !('rank' in fresh), 'no points total in the persistent top bar (audit 2026-10-01)');
   const kitted = Shell.topBarModel({ rewards: { ...createRewards(), xp: 100000, kit: { palette: 'classic', number: 23, nickname: NICKNAMES[0] } }, profile: R.pickGroup(null, 'DEF') });
   assert.equal(kitted.number, 23);
   assert.equal(kitted.nickname, NICKNAMES[0]);
-  assert.equal(kitted.rank, RANKS.at(-1).name);
-  assert.ok(kitted.progress >= 0 && kitted.progress <= 1);
   assert.equal(Shell.topBarModel({ rewards: null, profile: null, settings: { role: 'ST' } }).number, 9, 'no profile: Coach mode\'s position');
 });
 
@@ -93,25 +101,25 @@ test('home: the model has the next node and where it plays, the two tiles, the w
   assert.deepEqual(m.next, { id: 'close-down', title: 'Close Them Down', href: '#/play/close-down', reps: 5 });
   assert.equal(Home.STRINGS.next(m.next.title, m.next.reps), 'Next: Close Them Down · 5 plays');
   assert.deepEqual(m.tiles.pass, { href: '#/pass' });
-  assert.deepEqual(m.tiles.matchday, { href: '#/matchday', unlocked: false, hint: 'Finish Big Match', short: 'Finish', gate: { id: 'defend-match', title: 'Big Match', icon: 'trophy' } });
+  assert.deepEqual(m.tiles.matchday, { href: '#/matchday', unlocked: false, hint: 'Finish Big Match', short: 'Finish Big Match', gate: { id: 'defend-match', title: 'Big Match', icon: 'trophy' } });
+  assert.equal(Home.STRINGS.gateNote('Big Match'), 'Win a star in Big Match to open it.', 'a tap on the lock says this, the same sentence as Match day\'s locked page');
   assert.equal(words(m.tiles.matchday.hint), 3, 'screen readers hear "Finish Big Match"');
   // The Big Match (a trophy like every chapter match) shows its title, so "Finish" and its trophy on the tile point at it.
   const labels = m.chapters.flatMap((c) => c.nodes).filter((n) => n.label);
   assert.deepEqual(labels.map((n) => [n.id, n.label]), [['defend-match', 'Big Match']]);
   assert.deepEqual(m.week, { count: 0, max: 7 });
-  assert.deepEqual(m.chapters.map((c) => [c.id, c.unlocked, c.showTitle]), [['defend', true, true], ['help', false, false], ['passing', false, false], ['shape', false, false]]);
+  assert.deepEqual(m.chapters.map((c) => [c.id, c.unlocked, c.expanded]), [['defend', true, true], ['help', false, false], ['passing', false, false], ['shape', false, false]]);
   const later = Home.homeModel({ road, profile: profileWith('DEF', { 'close-down': 3, 'back-up': 3, 'goal-side': 3, 'defend-match': 1 }), rewards: createRewards(), today: '2026-09-27' });
-  assert.equal(later.next.id, 'defend-match', 'Big Match has 1 star: still next up');
+  assert.equal(later.next.id, 'get-open', 'the defend chapter is done enough: Play moves on to the fresh node');
   const wing = Home.homeModel({ road, profile: profileWith('WING', { 'close-down': 1 }), rewards: createRewards(), today: '2026-09-27' });
-  assert.deepEqual([wing.next.id, wing.chapters.find((c) => c.showTitle).id], ['get-open', 'help'], 'a winger\'s Play goes to Help the ball next');
+  assert.deepEqual([wing.next.id, wing.chapters.find((c) => c.expanded).id], ['get-open', 'help'], 'a winger\'s Play goes to Help the ball next');
   assert.equal(later.tiles.matchday.unlocked, true);
   const passNext = Home.homeModel({ road, profile: profileWith('MID', Object.fromEntries(['close-down', 'back-up', 'goal-side', 'defend-match', 'get-open', 'stay-wide', 'between-lines', 'crosses', 'help-match'].map((id) => [id, 3]))) });
   assert.equal(passNext.next.href, '#/pass/free-player', 'a pass node plays at #/pass');
 });
 
-test('home: the screen stays within 25 words wherever you are on the Road (R2, teardown 5.2)', () => {
+test('home: the screen stays within 40 words wherever you are on the Road (R2, teardown 5.2: every chapter title is on show now, 11 words of them; the budget moved from 25 for that and counts everything visible)', () => {
   // Every visible string of the home (top bar included, with the longest rank and nickname), over many Road states.
-  const longRank = RANKS.reduce((a, r) => (words(r.name) > words(a) ? r.name : a), '');
   const longNick = NICKNAMES.reduce((a, n) => (words(n) > words(a) ? n : a), '');
   const ids = R.roadNodes(road).map((n) => n.id);
   let worst = 0;
@@ -121,18 +129,19 @@ test('home: the screen stays within 25 words wherever you are on the Road (R2, t
       for (const group of ['DEF', 'WING']) {
         const m = Home.homeModel({ road, profile: profileWith(group, stars), rewards: createRewards(), today: '2026-09-27' });
         const visible = [
-          longNick, '10', '99', longRank, // the top bar: nickname, shirt number, level, rank
+          longNick, '10', // the top bar: nickname and shirt number (no level or rank there any more)
           ...Home.homeWords(m), // Play, Next..., the tiles (the locked one says "Finish" with the trophy), This week, the chapter, the Big Match's label
         ];
-        assert.ok(visible.includes(Home.STRINGS.play) && visible.includes('Big Match'));
+        assert.ok(visible.includes(Home.STRINGS.play));
         const n = words(visible.join(' '));
         worst = Math.max(worst, n);
-        assert.ok(n <= 25, `${n} words with ${k} nodes at ${s} stars (${group}): ${visible.join(' | ')}`);
-        assert.equal(m.chapters.filter((c) => c.showTitle).length, 1, 'one chapter title on show');
+        assert.ok(n <= 40, `${n} words with ${k} nodes at ${s} stars (${group}): ${visible.join(' | ')}`);
+        assert.equal(m.chapters.filter((c) => c.expanded).length, 1, 'one chapter expanded');
+        assert.ok(m.chapters.every((c) => c.title), 'every chapter keeps its visible title');
       }
     }
   }
-  assert.ok(worst >= 18, `the check saw real screens (${worst} words at most)`);
+  assert.ok(worst >= 25, `the check saw real screens (${worst} words at most)`);
 });
 
 test('home: days played this week count the Monday-to-Sunday week of today, and only go up', () => {
@@ -157,32 +166,19 @@ test('kickoff: the first screen reads 6 words or fewer, and the four shirts are 
 
 // ---------------------------------------------------------------- your card
 
-test('card: skill ratings run 45 (not played) to 99 (every node of the chapter at 3 stars)', () => {
-  const fresh = Card.skillRatings({ road, profile: profileWith('DEF'), skills: null });
-  assert.deepEqual(fresh.map((s) => [s.label, s.rating]), [['Defend', 45], ['Help', 45], ['Pass', 45], ['Shape', 45]]);
-  const full = Card.skillRatings({ road, profile: profileWith('DEF', { 'close-down': 3, 'back-up': 3, 'goal-side': 3, 'defend-match': 3 }) });
-  assert.equal(full[0].rating, 99);
-  assert.equal(full[1].rating, 45);
-  const half = Card.skillRatings({ road, profile: profileWith('DEF', { 'close-down': 3, 'back-up': 3 }) }); // 6 of 12 stars
-  assert.equal(half[0].rating, 72, '45 + 54 × 0.5');
-  for (const s of [...fresh, ...full, ...half]) assert.ok(Number.isInteger(s.rating) && s.rating >= 0 && s.rating <= 99);
+test('card: chapter stars replace the 0-99 ratings: earned stars and their ceiling, never a number out of 99', () => {
+  const fresh = Card.chapterStars({ road, profile: profileWith('DEF') });
+  assert.deepEqual(fresh.map((s) => [s.label, s.stars, s.max]), [['Defend', 0, 12], ['Help', 0, 15], ['Pass', 0, 15], ['Shape', 0, 15]]);
+  const full = Card.chapterStars({ road, profile: profileWith('DEF', { 'close-down': 3, 'back-up': 3, 'goal-side': 3, 'defend-match': 3 }) });
+  assert.deepEqual([full[0].stars, full[0].max], [12, 12]);
+  assert.equal(full[1].stars, 0);
+  const half = Card.chapterStars({ road, profile: profileWith('DEF', { 'close-down': 3, 'back-up': 3 }) });
+  assert.equal(half[0].stars, 6);
+  for (const s of [...fresh, ...full, ...half]) assert.ok(Number.isInteger(s.stars) && s.stars >= 0 && s.stars <= s.max);
 });
 
-test('card: the Elo can lift a rating but never pull it below your Road stars', () => {
-  const profile = profileWith('DEF', { 'close-down': 2 }); // road share 2/12
-  const base = Card.skillRatings({ road, profile, skills: null })[0];
-  const skills = (theta) => ({ theta: { global: 0, byPrinciple: { D1: theta, D2: theta } }, counts: { global: 4, byPrinciple: { D1: 2, D2: 2 } } });
-  const strong = Card.skillRatings({ road, profile, skills: skills(3) })[0];
-  const weak = Card.skillRatings({ road, profile, skills: skills(-3) })[0];
-  assert.ok(strong.rating > base.rating, `${strong.rating} > ${base.rating}`);
-  assert.equal(weak.rating, base.rating);
-  assert.ok(strong.elo > 0.9 && weak.elo === 0);
-  const untouched = Card.skillRatings({ road, profile, skills: { theta: { byPrinciple: { D1: 3 } }, counts: { byPrinciple: {} } } })[0];
-  assert.equal(untouched.elo, null, 'a principle never practised has no Elo part');
-});
-
-test('card: the card\'s metal follows the rank', () => {
-  assert.deepEqual(RANKS.map((r) => Card.cardMetal(r.id)), ['bronze', 'silver', 'gold', 'gold', 'legend']);
+test('card: the card\'s metal follows the level (the thresholds the old ranks drew)', () => {
+  assert.deepEqual([1, 2, 3, 4, 5, 10, 11].map((n) => Card.cardMetal(n)), ['bronze', 'bronze', 'silver', 'silver', 'gold', 'gold', 'legend']);
   assert.equal(Card.cardMetal('nope'), 'bronze');
 });
 
@@ -210,12 +206,8 @@ test('card: the sticker album has one sticker per Road principle, tiered by its 
 
 test('card: badges carry an icon, a short name and progress; nicknames come from the pick-list', () => {
   const list = Card.badgeList(createRewards());
-  assert.ok(list.length > 0);
-  // Coach mode's tutorial and Explore give "Kick-off" and "Explorer": Player mode cannot earn them, so they hide.
-  assert.ok(!list.some((b) => b.id === 'first-steps' || b.id === 'explorer'), 'no badge Player mode cannot earn');
-  assert.ok(Card.badgeList({ ...createRewards(), badges: { 'first-steps': { day: '2026-09-20' } } }).some((b) => b.id === 'first-steps' && b.earned), 'unless already earned');
-  assert.equal(Card.badgeList(createRewards(), { all: true }).length, list.length + 2);
-  assert.ok(!list.some((b) => /boots on|went the distance/i.test(b.name)), 'no badge for taking part');
+  assert.equal(list.length, 5, 'the five badges, every one earnable in Player mode');
+  assert.ok(!list.some((b) => /boots on|went the distance|regular|captain|legend/i.test(b.name)), 'no badge for taking part, days or ranks');
   for (const b of list) {
     assert.ok(b.icon && b.name, b.id);
     assert.ok(b.progress >= 0 && b.progress <= 1);
