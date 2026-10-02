@@ -40,7 +40,7 @@ function applyMatrix(str, p) {
 test('board: auto orientation is vertical only for a portrait container narrower than 600 px', () => {
   assert.equal(pickOrientation('auto', 375, 700), 'vertical');
   assert.equal(pickOrientation('auto', 599, 900), 'vertical');
-  assert.equal(pickOrientation('auto', BOARD_DEFAULTS.portraitMaxWidth, 1200), 'horizontal', '600 px is not narrower than 600');
+  assert.equal(pickOrientation('auto', 800, 1060), 'vertical', 'a portrait pane or tablet wider than a phone is upright too (the owner, 2026-10-02)');
   assert.equal(pickOrientation('auto', 375, 300), 'horizontal', 'narrow but landscape');
   assert.equal(pickOrientation('auto', 1200, 800), 'horizontal');
   assert.equal(pickOrientation('auto', 0, 0), 'horizontal', 'unmeasured container');

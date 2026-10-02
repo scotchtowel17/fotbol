@@ -57,7 +57,7 @@ async function replayScenario(app) {
 }
 
 /** Upright screens get the vertical pitch whatever the backdrop's box (it is wider than the screen). */
-const uprightOrientation = () => ((globalThis.innerHeight ?? 0) > (globalThis.innerWidth ?? 1) ? 'vertical' : 'horizontal');
+const uprightOrientation = () => 'vertical'; // Player mode's pitch is always upright (the owner, 2026-10-02)
 
 /** Start the dimmed, silent replay in `host`. @returns {() => void} stop */
 function startReplay(app, host) {

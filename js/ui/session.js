@@ -450,8 +450,8 @@ export function weakestPrinciple(skills, ids = []) {
  * between phases; everything else lets the board decide ('auto').
  * @returns {'vertical'|'auto'}
  */
-export function orientationFor(width, height, portraitMaxWidth = 600) {
-  return width > 0 && width < portraitMaxWidth && height > width ? 'vertical' : 'auto';
+export function orientationFor(width, height) {
+  return width > 0 && height > width ? 'vertical' : 'auto';
 }
 
 // ---------------------------------------------------------------- scenario helpers

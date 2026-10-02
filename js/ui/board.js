@@ -86,7 +86,6 @@ export const BOARD_DEFAULTS = Object.freeze({
   handSize: 4.2, // [D] metres the hand is drawn tall at life size (it grows with the tokens on a small board)...
   handMinPx: 56, // [D] ...and never less than this many CSS px tall (a big board draws the pitch small per metre)
   margin: 3, // [S] ARCHITECTURE §5.8: viewBox margin around the pitch, metres
-  portraitMaxWidth: 600, // [S] ARCHITECTURE §5.8: 'auto' goes vertical in a portrait container narrower than this (CSS px)
   tokenRadius: 1.8, // [D] metres at life size; a small board draws tokens bigger (minTokenPx)
   minTokenPx: 22, // [D] CSS px: a player token is drawn at least this wide, so its shirt label stays readable on a phone...
   maxTokenScale: 1.8, // [D] ...but never more than this many times life size (bigger tokens would hide the team's shape)
@@ -202,13 +201,14 @@ const SVGNS = 'http://www.w3.org/2000/svg';
 const f3 = (n) => +n.toFixed(3);
 
 /**
- * Resolve the layout. 'auto' is vertical when the container is portrait and narrower than portraitMaxWidth.
+ * Resolve the layout. 'auto' is vertical whenever the container is portrait (taller than wide), at any width: the
+ * old 600 px cap gave a portrait tablet or a wide desktop pane a sideways pitch (the owner, 2026-10-02).
  * @param {'auto'|'horizontal'|'vertical'} requested
  * @returns {'horizontal'|'vertical'}
  */
 export function pickOrientation(requested, width, height, P = BOARD_DEFAULTS) {
   if (requested === 'horizontal' || requested === 'vertical') return requested;
-  return width > 0 && width < P.portraitMaxWidth && height > width ? 'vertical' : 'horizontal';
+  return width > 0 && height > width ? 'vertical' : 'horizontal';
 }
 
 /** ViewBox rectangle (metres) for an orientation. */

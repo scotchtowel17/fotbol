@@ -201,7 +201,7 @@ export async function mount(root, app) {
   root.replaceChildren(els.stage, els.results);
   const kitNumber = loadRewards(app)?.kit?.number ?? null;
   // Figures and the easy-to-see ball on the full field (docs/PROGRESSIVE_FIELD.md §2: Match day is the full match).
-  const board = app.createBoard(els.board, { orientation: 'auto', labels: 'number', youNumber: Number.isInteger(kitNumber) ? kitNumber : null, figures: true });
+  const board = app.createBoard(els.board, { orientation: 'vertical', /* Player mode: always upright, on every device (the owner, 2026-10-02) */ labels: 'number', youNumber: Number.isInteger(kitNumber) ? kitNumber : null, figures: true });
   board.setOverlays({ thirds: false, lanes: false, zone14: false, offsideLine: null, backLine: null });
   const budget = createBurstBudget();
 

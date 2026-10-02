@@ -1271,7 +1271,7 @@ export async function mount(root, app, params = []) {
   const kitNumber = loadRewards(app)?.kit?.number ?? null; // YOUR shirt shows your kit number (as in play.js)
   const youNumber = Number.isInteger(kitNumber) ? kitNumber : null;
   // Tabletop figures and the big ball (docs/PROGRESSIVE_FIELD.md §4; Coach mode keeps its discs).
-  const board = app.createBoard(els.board, { orientation: 'auto', labels: 'number', youNumber, figures: true });
+  const board = app.createBoard(els.board, { orientation: 'vertical', /* Player mode: always upright, on every device (the owner, 2026-10-02) */ labels: 'number', youNumber, figures: true });
   /** A teammate's number as the board draws it (board.js shirtNumberOf: YOUR kit number swapped in), else §5's. */
   const numberOf = (id) => {
     const n = boardMod.shirtNumberOf(id, { learnerId: rep?.carrierId ?? null, youNumber });

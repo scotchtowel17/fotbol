@@ -1377,7 +1377,7 @@ export async function mount(root, app, params = []) {
   const kitNumber = loadRewards(app)?.kit?.number ?? null;
   const youNumber = Number.isInteger(kitNumber) ? kitNumber : null; // YOUR shirt (the words name players by the numbers shown)
   // Player mode's pitch: tabletop figures and the easy-to-see ball (PROGRESSIVE_FIELD §4).
-  const board = app.createBoard(els.board, { orientation: 'auto', labels: 'number', youNumber, figures: true });
+  const board = app.createBoard(els.board, { orientation: 'vertical', /* Player mode: always upright, on every device (the owner, 2026-10-02) */ labels: 'number', youNumber, figures: true });
   board.setOverlays({ thirds: false, lanes: false, zone14: false, offsideLine: null, backLine: null });
   const reveal = createPlayerReveal(els.reveal, { app });
 

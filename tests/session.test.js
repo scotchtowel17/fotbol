@@ -345,11 +345,11 @@ test('parseProgressFile: accepts an export, rejects anything else with a reason'
   assert.equal(exportFileName('2026-09-27'), 'fotbol-progress-2026-09-27.json');
 });
 
-test('orientationFor: an upright phone gets the vertical pitch, everything else lets the board decide', () => {
+test('orientationFor: any portrait window gets the vertical pitch, a landscape one lets the board decide', () => {
   assert.equal(orientationFor(375, 812), 'vertical');
   assert.equal(orientationFor(812, 375), 'auto');
   assert.equal(orientationFor(1280, 800), 'auto');
-  assert.equal(orientationFor(700, 1000), 'auto', 'a tablet decides by its box');
+  assert.equal(orientationFor(700, 1000), 'vertical', 'a portrait tablet is upright too (the owner, 2026-10-02)');
   assert.equal(orientationFor(0, 0), 'auto');
 });
 
