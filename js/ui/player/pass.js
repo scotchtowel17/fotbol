@@ -54,7 +54,7 @@ import * as SharedWords from './strings.js';
 import { receiverOf, optionsByReceiver, genuinelyOn, passTargets as targetsFor, PASS_TARGET_DEFAULTS } from '../../engine/passtargets.js';
 import { FIGURE } from '../figures.js';
 // Who a sentence is about, by shirt number, as "Find your spot" says it ("your number 8": play.js nameSpecific).
-import { nameSpecific, groupMembers, KID_GROUPS } from './play.js';
+import { nameSpecific, groupMembers, KID_GROUPS, STRINGS as PLAY_WORDS, PLAY_DEFAULTS } from './play.js';
 import * as passing from '../../engine/passing.js';
 import * as passdrill from '../../engine/passdrill.js';
 import * as castMod from '../../engine/cast.js';
@@ -77,6 +77,9 @@ export const PASS_DEFAULTS = Object.freeze({
   reps: 5, // [S] KID_REDESIGN §3: a set is 5 reps
   watch: 2.5, // [S] §4.4: 2-3 s of build-up play before the freeze
   setCardMs: 1300, // [D] the "You've got the ball" card holds this long (a tap skips it)...
+  demoTitleMs: 2600, // [D] the lesson card (the idea's name and summary) before the demo clip; a tap goes sooner
+  demoLabelMs: 1500, // [D] the labels hold before the demo plays the Best pass
+  demoDwellMs: 3400, // [D] the because line holds before "Your turn" goes on its own; a tap goes sooner
   roleChangedMs: 2300, // [D] ...longer when you play another position ("Now you're the left centre-back", as play.js)
   ballSpeed: 15, // [S] research/passing.md §4.3 ballSpeed, m/s: the pass travels at match speed...
   flightMin: 0.55, // [D] ...but takes at least this long (s), so a short pass can be followed...
@@ -138,6 +141,9 @@ export const STRINGS = Object.freeze({
   repOf: (i = 1, n = 5) => `Pass ${i} of ${n}`,
   labels: Object.freeze({ best: 'Best', good: 'Good', risky: 'Risky', 'cut-out': 'Cut out' }),
   outcomes: Object.freeze({ 'cut-out': 'Cut out!', safe: 'Safe', 'line-broken': 'Line broken!', risky: 'Risky!', offside: 'Offside!' }),
+  watchFirst: 'Watch first',
+  yourTurn: 'Your turn',
+  demoSr: (name = 'this idea') => `Watch first: ${name}. Watch the best pass.`,
   missNote: SHARED.missNote,
   lineGood: 'Good pass. It got to your teammate.',
   lineBad: 'Look for a teammate with nobody close.',
@@ -1211,6 +1217,9 @@ export async function mount(root, app, params = []) {
   const seed = node ? nodeSeed(node.id, attempt) : (Date.now() % 2147483647) >>> 0;
   // The node's stars before the set: its stage plan (docs/PROGRESSIVE_FIELD.md §2; road.js tags its reps with it).
   const nodeStarsBefore = node ? roadMod.nodeStars(profile, node.id) : 0;
+  // The lesson demo (the owner, 2026-10-01: teach before testing): a pass node's very first set opens by SHOWING the
+  // best pass on rep 1, and the kid's own try at that rep is a disclosed, uncounted warm-up. Lesson nodes only.
+  const demoFirst = !!node && node.kind !== 'match' && (profile?.road?.[node.id]?.plays ?? 0) === 0 && nodeStarsBefore === 0;
 
   await new Promise((r) => setTimeout(r, 30)); // let "Getting the pitch ready" paint: generating a set takes a moment
   const { reps, redirect } = await assembleSet(
@@ -1225,6 +1234,11 @@ export async function mount(root, app, params = []) {
   );
   if (!root.isConnected) return () => {};
   if (redirect) { app.navigate(redirect, { replace: true }); return () => { alive = false; }; }
+  // A demoed set teaches the NODE's own idea first (as play.js does): the demo rep must be one of the node's principles.
+  if (demoFirst && node?.principles?.length && reps.length) {
+    const own = reps.findIndex((r) => (r.drill?.principles ?? []).some((id) => node.principles.includes(id)));
+    if (own > 0) reps.splice(0, 0, ...reps.splice(own, 1));
+  }
   if (!reps.length) {
     root.replaceChildren(notice({ title: STRINGS.emptyTitle, text: STRINGS.emptyText, actions: [linkButton(STRINGS.back, '#/', { variant: 'primary', icon: 'arrow' })] }));
     return () => { alive = false; };
@@ -1422,7 +1436,7 @@ export async function mount(root, app, params = []) {
       return nextRep();
     }
     const { at, freeze, rating, byReceiver, targets } = scene;
-    rep = { drill, carrierId: scene.carrierId, accept: scene.accept, focus: [...(drill.principles ?? [])], stage: scene.stage, cast: scene.cast };
+    rep = { drill, carrierId: scene.carrierId, accept: scene.accept, focus: [...(drill.principles ?? [])], stage: scene.stage, cast: scene.cast, demo: demoFirst && i === 0, demoDone: false, warmup: demoFirst && i === 0 };
     if (!targets.length) return nextRep();
     const sample = [];
     for (let t = from; t < freezeAt; t += 0.5) sample.push(at(t));
@@ -1452,7 +1466,79 @@ export async function mount(root, app, params = []) {
     else finish();
   }
 
+  /**
+   * The lesson demo (the owner, 2026-10-01): the idea's card, the clip, then the answer SHOWN: every option wears its
+   * label with the Best one picked out, the because line reads out, and the ball flies the Best pass. "Your turn" (or
+   * a wait) hands the same play over as the warm-up; the kid's try is practice (uncounted, the warm-up note says so).
+   */
+  function showDemoTitle() {
+    dockMode('demo');
+    hideCard();
+    setMarkers([]);
+    const idea = principles[rep.drill.principles?.[0]] ?? null;
+    const name = (typeof idea?.kidName === 'string' && idea.kidName) || repTitle(rep.drill, principles);
+    const summary = typeof idea?.summary === 'string' ? idea.summary : idea?.summary?.kid;
+    setLine([name, summary].filter(Boolean).join(' · '));
+    draw(rep.at(rep.from));
+    const r0 = rep;
+    const go = () => { if (alive && rep === r0 && view.dataset.phase === 'demo') showWatch(); };
+    setActions(button(STRINGS.watchFirst, { variant: 'primary', icon: 'play', className: 'pl-main', onClick: go }));
+    announce(STRINGS.demoSr(name));
+    later(P.demoTitleMs, go);
+  }
+
+  function showDemoAnswer() {
+    dockMode('demo-answer');
+    stopAnim();
+    const r0 = rep;
+    const bestId = rep.rating?.best?.id ?? null;
+    const best = bestId ? [...rep.byReceiver.values()].find((o) => o.id === bestId) ?? null : null;
+    if (!best) { rep.demoDone = true; showChoose(); return; }
+    const idea = principles[rep.drill.principles?.[0]] ?? null;
+    const because = [typeof idea?.why === 'string' ? idea.why : idea?.why?.kid]
+      .find((t) => typeof t === 'string' && t.trim() && t.trim().split(/\s+/).length <= PLAY_DEFAULTS.whyBecauseMaxWords) ?? '';
+    draw(rep.freeze);
+    if (rep.chooseCam) frameRep(rep.chooseCam);
+    rep.picks = revealPicks(rep.byReceiver, { frame: rep.freeze, carrierId: rep.carrierId, choiceId: best.id, bestId });
+    const area = { rating: rep.rating, frame: rep.freeze, carrierId: rep.carrierId, labels: rep.picks, choiceId: best.id, stage: rep.stage };
+    const place = () => setMarkers(revealMarkers({ ...area, targets: rep.byReceiver, ...layout(), drawnAt }));
+    place();
+    later(Math.max(landsIn(), 0) + P.revealSettleMs, () => { if (rep === r0 && view.dataset.phase === 'demo-answer') place(); });
+    setLine(because);
+    setActions();
+    announce([because, STRINGS.demoSr('')].filter(Boolean).join(' '));
+    later(P.demoLabelMs, () => {
+      if (!alive || rep !== r0 || view.dataset.phase !== 'demo-answer') return;
+      // The ball flies the Best pass (shown, never graded or recorded).
+      const outcome = passOutcome(best, { outcome: 'completed', score: 100 });
+      const flight = passFlight(rep.freeze, best, outcome);
+      setMarkers([]);
+      if (rep.chooseCam) frameRep(flightCamera(rep.chooseCam, flight));
+      animate(flight.duration, (u) => draw(flightFrame(rep.freeze, flight, u)), () => {
+        if (!alive || rep !== r0) return;
+        if (outcome.sound) app.sound?.play(outcome.sound);
+        draw(rep.freeze);
+        if (rep.chooseCam) frameRep(rep.chooseCam);
+        place();
+        setLine(because);
+        const turn = () => {
+          if (!alive || rep !== r0 || view.dataset.phase !== 'demo-answer') return;
+          rep.demoDone = true;
+          setMarkers([]);
+          showSet(); // the role card as every rep gets one; demoDone sends it on to the choice, not a second clip
+        };
+        setActions(
+          button(STRINGS.again, { icon: 'play', className: 'pl-again', onClick: () => { if (rep === r0) showWatch(); } }),
+          button(STRINGS.yourTurn, { variant: 'primary', icon: 'check', className: 'pl-main', onClick: turn }),
+        );
+        later(P.demoDwellMs, turn);
+      });
+    });
+  }
+
   function showSet() {
+    if (rep.demo && !rep.demoDone) { showDemoTitle(); return; }
+    const toChoose = rep.demo && rep.demoDone; // the warm-up try: the clip already played (twice, with Watch again)
     dockMode('set');
     setLine('');
     setActions();
@@ -1461,8 +1547,8 @@ export async function mount(root, app, params = []) {
     // The rep's view, framed once the dock has its set height: the board measures the pitch it has now, so it knows
     // where it will draw everyone (the card's place). Not earlier: the reveal's taller dock was still there, and the
     // card went by a pitch that then grew.
-    frameRep();
-    rep.setFrame = rep.at(rep.from);
+    if (toChoose && rep.chooseCam) frameRep(rep.chooseCam); else frameRep();
+    rep.setFrame = toChoose ? rep.freeze : rep.at(rep.from);
     draw(rep.setFrame);
     spotlight(lit());
     // A rep played as a teammate in your group (road.js: a full-back's "free side" is a centre-back's) says so.
@@ -1482,7 +1568,7 @@ export async function mount(root, app, params = []) {
       placeCard();
     }, wait);
     announce(text);
-    const go = () => { if (rep && view.dataset.phase === 'set') showWatch(); };
+    const go = () => { if (rep && view.dataset.phase === 'set') (toChoose ? showChoose() : showWatch()); };
     els.card.onclick = go;
     later(wait + (card.changed ? P.roleChangedMs : P.setCardMs), go);
   }
@@ -1532,7 +1618,7 @@ export async function mount(root, app, params = []) {
     const span = rep.freezeAt - rep.from;
     animate(span, (u) => draw(rep.at(rep.from + span * u)), () => {
       app.sound?.play('whistle'); // the referee's whistle: play freezes here
-      showChoose();
+      if (rep.demo && !rep.demoDone) showDemoAnswer(); else showChoose();
     });
   }
 
@@ -1616,9 +1702,10 @@ export async function mount(root, app, params = []) {
     const { line, why } = revealWords({
       explain: a.explain, rating: rep.rating, option: a.option, graded: a.graded, frame: rep.freeze, carrierId: rep.carrierId, youNumber, principles, drill: rep.drill,
     });
-    // After a first miss in the set, once: high standards plus belief (R20).
-    const note = a === rep.first && a.stars === 0 && !set.missNoted ? STRINGS.missNote : '';
-    if (note) set.missNoted = true;
+    // The warm-up says its stars are not counted (the demo's rep); else, after a first miss in the set, once (R20).
+    let note = '';
+    if (rep.warmup) note = PLAY_WORDS.warmupNote;
+    else if (a === rep.first && a.stars === 0 && !set.missNoted) { note = STRINGS.missNote; set.missNoted = true; }
     // The pitch's labels, for a screen reader.
     els.list.replaceChildren(...rankOptions([...rep.byReceiver.values()]).filter((o) => rep.picks.has(receiverOf(o))).map((o) => el('li', { text: `${STRINGS.number(numberOf(receiverOf(o)) ?? '')}: ${labelStyle(o.label).word}` })));
     const last = set.index + 1 >= set.reps.length;
@@ -1662,6 +1749,7 @@ export async function mount(root, app, params = []) {
 
   // ---- records (first tries only): Elo, the streaks and the history as a drill rep (drill.js lockIn), then the rewards
   function record(a) {
+    if (rep.warmup) { set.results[set.index] = { stars: a.stars, title: repTitle(rep.drill, principles), score: Number.isFinite(a.graded?.score) ? a.graded.score : 0, id: rep.drill.id, warmup: true }; return; }
     const drill = rep.drill;
     const role = roleOfDrill(drill);
     const score = Number.isFinite(a.graded?.score) ? a.graded.score : 0;
@@ -1692,7 +1780,7 @@ export async function mount(root, app, params = []) {
     stopAnim();
     clearTargets();
     const results = set.results.filter(Boolean);
-    const repStars = results.map((r) => r.stars);
+    const repStars = results.filter((r) => !r.warmup).map((r) => r.stars);
     // The set's first tries as a rewards session: a star on every play is "Perfect set" (a skill, never for finishing).
     if (repStars.length) set.gained = mergeGains(set.gained, award(app, { type: 'session', stars: repStars }, { celebrate: false }));
     let nodeStars = null;

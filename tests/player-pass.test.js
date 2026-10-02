@@ -1415,11 +1415,12 @@ const STAGE_RANK = { small: 0, medium: 1, full: 2 };
  * freeze at the choice) and no spotlight, the full match the spotlight and its length crop; a first try is recorded
  * once (Elo, the history, the rewards), Try again never (nor cheered). Returns the stages played.
  */
-function checkPassSet(played, { plan, where }) {
+function checkPassSet(played, { plan, where, demo = false }) {
   const { board, tries, sounds, store, warnings, expected } = played;
   const log = board.log;
   const history = store.get('history') ?? [];
-  assert.deepEqual(history.map((h) => h.id), expected.map((e) => e.id), `${where}: the reps are the set dealt, in its order`);
+  const recorded = demo ? expected.slice(1) : expected; // a node's first set opens with the lesson demo: its warm-up rep is practice, never recorded
+  assert.deepEqual(history.map((h) => h.id), recorded.map((e) => e.id), `${where}: the reps are the set dealt, in its order${demo ? ' (the demo\'s warm-up left out)' : ''}`);
   const segs = [];
   for (const r of log.renders) {
     if (r.ph === 'set' && (!segs.length || segs.at(-1).at(-1).ph !== 'set')) segs.push([]);
@@ -1436,7 +1437,9 @@ function checkPassSet(played, { plan, where }) {
     const ids = seg[0].ids, n = ids.length, key = ids.join(',');
     const rep = `${where} rep ${i + 1}`;
     const phases = new Set(seg.map((r) => r.ph));
-    for (const want of ['set', 'watch', 'choose', 'result', 'reveal']) assert.ok(phases.has(want), `${rep}: drawn in ${want} (${[...phases].join(', ')})`);
+    // The demo rep's clip plays in the lesson-demo preamble (before its role card), so its own segment has no 'watch'.
+    const wantPhases = demo && i === 0 ? ['set', 'choose', 'result', 'reveal'] : ['set', 'watch', 'choose', 'result', 'reveal'];
+    for (const want of wantPhases) assert.ok(phases.has(want), `${rep}: drawn in ${want} (${[...phases].join(', ')})`);
     for (const r of seg) assert.equal(r.ids.join(','), key, `${rep}: the ${r.ph} draws only the cast (${r.ids.length} players, not ${n})`);
     // Exactly the staged cast (cast.js bestStage at the stage its slot wants): nobody hidden is drawn, nobody in it left out.
     const want = expected[i];
@@ -1445,7 +1448,7 @@ function checkPassSet(played, { plan, where }) {
     const you = seg[0].learner;
     assert.ok(seg.every((r) => r.learner === you) && ids.includes(you) && you.startsWith('us-'), `${rep}: YOU (${you}) are drawn`);
     // The card, as the watch began: it carries the stage played (data only: the stage line went with the audit).
-    const card = seg.find((r) => r.ph === 'watch').card;
+    const card = (seg.find((r) => r.ph === 'watch') ?? seg.find((r) => r.card && !r.card.startsWith('|')) ?? seg[0]).card; // the warm-up's card lands after its first render
     const stage = /^(small|medium|full)\|/.exec(card)?.[1] ?? null;
     assert.ok(stage, `${rep}: the card carries the stage ("${card}")`);
     if (stage === 'full') assert.equal(n, 22, `${rep}: the full match`);
@@ -1491,7 +1494,7 @@ function checkPassSet(played, { plan, where }) {
       prev = c.r;
       if (!moved) continue;
       if (c.t <= shownAt) lastMove = c;
-      else assert.ok(c.t >= seg.find((r) => r.ph === 'watch').t, `${rep}: the camera moved while the card was up (${c.t} ms)`);
+      else assert.ok(c.t >= (seg.find((r) => r.ph === 'watch') ?? seg.find((r) => r.ph === 'choose') ?? seg[0]).t, `${rep}: the camera moved while the card was up (${c.t} ms)`); // the warm-up rep has no watch of its own
     }
     if (lastMove) assert.ok(shownAt >= lastMove.t + played.cameraMs, `${rep}: the card came up ${shownAt - lastMove.t} ms after the camera moved (it lands in ${played.cameraMs})`);
     // The reveal's lanes (and the preview line) run from the ball to the receiver where the board draws them (drawnAt).
@@ -1511,19 +1514,21 @@ function checkPassSet(played, { plan, where }) {
         }
       }
     }
-    // Records: the first try once, Try again never.
+    // Records: the first try once, Try again never; the demo's warm-up rep is practice from the start (nothing recorded).
     const t = tries.get(i + 1);
     assert.ok(t?.first, `${rep}: a first try`);
-    assert.deepEqual(t.first.after, { history: t.first.before.history + 1, elo: t.first.before.elo + 1, reps: t.first.before.reps + 1 }, `${rep}: the first try is recorded once`);
+    if (demo && i === 0) assert.deepEqual(t.first.after, t.first.before, `${rep}: the warm-up is practice only (the lesson demo showed the answer)`);
+    else assert.deepEqual(t.first.after, { history: t.first.before.history + 1, elo: t.first.before.elo + 1, reps: t.first.before.reps + 1 }, `${rep}: the first try is recorded once`);
     if (t.retry) assert.deepEqual(t.retry.after, t.retry.before, `${rep}: Try again is practice only`);
   }
   assert.ok(feetLanes >= 3 && previews >= 5, `${where}: ${feetLanes} lanes to feet and ${previews} preview lines checked`);
-  // The whole set: 5 first tries in the history (their stars), Elo and the rewards, one session; no cheer for practice.
-  assert.equal(history.length, 5, `${where}: 5 history entries`);
+  // The whole set: the counted first tries in the history (their stars), Elo and the rewards, one session; no cheer
+  // for practice. The lesson demo's warm-up rep records nothing, so a demoed set holds 4.
+  assert.equal(history.length, demo ? 4 : 5, `${where}: ${demo ? 4 : 5} history entries`);
   assert.ok(history.every((h) => h.mode === 'pass'), `${where}: pass reps`);
-  assert.deepEqual(history.map((h) => h.stars), [...tries.values()].map((t) => t.first.stars), `${where}: each rep's first try's stars`);
-  assert.equal(store.get('skills')?.counts?.global, 5, `${where}: Elo moved once a rep`);
-  assert.equal(store.get('rewards')?.counters?.reps, 5, `${where}: 5 reps rewarded`);
+  assert.deepEqual(history.map((h) => h.stars), [...tries.values()].filter((_, i) => !(demo && i === 0)).map((t) => t.first.stars), `${where}: each counted rep's first try's stars`);
+  assert.equal(store.get('skills')?.counts?.global, demo ? 4 : 5, `${where}: Elo moved once a counted rep`);
+  assert.equal(store.get('rewards')?.counters?.reps, demo ? 4 : 5, `${where}: ${demo ? 4 : 5} reps rewarded`);
   assert.equal(store.get('rewards')?.counters?.sessions, 1, `${where}: one set`);
   assert.ok(sounds.every((s) => !(s.practice && s.name === 'cheer')), `${where}: practice never cheers`);
   assert.ok(warnings.every((w) => !/could not|failed|not available/.test(w)), `${where}: no failures: ${warnings.join(' / ')}`);
@@ -1547,7 +1552,7 @@ test('pass: mounted, a 0-star Road pass node draws only each rep\'s cast in ever
   const { stagePlan } = await import('../js/ui/player/road.js');
   const played = await playPassSet({ params: ['free-player'], profile: { version: 1, group: 'WING', role: 'LW', onboarded: true, road: { 'close-down': { stars: 1, plays: 1 } } } });
   assert.deepEqual(played.navigated.filter((h) => h !== '#/'), [], 'played here (a pass node)');
-  const { stages, retries } = checkPassSet(played, { plan: stagePlan(0), where: 'free-player' });
+  const { stages, retries } = checkPassSet(played, { plan: stagePlan(0), where: 'free-player', demo: true });
   t?.diagnostic?.(`free-player at 0 stars: ${stages.join(', ')}; ${retries} Try again`);
   assert.ok(stages.includes('small'), `a small game: ${stages.join(', ')}`);
   assert.ok(retries >= 1, `${retries} Try again`);

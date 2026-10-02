@@ -109,6 +109,9 @@ export const PLAY_DEFAULTS = Object.freeze({
   maxRepMs: 3 * 60 * 1000, // [D] one rep counts at most this much play time (a tab left open is not play)
   whyMaxWords: 20, // [D] a reason, praise line or summary longer than this never goes on the Why? sheet
   whyBecauseMaxWords: 30, // [D] the principle's own why line (the longest today is 29 words); past this it stays off the sheet
+  demoTitleMs: 2600, // [D] the lesson card (the idea's name and summary) before the demo clip; a tap goes sooner
+  demoSlideMs: 950, // [D] YOU walks to the best spot in the demo over this long
+  demoDwellMs: 3400, // [D] the because line holds before "Your turn" goes on its own; a tap goes sooner
   moveMaxWords: 12, // [D] Full time's "Best move: ..." (2 words) stays within a 14-word line (R2)
   cueLabelSide: 6, // [D] metres in from the touchline away from the ball: where a cue line's label sits
   cameraStep: 0.5, // [D] s between the frames sampled for a small or bigger game's camera (one rect for the whole clip)
@@ -156,6 +159,9 @@ export const STRINGS = Object.freeze({
   otherSide: 'Same play, other side',
   practiceNote: 'Practice only. Your first try counts.',
   warmupNote: 'Warm-up. Stars count from the next play.',
+  watchFirst: 'Watch first',
+  yourTurn: 'Your turn',
+  demoSr: (name = 'this idea') => `Watch first: ${name}. Watch YOU move to the best spot.`,
   missNote: SHARED.missNote,
   // The reveal's line when no reason or praise fits (pickLine), by stars
   lineInGreen: 'You found the right area.', // 3 stars
@@ -688,8 +694,12 @@ export function firstSetStep(i) {
 }
 
 /** A normal set's plan for rep i: the glow aid on the first reps the first time through a node, else nothing. */
-export function setStep(i, { nodePlays = 0, nodeStars = 0 } = {}, P = PLAY_DEFAULTS) {
+export function setStep(i, { nodePlays = 0, nodeStars = 0, demo = false } = {}, P = PLAY_DEFAULTS) {
   const glow = nodePlays === 0 && nodeStars === 0 && i < P.glowReps;
+  // The lesson demo (the owner, 2026-10-01: teach before testing): a node's first-ever set opens by SHOWING the idea
+  // on the first rep (the clip, then YOU walks to the best spot by itself, with the idea's name, summary and because
+  // line), and the kid then tries that same play as a disclosed, uncounted warm-up. Reps 2-5 are tested fresh.
+  if (demo && i === 0) return { example: false, aid: glow ? 'glow' : null, counts: false, demo: true };
   return { example: false, aid: glow ? 'glow' : null, counts: true };
 }
 
@@ -1268,6 +1278,9 @@ export async function mount(root, app, params = []) {
   const nodeRec = node ? profile?.road?.[node.id] ?? {} : {};
   const nodePlays = Number(nodeRec.plays) || 0;
   const nodeStarsBefore = Number(nodeRec.stars) || 0;
+  // The lesson demo runs once per node: its very first set (nothing played, no stars), lesson nodes only (never a
+  // match, never the onboarding set, which has its own worked example).
+  const demoFirst = !first && !!node && node.kind !== 'match' && nodePlays === 0 && nodeStarsBefore === 0;
   const count = first ? P.firstReps : P.setReps;
 
   let reps = [];
@@ -1296,7 +1309,13 @@ export async function mount(root, app, params = []) {
     if (!items.length) items = (await fallbackScenarios({ count: first ? 8 : count, principles: first ? null : node?.principles })).map((raw) => ({ raw, src: null }));
     const ready = items.map((it) => ({ ...it, s: prepare(it.raw) })).filter((it) => it.s);
     if (first) ready.sort((a, b) => (a.s.difficulty ?? 0) - (b.s.difficulty ?? 0));
-    const chosen = ready.slice(0, count);
+    let chosen = ready.slice(0, count);
+    // A demoed set teaches the NODE's own idea first: the demo rep (slot 0) must be one of the node's principles, so
+    // the recall rep that usually opens a set slides to second (the kid came to learn the new idea, not the recalled one).
+    if (demoFirst && node?.principles?.length) {
+      const own = chosen.findIndex((it) => (it.s.principles ?? []).some((id) => node.principles.includes(id)));
+      if (own > 0) chosen = [chosen[own], ...chosen.slice(0, own), ...chosen.slice(own + 1)];
+    }
     // The stage each slot wants (PROGRESSIVE_FIELD §2): the road's tag, else its plan for the node's stars before the set.
     let plan = null;
     try { plan = typeof roadMod?.stagePlan === 'function' ? roadMod.stagePlan(nodeStarsBefore, { first, count: chosen.length }) : null; } catch { plan = null; }
@@ -1534,8 +1553,78 @@ export async function mount(root, app, params = []) {
       }
       reveal.clear();
       renderDots(slot);
-      showRoleCard();
+      if (rep.plan.demo && !retry && !rep.demoDone) showDemo(); else showRoleCard();
     });
+  }
+
+  /**
+   * The lesson demo (the owner, 2026-10-01): the idea's card (kid name and summary), the clip to the freeze, then the
+   * answer SHOWN: the green and the Best spot appear and YOU walks there by itself, with the idea's because line.
+   * "Your turn" (or a wait) hands the same play over as the warm-up. Every step advances on its own; a tap goes sooner.
+   */
+  function showDemo() {
+    setPhase('demo');
+    const idea = principles[rep.s.principles?.[0]] ?? null;
+    const name = (typeof idea?.kidName === 'string' && idea.kidName) || repTitle(rep.s, principles);
+    const summaryOf = (v) => (typeof v === 'string' ? v : v?.kid);
+    put(els.line);
+    els.line.textContent = name;
+    setTip(summaryOf(idea?.summary) ?? '');
+    draw(pictureAt(0, rep.start));
+    board.setMarkers([]);
+    const r0 = rep;
+    const go = () => { if (alive && rep === r0 && rep.phase === 'demo') showWatch(); };
+    setActions(button(STRINGS.watchFirst, { variant: 'primary', icon: 'play', className: 'pl-main', onClick: go }));
+    announce(STRINGS.demoSr(name));
+    later(go, P.demoTitleMs);
+  }
+
+  /** The demo's answer: the worked example's green, arrow and "Best spot", then YOU walks to the ring. */
+  function showDemoAnswer() {
+    setPhase('demo-answer');
+    const r0 = rep;
+    const idea = principles[rep.s.principles?.[0]] ?? null;
+    const because = [typeof idea?.why === 'string' ? idea.why : idea?.why?.kid]
+      .find((t) => usableText(t, PLAY_DEFAULTS.whyBecauseMaxWords)) ?? '';
+    showExampleAnswer();
+    els.line.textContent = because || rep.words.question;
+    setTip('');
+    setActions();
+    const settle = () => {
+      if (!alive || rep !== r0 || rep.phase !== 'demo-answer') return;
+      const turn = () => {
+        if (!alive || rep !== r0 || rep.phase !== 'demo-answer') return;
+        rep.demoDone = true;
+        rep.plan = { ...rep.plan, example: true }; // the answer stays to copy, exactly as the worked example leaves it
+        rep.spot = { ...rep.start };
+        draw(frameWithSpot(rep.freezeFrame, rep.spot));
+        els.line.textContent = rep.words.question;
+        showPlace({ example: true, turn: true });
+      };
+      setActions(
+        button(STRINGS.watchAgain, { icon: 'play', className: 'pl-again', onClick: () => { if (rep === r0) { rep.spot = { ...rep.start }; showWatch(); } } }),
+        button(STRINGS.yourTurn, { variant: 'primary', icon: 'check', className: 'pl-main', onClick: turn }),
+      );
+      announce([because, STRINGS.yourTurn].filter(Boolean).join('. '));
+      later(turn, P.demoDwellMs);
+    };
+    // YOU walks to the best spot (a jump under reduced motion).
+    if (reducedMotion(app)) {
+      rep.spot = { ...rep.ghost.spot };
+      draw(frameWithSpot(rep.freezeFrame, rep.spot));
+      settle();
+      return;
+    }
+    const from = { ...rep.start }, to = rep.ghost.spot, t0 = performance.now();
+    const stepFrame = () => {
+      if (!alive || rep !== r0 || rep.phase !== 'demo-answer') return;
+      const u = Math.min(1, (performance.now() - t0) / P.demoSlideMs);
+      const e = u * u * (3 - 2 * u); // ease in and out
+      rep.spot = { x: from.x + (to.x - from.x) * e, y: from.y + (to.y - from.y) * e };
+      draw(frameWithSpot(rep.freezeFrame, rep.spot));
+      if (u < 1) requestAnimationFrame(stepFrame); else settle();
+    };
+    later(() => requestAnimationFrame(stepFrame), landsIn() + P.cardSettleMs);
   }
 
   /**
@@ -1636,6 +1725,10 @@ export async function mount(root, app, params = []) {
     draw(frameWithSpot(rep.freezeFrame, rep.spot));
     // At the whistle a small or bigger game eases in on the freeze (answerCamera): the figures YOU decide among are big.
     if (rep.answerCam) moveCamera(rep.answerCam);
+    if (rep.plan.demo && !rep.demoDone) {
+      showDemoAnswer();
+      return;
+    }
     if (rep.plan.example && !rep.exampled) {
       rep.exampled = true;
       showExample();
@@ -1960,7 +2053,7 @@ export async function mount(root, app, params = []) {
   // ---- the set
   async function runSet() {
     for (let i = 0; i < reps.length && alive; i++) {
-      const plan = first ? firstSetStep(i) : setStep(i, { nodePlays, nodeStars: nodeStarsBefore });
+      const plan = first ? firstSetStep(i) : setStep(i, { nodePlays, nodeStars: nodeStarsBefore, demo: demoFirst });
       let action = await playRep(reps[i].s, { slot: i, plan, prep: () => repAt(i) });
       if (alive && action === 'retry') {
         // Try again: the mirrored twin, at the stage the first try was played at (twinAt).
@@ -1975,7 +2068,8 @@ export async function mount(root, app, params = []) {
   let over = false; // Full time has shown, or the set was left and kept (keepPartial): record nothing twice
   /** Put the set on the Road (road.recordSet): the stars of the reps locked in (first tries). Not the first set. */
   function recordOnRoad() {
-    const repStars = tallyStars(set.tally);
+    // The demo slot's warm-up is practice: its star never reaches the node's record (the kid just watched the answer).
+    const repStars = set.tally.slots.filter((st, i) => st !== null && !(demoFirst && i === 0));
     if (first || !node || !repStars.length || typeof roadMod?.recordSet !== 'function') return null;
     try { return roadMod.recordSet(app, node.id, repStars); } catch (err) { console.warn('[fotbol] play: could not record the set', err); return null; }
   }

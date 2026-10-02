@@ -68,6 +68,19 @@ and anything harder than a 10 to 14 year old needs. What changed, in the audit's
   Why? sheet between the summary and the fixes, protected from the cut like the summary; the sheet's budget grew
   60 → 90 words. Coach mode's Learn library shows the standard wording as before (pickText).
 
+### 2026-10-01, the lesson demo (the owner's third follow-up)
+
+Teach before testing: a Road node's very first set now opens with a short demonstration built from the same graphics
+(play.js `showDemo`/`showDemoAnswer`, pass.js `showDemoTitle`/`showDemoAnswer`): the idea's card (kid name and
+summary), the first rep's clip to the freeze, then the answer SHOWN: in "Find your spot" the green and the Best spot
+appear and YOU walks there by itself; in "Who's open?" every option wears its label and the ball flies the Best pass.
+The idea's because line reads out, then "Watch again" or "Your turn" (every step advances on its own; a tap goes
+sooner). The kid then tries that same play as a disclosed warm-up ("Warm-up. Stars count from the next play."):
+nothing recorded, no XP, no Elo, and its star never reaches the node's record; reps 2-5 are tested fresh. A demoed
+set leads with a rep of the NODE's own idea (the recall rep slides to second). Lesson nodes only: never a match,
+never the onboarding set (which keeps its own worked example), and only while the node has no plays and no stars.
+Verified live end to end on a spot node and a pass node (an in-page recorder caught every dock line and button).
+
 ## Next
 
 1. **Test with real players** (R42). About 5 players aged 10-11 and 5 aged 13-14, in separate groups: time to first drag, what they read aloud and what they skip, whether "Try again" and "Why?" get used, and whether the Road makes sense without help. Nothing in Player mode has been tried by a child yet: every "play-test" so far is the team's own. Watch in particular whether the right area feels fair (2026-09-29): does "anywhere in the green" read, is the green seen in a crowded press, and does 1 star for a spot near the ring on the wrong side of the ball feel right or harsh.

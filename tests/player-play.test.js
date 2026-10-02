@@ -658,6 +658,13 @@ test('player play: a pass node opened in "Find your spot" goes on to #/pass in p
 // ---------------------------------------------------------------- stages: a small game, a bigger game, the full match
 // (The stage LINE on the role card went with the 2026-10-01 audit: the pitch shows how many players there are.)
 
+test('player play: a node\'s first-ever set opens with the lesson demo: slot 0 is an uncounted warm-up (the owner, 2026-10-01)', () => {
+  assert.deepEqual(setStep(0, { demo: true }), { example: false, aid: 'glow', counts: false, demo: true });
+  assert.equal(setStep(1, { demo: true }).counts, true, 'only the demo slot is a warm-up');
+  assert.equal(setStep(0, {}).counts, true, 'no demo: slot 0 counts as always');
+  assert.equal(setStep(0, { demo: true, nodePlays: 0, nodeStars: 0 }).aid, 'glow', 'the warm-up keeps the glow');
+});
+
 test('player play: the stage each rep wants: the road\'s tag, else the plan\'s for its slot; the first set small, else the full match', () => {
   assert.equal(wantedStage({ stage: 'medium' }, 0, { plan: ['small'] }), 'medium', 'the road tagged it');
   assert.equal(wantedStage({ stage: 'giant' }, 0, { plan: ['small'] }), 'small', 'a bad tag: the plan');
