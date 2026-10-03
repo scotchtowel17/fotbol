@@ -1,8 +1,8 @@
 import { test, assert, approx, loadJSON, isNode, timed, PERF_SLACK } from './harness.js';
-import { createFormation, teamTargets, linearTarget, phaseShape, widthDuty, POSSESSION_OFFSET, FORMATION_DEFAULTS, SHAPE_DEFAULTS } from '../js/engine/formation.js';
+import { createFormation, teamTargets, linearTarget, phaseShape, widthDuty, POSSESSION_OFFSET, FORMATION_DEFAULTS, SHAPE_DEFAULTS, keeperSpot } from '../js/engine/formation.js';
 import { TUCK_DEFAULTS } from '../js/engine/rules/tuck.js';
 import { ROLES, ROLE_INFO, BACK_LINE, MIDFIELD, mirrorRole } from '../js/engine/roles.js';
-import { LENGTH, WIDTH, MID_Y, mirrorPoint, flipY, onPitch } from '../js/engine/pitch.js';
+import { LENGTH, WIDTH, MID_Y, mirrorPoint, flipY, onPitch, clampToPitch } from '../js/engine/pitch.js';
 import { median, clamp } from '../js/engine/geometry.js';
 import { CONTEXT_DEFAULTS } from '../js/engine/context.js';
 
@@ -205,7 +205,8 @@ test("teamTargets('them') mirrors the table through the centre spot", () => {
   }
   const them = teamTargets(f, 'them', { x: 52.5, y: 34 });
   assert.ok(them.LB.y > MID_Y && them.RB.y < MID_Y, 'their left back is at large y (their left)');
-  assert.ok(them.GK.x > 100);
+  assert.ok(them.GK.x > 92 && them.GK.x < 96, 'out of possession their keeper stands about 11 m off his line with the ball at halfway (G1)');
+  assert.ok(teamTargets(f, 'them', { x: 52.5, y: 34 }, { inPossession: true }).GK.x > 100, 'in possession, the table\'s keeper');
 });
 
 test("teamTargets('us') equals positions() without the offset", () => {
@@ -299,7 +300,8 @@ test('out of possession: a level back four within 15 m of the midfield (or at th
       const reach = P.tuckSideways[r.endsWith('W') ? 'W' : 'CM'];
       assert.ok(Math.abs(t[r].y - b.y) <= reach + 1e-9, `${r} tucked toward the ball at ${at}`);
     }
-    assert.deepEqual(t.GK, raw.GK, `GK untouched at ${at}`);
+    assert.deepEqual(t.GK, clampToPitch(keeperSpot(b).spot), `the keeper on the G1 spot at ${at}`);
+    assert.deepEqual(teamTargets(f, 'us', b, { inPossession: true }).GK, raw.GK, `in possession the table's keeper at ${at}`);
     approx(t.ST.y, raw.ST.y, 1e-9, `the #9 only moves in depth at ${at}`);
     assert.ok(t.ST.x <= raw.ST.x + 1e-9, `the #9 only ever comes back at ${at}`);
     approx(t.DM.y, raw.DM.y, 1e-9, `the #6 only moves with the midfield line at ${at}`);
@@ -519,5 +521,30 @@ test('THIRD_PARTY.md describes the edits to the HELIOS data as the data file rec
   for (const e of table.edits.filter((q) => q.rule === 'far-full-back-lead')) {
     const near = table.samples[e.sample].pos[e.role === 'LB' ? 'RB' : 'LB'];
     approx(e.after.x - near.x, lead, 0.011, `sample ${e.sample} ${e.role}`);
+  }
+});
+
+test('keeperSpot (G1): on the bisector of the ball-to-posts angle, deeper as the ball gets nearer, never outside the posts', () => {
+  const posts = [{ x: 0, y: MID_Y - 3.66 }, { x: 0, y: MID_Y + 3.66 }];
+  const angle = (from, a, b) => Math.acos(((a.x - from.x) * (b.x - from.x) + (a.y - from.y) * (b.y - from.y)) / (Math.hypot(a.x - from.x, a.y - from.y) * Math.hypot(b.x - from.x, b.y - from.y)));
+  for (const ball of [{ x: 52.5, y: 34 }, { x: 30, y: 34 }, { x: 25, y: 12 }, { x: 18, y: 55 }, { x: 40, y: 20 }]) {
+    const { spot } = keeperSpot(ball);
+    // From the ball, the keeper splits the goal: the angles to each post either side of him are equal.
+    const toKeeper = { x: spot.x, y: spot.y };
+    approx(angle(ball, posts[0], toKeeper), angle(ball, posts[1], toKeeper), 1e-6, `bisector at (${ball.x}, ${ball.y})`);
+  }
+  approx(keeperSpot({ x: 52.5, y: 34 }).spot.x, 11.04, 0.1, 'about 11 m with the ball at halfway (KS-D)');
+  approx(keeperSpot({ x: 30, y: 34 }).spot.x, 4, 1e-9, '4 m with the ball 30 m out');
+  approx(keeperSpot({ x: 95, y: 34 }).spot.x, 16.5, 1e-9, 'the top of the box with the ball in their box');
+  for (const ball of [{ x: 0.2, y: 2 }, { x: 1, y: 66 }, { x: 3, y: 34 }]) {
+    const { spot } = keeperSpot(ball);
+    assert.ok(spot.x >= 0.5 && spot.y >= MID_Y - 4.16 - 1e-9 && spot.y <= MID_Y + 4.16 + 1e-9, `inside the goal mouth for a ball at (${ball.x}, ${ball.y})`);
+  }
+  // Continuous in the ball.
+  let prev = null;
+  for (let y = 2; y <= 66; y += 0.25) {
+    const { spot } = keeperSpot({ x: 20, y });
+    if (prev) assert.ok(Math.hypot(spot.x - prev.x, spot.y - prev.y) < 0.5, `jump at y ${y}`);
+    prev = spot;
   }
 });

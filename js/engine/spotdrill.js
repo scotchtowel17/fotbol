@@ -55,7 +55,7 @@ export const SPOT_DEFAULTS = Object.freeze({
 });
 
 /** Rules that judge a defending (out of possession) or an attacking learner; spacing (F8) does both but weighs 1. */
-const DEFENDING_RULES = new Set(['press', 'cover', 'tuck', 'compact', 'screen', 'goal-side', 'level-line', 'keeps-onside', 'recovery', 'cross-defence', 'drop-narrow', 'line-height', 'concentration', 'block-height']);
+const DEFENDING_RULES = new Set(['press', 'cover', 'tuck', 'compact', 'screen', 'goal-side', 'level-line', 'keeps-onside', 'recovery', 'cross-defence', 'drop-narrow', 'line-height', 'concentration', 'block-height', 'gk-angle-depth']);
 const ATTACKING_RULES = new Set(['width', 'pin', 'lane-open', 'support-distance', 'occupancy', 'between-lines', 'box-fill', 'offside', 'half-space', 'flank-share', 'unity']);
 
 /**
@@ -605,6 +605,7 @@ export const SPOT_YIELD = Object.freeze({
   R1: Object.freeze({ CB: 1, FB: 0, DM: 0, CM: 0, W: 0, ST: 0 }),
   R2: Object.freeze({ CB: 0, FB: 1, DM: 0, CM: 0, W: 0, ST: 0 }),
   R5: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0, W: 0, ST: 1 }),
+  G1: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0, W: 0, ST: 0 }), // the keeper's rule; generated drills are outfield only
 });
 
 /**

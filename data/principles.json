@@ -2461,8 +2461,10 @@
         "GK"
       ],
       "level": 1,
-      "release": "v1.1",
-      "ruleIds": [],
+      "release": "v1",
+      "ruleIds": [
+        "gk-angle-depth"
+      ],
       "summary": {
         "standard": "Stand on the line that splits the angle between the ball and your two posts, and come further off your line the further away the ball is.",
         "kid": "Keeper: line up between the ball and the middle of your goal."

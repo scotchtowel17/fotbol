@@ -270,6 +270,7 @@ const BRANCHES = Object.freeze({
   'line-height': ['step', 'drop'].flatMap((mode) => ['ok', 'x'].map((issue) => ({ mode, issue }))),
   concentration: ['winger', 'full-back', 'edge'].flatMap((job) => ['ok', 'wide'].map((issue) => ({ job, issue }))),
   unity: [{ issue: 'deep', gap: 50, max: 45 }],
+  'gk-angle-depth': ['ok', 'angle', 'deep', 'high'].map((issue) => ({ issue, by: 3, want: 11 })),
   'block-height': ['high', 'mid', 'low'].flatMap((block) => ['ok', 'x'].map((issue) => ({ block, issue, by: 4 }))),
   'cross-defence': ['posts', 'far-post', 'cut-back'].flatMap((job) => ['ok', 'wide', 'line', 'high', 'deep'].map((issue) => ({ job, issue }))),
   screen: ['deep', 'high', 'wide', 'lane', 'other'].map((issue) => ({ issue })),

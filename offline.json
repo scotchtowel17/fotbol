@@ -78,6 +78,7 @@
   "js/engine/rules/cross-defence.js",
   "js/engine/rules/drop-narrow.js",
   "js/engine/rules/flank-share.js",
+  "js/engine/rules/gk-angle-depth.js",
   "js/engine/rules/goal-side.js",
   "js/engine/rules/half-space.js",
   "js/engine/rules/index.js",
