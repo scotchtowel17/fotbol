@@ -1,4 +1,4 @@
-// Registry of v1 principle rules. Contract: docs/ARCHITECTURE.md §5.5.
+// Registry of the principle rules. Contract: docs/ARCHITECTURE.md §5.5.
 import offside from './offside.js';
 import keepsOnside from './keeps-onside.js';
 import levelLine from './level-line.js';
@@ -16,10 +16,11 @@ import occupancy from './occupancy.js';
 import betweenLines from './between-lines.js';
 import spacing from './spacing.js';
 import boxFill from './box-fill.js';
+import recovery from './recovery.js';
 
 export const RULES = Object.freeze([
   offside, keepsOnside, levelLine, goalSide, press, cover, tuck, compact, screen,
-  width, pin, laneOpen, supportDistance, occupancy, betweenLines, spacing, boxFill,
+  width, pin, laneOpen, supportDistance, occupancy, betweenLines, spacing, boxFill, recovery,
 ]);
 
 export const RULES_BY_ID = Object.freeze(Object.fromEntries(RULES.map((r) => [r.id, r])));

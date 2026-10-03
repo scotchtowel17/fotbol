@@ -568,6 +568,10 @@ export const SPOT_YIELD = Object.freeze({
   P2: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0.75, W: 0, ST: 0 }),
   F8: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0, W: 0, ST: 0 }),
   P10: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 1, W: 1, ST: 1 }),
+  // By construction, not measured: the recovery rule judges only after we lose the ball (or in a recovery phase), and a
+  // generated event never changes possession.
+  T3: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0, W: 0, ST: 0 }),
+  R4: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0, W: 0, ST: 0 }),
 });
 
 /**

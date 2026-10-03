@@ -82,6 +82,20 @@ export const defending = (ctx) => ctx.moment !== 'in_possession';
 
 export const isLearner = (ctx, p) => !!p && p.id === ctx.learner.id;
 
+/** Phases a scenario tags as a recovery throughout (scenario.js PHASES). */
+export const RECOVERY_PHASES = Object.freeze(['recovery']);
+
+/**
+ * True when our team is recovering (T3): defending, and the frame is tagged a recovery phase or we lost the ball a
+ * moment ago (timeline.js derives tags.lostAgo within its lostWindow). The recovery rule judges the side of your man
+ * then, and the goal-side rule leaves the side to it (so "get goal-side" is never said twice).
+ */
+export const recovering = (ctx) => {
+  if (!defending(ctx)) return false;
+  const tags = ctx.frame?.tags ?? {};
+  return RECOVERY_PHASES.includes(tags.phase) || Number.isFinite(tags.lostAgo);
+};
+
 /** Unit (line) each family belongs to out of possession. */
 export const UNIT_OF_FAMILY = Object.freeze({ GK: 'gk', CB: 'back', FB: 'back', DM: 'mid', CM: 'mid', W: 'front', ST: 'front' });
 

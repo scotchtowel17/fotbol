@@ -25,6 +25,7 @@ import { autoFrame, autoRoles } from './scene.js';
 export const TIMELINE_DEFAULTS = Object.freeze({
   reactionLag: 0.3, // [D] s: auto players react to where the ball was this long ago
   shapeWindow: 1.0, // [D] s: ...averaged over this window, so a pass shifts the shape gradually rather than at ball speed
+  lostWindow: 6, // [D] s: within this long after our team loses the ball, tags.lostAgo says how long ago (a recovery run, T3)
   runSpeed: 7, // [D] m/s: an auto player follows his own formation target no faster than this (runTargets), so after a
   //             long pass the team shifts at a run instead of at 15-25 m/s (targets move up to 1.6 m per metre of ball)
   runStep: 0.05, // [D] s: the grid that run is integrated on
@@ -249,7 +250,8 @@ export function sampleTimes(scenario, { hz = TIMELINE_DEFAULTS.sampleHz, from = 
  *   after a turnover nobody is sent to press past a teammate who is already goal-side.
  * - frame.tags: the tag keys so far, merged; `phase` defaults to scenario.phase; `ballMovingBack`
  *   is derived from the last ballBackWindow seconds of ball movement unless a tag sets it; `nextEvent` and
- *   `nextEventIn` name the next event (not a carry) by the team on the ball within eventAhead seconds.
+ *   `nextEventIn` name the next event (not a carry) by the team on the ball within eventAhead seconds; `lostAgo`
+ *   says how long ago our team lost the ball, within lostWindow seconds (unless a tag sets them).
  * - `scenario.params` is merged over SCENE_DEFAULTS / TIMELINE_DEFAULTS (opts.params wins), and may
  *   also set autoPress, autoCarrier or onsideClamp.
  * - `learner.start` is for the UI: pass it as learnerSpot to pin the learner there.
@@ -451,7 +453,7 @@ export function overridesAt(tl, t, learnerId, learnerSpot) {
   return out;
 }
 
-/** Cumulative tags at t, plus scenario.phase and the derived ballMovingBack, nextEvent and nextEventIn when not authored. */
+/** Cumulative tags at t, plus scenario.phase and the derived ballMovingBack, nextEvent, nextEventIn and lostAgo when not authored. */
 export function tagsAt(scenario, t, possession, P) {
   const src = scenario.timeline?.tags;
   const keys = Array.isArray(src) ? src : src && typeof src === 'object' ? [{ ...src, t: -Infinity }] : [];
@@ -466,11 +468,31 @@ export function tagsAt(scenario, t, possession, P) {
     const dx = ballAt(scenario, t).x - ballAt(scenario, t - P.ballBackWindow).x;
     if ((possession === 'us' ? -dx : dx) >= P.ballBackDist) tags.ballMovingBack = true;
   }
+  if (tags.lostAgo === undefined && P.lostWindow > 0 && possession !== 'us') {
+    const lost = lostAt(scenario, t);
+    if (lost !== null && t - lost <= P.lostWindow) tags.lostAgo = Math.round((t - lost) * 1000) / 1000;
+  }
   if (tags.nextEvent === undefined && P.eventAhead > 0 && (possession === 'us' || possession === 'them')) {
     const next = nextEventAfter(scenario, t, possession, P.eventAhead);
     if (next) { tags.nextEvent = next.event; tags.nextEventIn = Math.round((next.t - t) * 1000) / 1000; }
   }
   return tags;
+}
+
+/**
+ * When our team last lost the ball at or before t: the time of the last possession key that took it from 'us' (to
+ * 'them' or a loose ball), or null if we have not had it and lost it since the start.
+ * @returns {number|null}
+ */
+export function lostAt(scenario, t) {
+  const keys = scenario.timeline?.possession ?? [];
+  let had = false, at = null;
+  for (const k of keys) {
+    if (!(k.t <= t)) break;
+    if (k.team === 'us') had = true;
+    else if (had) { at = k.t; had = false; }
+  }
+  return at;
 }
 
 /**

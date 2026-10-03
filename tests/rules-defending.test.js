@@ -14,6 +14,7 @@ import goalSide from '../js/engine/rules/goal-side.js';
 import tuck from '../js/engine/rules/tuck.js';
 import compact from '../js/engine/rules/compact.js';
 import screen from '../js/engine/rules/screen.js';
+import recovery, { RECOVERY_DEFAULTS } from '../js/engine/rules/recovery.js';
 import { band2, perContext, paramsFor, nameOf, kidNameOf, segDist, whole } from '../js/engine/rules/_util.js';
 
 const RULES = [press, cover, levelLine, keepsOnside, goalSide, tuck, compact, screen];
@@ -422,6 +423,40 @@ test('goal-side: weights by duty and role; not applicable without a man or in po
   assert.equal(goalSide.weight(mid('us-DM', LCM_COVERS)), 0, 'their #9 is the RCB\'s, so the #6 screens instead');
   assert.equal(goalSide.weight(mid('us-RCM')), 0, 'first defender outside our box: the press rule judges him');
   assert.equal(goalSide.weight(mid('us-LW')), 1.5);
+});
+
+test('recovery (T3, R4): just after we lose the ball, get goal-side of your man; past 1 m the wrong side is critical', () => {
+  const calm = mid('us-RCB');
+  assert.equal(recovery.weight(calm), 0, 'not recovering: the goal-side rule judges the side');
+  const ctx = mid('us-RCB', { tags: { lostAgo: 1.5 } });
+  assert.equal(ctx.markTarget.id, 'them-ST');
+  assert.equal(recovery.weight(ctx), RECOVERY_DEFAULTS.weights.CB);
+  const home = ev(recovery, ctx, 32, 38); // 4 m goal-side of their #9 at (36, 38)
+  assert.equal(home.s, 1);
+  assert.equal(home.critical, false);
+  const level = ev(recovery, ctx, 36, 36);
+  assert.ok(level.s > 0 && level.s < 0.6, `level ${level.s}`);
+  assert.equal(level.vars.issue, 'level');
+  assert.equal(level.critical, false);
+  const behind = ev(recovery, ctx, 40, 38);
+  assert.equal(behind.s, 0);
+  assert.equal(behind.critical, true, 'a recovery run that never got back');
+  assert.equal(behind.vars.issue, 'wrong-side');
+  for (const v of [home.vars, level.vars, behind.vars]) checkText(recovery, v);
+  // A scene tagged as a recovery is one throughout; the #9 does not track; in possession nothing applies.
+  assert.equal(recovery.weight(mid('us-RCB', { tags: { phase: 'recovery' } })), RECOVERY_DEFAULTS.weights.CB);
+  assert.equal(recovery.weight(mid('us-ST', { tags: { lostAgo: 1 } })), 0);
+  assert.equal(recovery.weight(ctxOf('ipBuildUp', 'us-RCB', { tags: { lostAgo: 1 } })), 0);
+  assert.equal(recovery.weight(mid('us-RCM', { tags: { lostAgo: 1 } })), 0, 'the first defender presses (the press rule)');
+  assert.equal(recovery.weight(mid('us-LW', { tags: { lostAgo: 1 } })), RECOVERY_DEFAULTS.weights.W, 'R4: the winger gets back to their full-back');
+});
+
+test("goal-side: while we recover the side is the recovery rule's (said once), the angle and distance stay here", () => {
+  const ctx = mid('us-RCB', { tags: { lostAgo: 1.5 } });
+  const behind = ev(goalSide, ctx, 40, 38);
+  assert.notEqual(behind.vars.issue, 'wrong-side', 'the recovery rule says it');
+  assert.ok(behind.vars.margin < 0, 'the margin is still reported (kidscore reads it)');
+  assert.equal(ev(goalSide, ctx, 28, 40).s, ev(goalSide, mid('us-RCB'), 28, 40).s, 'a good mark is a good mark');
 });
 
 test('goal-side: the first defender is judged only with the carrier in our box, and only on the side (so the in-box critical stays)', () => {

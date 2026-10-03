@@ -1421,7 +1421,9 @@
       ],
       "level": 1,
       "release": "v1",
-      "ruleIds": [],
+      "ruleIds": [
+        "recovery"
+      ],
       "summary": {
         "standard": "When the ball goes past you, sprint back toward your own goal, not toward the ball, until you're goal-side of both the ball and your opponent.",
         "kid": "Ball got past you? Sprint back toward your goal, not the ball."
@@ -2350,7 +2352,9 @@
       ],
       "level": 1,
       "release": "v1",
-      "ruleIds": [],
+      "ruleIds": [
+        "recovery"
+      ],
       "summary": {
         "standard": "In possession, stay high and wide near the touchline unless the full-back is holding the width; out of possession, get goal-side of their full-back quickly.",
         "kid": "Attacking: stay wide and high. Defending: get back to their full-back."

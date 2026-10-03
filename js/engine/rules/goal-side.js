@@ -6,11 +6,14 @@
 // on his flank (R2, D5): for him only the side is judged, at a lower weight. The first defender
 // is judged here only with the carrier in our box, and only on the side, which keeps the in-box
 // critical: elsewhere the press rule owns his distance, angle and side (including the curved run
-// onto the carrier's inside, D2), so the same "get goal-side" is never said twice.
+// onto the carrier's inside, D2), so the same "get goal-side" is never said twice. For the same reason, while we are
+// recovering (rules/recovery.js: just lost the ball, or a recovery phase) the side is the recovery rule's: this rule
+// judges only the angle and the distance then (a covering full-back's side-only check steps aside), except the in-box
+// critical, which stays here.
 
 import { band } from '../geometry.js';
 import { OWN_GOAL, inOwnBox } from '../pitch.js';
-import { perContext, paramsFor, notApplicable, defending, nameOf, kidNameOf, band2, clamp01, signedAngle, whole } from './_util.js';
+import { perContext, paramsFor, notApplicable, defending, recovering, nameOf, kidNameOf, band2, clamp01, signedAngle, whole } from './_util.js';
 
 export const GOAL_SIDE_DEFAULTS = Object.freeze({
   weights: { CB: 3, FB: 3, DM: 2, CM: 2, W: 1.5, ST: 0 }, // [S] RESEARCH 5.6 back line 3, #6 2; CM/W [D]; the #9 doesn't track (5.6)
@@ -56,6 +59,9 @@ const prep = perContext((ctx) => {
   if (first) sideOnly = true; // in our box: the side, and the critical
   const w = first ? D.firstDefenderWeight : sideOnly ? D.coverSideWeight : D.weights[ctx.learner.family] ?? 0;
   if (!w) return null;
+  // Recovering: the recovery rule judges the side (it weighs every family but the #9, and never the first defender).
+  const sideByRecovery = !first && recovering(ctx) && ctx.learner.family !== 'ST';
+  if (sideByRecovery && sideOnly && !inOwnBox(A)) return { ref: { id: A.id, x: A.x, y: A.y, weight: 0, sideOnly } };
   const gx = OWN_GOAL.x - A.x, gy = OWN_GOAL.y - A.y;
   const la = Math.hypot(gx, gy) || 1e-6;
   const ux = gx / la, uy = gy / la;
@@ -77,7 +83,7 @@ const prep = perContext((ctx) => {
   const len = Math.hypot(along, shift);
   if (len > hi) { along *= hi / len; shift *= hi / len; } // keep the shifted target inside the distance band
   return {
-    D, w, sideOnly, aid: A.id, ax: A.x, ay: A.y, ux, uy, la, ballSide, lo, hi, distSoft, angBall, angFar,
+    D, w, sideOnly, sideByRecovery, aid: A.id, ax: A.x, ay: A.y, ux, uy, la, ballSide, lo, hi, distSoft, angBall, angFar,
     inBox: inOwnBox(A),
     tx: A.x + ux * along - uy * shift, ty: A.y + uy * along + ux * shift,
     want: whole(Math.hypot(along, shift)), who: nameOf(A, ctx), whoKid: kidNameOf(A, ctx),
@@ -93,6 +99,7 @@ const prep = perContext((ctx) => {
  */
 export function goalSideRef(ctx) {
   const p = prep(ctx);
+  if (p?.ref) return p.ref; // stepped aside for the recovery rule (weight 0), but still the man you defend
   return p ? { id: p.aid, x: p.ax, y: p.ay, weight: p.w, sideOnly: p.sideOnly } : null;
 }
 
@@ -100,10 +107,10 @@ export default {
   id: 'goal-side',
   principles: ['D5'],
   critical: true,
-  weight: (ctx) => prep(ctx)?.w ?? 0,
+  weight: (ctx) => (prep(ctx)?.ref ? 0 : prep(ctx)?.w ?? 0),
   evaluate(ctx, spot) {
     const p = prep(ctx);
-    if (!p) return notApplicable();
+    if (!p || p.ref) return notApplicable();
     const D = p.D;
     const vx = spot.x - p.ax, vy = spot.y - p.ay;
     const dv = Math.hypot(vx, vy);
@@ -114,10 +121,11 @@ export default {
     // Fade the angle in over the first metre so there is no cliff when passing right over them.
     const sAng = 1 - (1 - band2(psi, -p.angFar, p.angBall, D.angleSoft, D.angleSoft)) * Math.min(dv / D.distMin, 1);
     const sDist = band(dv, p.lo, p.hi, p.distSoft);
-    const s = p.sideOnly ? sSide : sSide * sAng * sDist;
+    const side = p.sideByRecovery ? 1 : sSide; // recovering: the recovery rule judges the side
+    const s = p.sideOnly ? side : side * sAng * sDist;
     let issue = 'ok';
     if (s < 0.999) {
-      if (p.sideOnly || margin < 0 || sSide <= Math.min(sAng, sDist)) issue = 'wrong-side';
+      if (!p.sideByRecovery && (p.sideOnly || margin < 0 || sSide <= Math.min(sAng, sDist))) issue = 'wrong-side';
       else if (sAng <= sDist) issue = 'angle';
       else issue = dv > p.hi ? 'loose' : 'tight';
     }
