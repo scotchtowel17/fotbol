@@ -11,8 +11,9 @@ Read these first:
 
 ```bash
 npm test            # node --test on tests/**/*.test.js (Node >= 22: the quoted glob needs it; CI runs 22; no dependencies)
-npm run check       # validate every scenario, print the engine's answer and the stages it can be played at, fail the drill-quality and stage gates, check the index is current
+npm run check       # validate every scenario and authored pass drill, print the engine's answer and the stages it can be played at, fail the drill-quality and stage gates, check the index and offline.json are current
 npm run index       # rebuild data/scenarios/index.json (never edit it by hand)
+npm run offline     # rebuild offline.json, the app files sw.js stores for offline play (run it after adding or removing a file the app loads)
 npm run serve       # python3 -m http.server 8080  → http://localhost:8080
 npm run sanity      # node scripts/sanity.mjs > docs/sanity-output.txt: the engine's answers on the canonical situations, for coach review
 ```
@@ -38,7 +39,9 @@ npm run sanity      # node scripts/sanity.mjs > docs/sanity-output.txt: the engi
 | Run the whole loop for one scene | `js/engine/analyse.js` (`analyseScene`, `judgeSpot`); canonical situations in `tests/situations.js` |
 | Change how a position is judged | `js/engine/rules/*.js`, `js/engine/score.js` |
 | Change feedback wording | the `text` block of each rule, `js/engine/explain.js` |
-| Add or fix a scenario | `#/author` in the app, then `data/scenarios/<id>.json`, its module in `data/curriculum.json`, `npm run index`, `npm run check` (ARCHITECTURE §6) |
+| Add or fix a scenario | `data/scenarios/<id>.json` (start from `_example.json`), its module in `data/curriculum.json`, `npm run index`, `npm run check`, `npm run offline` (ARCHITECTURE §6) |
+| Add an authored pass drill ("Who's open?") | `data/scenarios/pa<n>-<role>-<nn>.json` (`kind: 'pass'`, ARCHITECTURE §5.14), `npm run index` (it goes under `passes`), `npm run check` (the pass gates), `npm run offline` |
+| Change offline play | `sw.js`, `manifest.webmanifest`, `scripts/build-offline.mjs` (ARCHITECTURE §5.9) |
 | Change a mode (Drill, Live, Explore, Learn...) | `js/ui/modes/<mode>.js`; shared pieces in `js/ui/reveal.js` (feedback panel) and `js/ui/session.js` (selection, persistence, summaries) |
 | Change a Player screen (home, kick-off, a set, "Who's open?", Match day, the card) | `js/ui/player/<name>.js` (ARCHITECTURE §5.16); its words are in the module's `STRINGS` (`tests/copy.test.js` checks them) |
 | Change the Road or how its sets are built | `data/road.json`, `js/ui/player/road.js` (`buildSet`); `tests/road-sets-*.test.js` sweeps every node for every position |
