@@ -21,11 +21,14 @@ import halfSpace from './half-space.js';
 import flankShare from './flank-share.js';
 import crossDefence from './cross-defence.js';
 import dropNarrow from './drop-narrow.js';
+import lineHeight from './line-height.js';
+import concentration from './concentration.js';
+import unity from './unity.js';
 
 export const RULES = Object.freeze([
   offside, keepsOnside, levelLine, goalSide, press, cover, tuck, compact, screen,
   width, pin, laneOpen, supportDistance, occupancy, betweenLines, spacing, boxFill, recovery,
-  halfSpace, flankShare, crossDefence, dropNarrow,
+  halfSpace, flankShare, crossDefence, dropNarrow, lineHeight, concentration, unity,
 ]);
 
 export const RULES_BY_ID = Object.freeze(Object.fromEntries(RULES.map((r) => [r.id, r])));

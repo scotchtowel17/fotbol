@@ -267,6 +267,9 @@ const BRANCHES = Object.freeze({
   'half-space': ['wide', 'central', 'ok'].map((issue) => ({ issue })),
   'flank-share': ['wide', 'ok'].map((issue) => ({ issue })),
   'drop-narrow': ['ok', 'chasing', 'wide'].map((issue) => ({ issue })),
+  'line-height': ['step', 'drop'].flatMap((mode) => ['ok', 'x'].map((issue) => ({ mode, issue }))),
+  concentration: ['winger', 'full-back', 'edge'].flatMap((job) => ['ok', 'wide'].map((issue) => ({ job, issue }))),
+  unity: [{ issue: 'deep', gap: 50, max: 45 }],
   'cross-defence': ['posts', 'far-post', 'cut-back'].flatMap((job) => ['ok', 'wide', 'line', 'high', 'deep'].map((issue) => ({ job, issue }))),
   screen: ['deep', 'high', 'wide', 'lane', 'other'].map((issue) => ({ issue })),
   spacing: [{ d: 2, min: 8, max: 20 }, { d: 30, min: 8, max: 20 }, { d: 10, min: 0, max: 20 }],
@@ -275,7 +278,7 @@ const BRANCHES = Object.freeze({
   tuck: ['centre', 'wide'].flatMap((mode) => [{ mode, issue: 'narrow' }, { mode, issue: 'wide' }]),
   width: [{ d: 12, max: 4 }],
 });
-const BRANCH_KEYS = ['issue', 'part', 'where', 'mode', 'unit', 'by', 'nearLine', 'pressured', 'kidZone'];
+const BRANCH_KEYS = ['issue', 'part', 'where', 'mode', 'unit', 'by', 'nearLine', 'pressured', 'kidZone', 'job', 'delay'];
 const describeVars = (v) => BRANCH_KEYS.filter((k) => v[k] !== undefined).map((k) => `${k}=${v[k]}`).join(', ');
 
 function ruleItems() {

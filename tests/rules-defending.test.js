@@ -17,6 +17,8 @@ import screen from '../js/engine/rules/screen.js';
 import recovery, { RECOVERY_DEFAULTS } from '../js/engine/rules/recovery.js';
 import crossDefence from '../js/engine/rules/cross-defence.js';
 import dropNarrow from '../js/engine/rules/drop-narrow.js';
+import lineHeight from '../js/engine/rules/line-height.js';
+import concentration from '../js/engine/rules/concentration.js';
 import { outnumbered } from '../js/engine/context.js';
 import { band2, perContext, paramsFor, nameOf, kidNameOf, segDist, whole } from '../js/engine/rules/_util.js';
 
@@ -912,4 +914,45 @@ test('drop-narrow (T2): while we recover, a defender who cannot press drops goal
   const cb = mid('us-RCB', { tags: { lostAgo: 1 } });
   assert.equal(cb.markTarget.id, 'them-ST');
   assert.equal(ev(dropNarrow, cb, 30, 60).s, 1, 'goal-side, however wide');
+});
+
+test('line-height (U3): step up when the ball goes back, drop off a free carrier facing forward, hold otherwise', () => {
+  // The mid-block fixture: their left #8 carries at (58.5, 44.5); our back line is at x 28-30.
+  const hold = mid('us-LCB', { tags: { pressureOnBall: true, carrierFacing: 'forward' } });
+  assert.equal(lineHeight.weight(hold), 0, 'under pressure: hold (level-line keeps the line)');
+  const step = mid('us-LCB', { tags: { ballMovingBack: true } });
+  assert.ok(lineHeight.weight(step) > 0);
+  assert.equal(ev(lineHeight, step, 28, 29).s, 1, 'at your place');
+  const sat = ev(lineHeight, step, 22, 29);
+  assert.ok(sat.s < 0.2 && sat.vars.issue === 'deep', `sat 6 m deep ${sat.s}`);
+  checkText(lineHeight, sat.vars);
+  // A free carrier 6 m from our line, facing forward: drop to 10 m goal-side of him.
+  const close = { ball: { x: 38, y: 36 }, carrierId: 'them-LCM', move: { 'them-LCM': { x: 38.5, y: 36.5 } }, tags: { carrierFacing: 'forward', pressureOnBall: false } };
+  const drop = mid('us-LCB', close);
+  assert.ok(lineHeight.weight(drop) > 0);
+  assert.equal(ev(lineHeight, drop, 27, 29).s, 1, '11 m goal-side');
+  const high = ev(lineHeight, drop, 33, 29);
+  assert.ok(high.s < 0.2 && high.vars.issue === 'high', `5 m off a free carrier ${high.s}`);
+  checkText(lineHeight, high.vars);
+  assert.equal(lineHeight.weight(mid('us-DM', close)), 0, 'the back line only');
+  assert.equal(lineHeight.weight(ctxOf('ipBuildUp', 'us-LCB', { tags: { ballMovingBack: true } })), 0, 'out of possession only');
+});
+
+test('concentration (U7): ball in our third: far winger in off the wing, far full-back inside the box width, #6 to the edge of the box', () => {
+  // Their right winger has the ball wide near our box on our left (BOX mirrored by moves).
+  const LEFT = { ball: { x: 22, y: 8 }, carrierId: 'them-RW', move: { 'them-RW': { x: 22.5, y: 8.5 }, 'us-LB': { x: 20, y: 10 } } };
+  const w = ctxOf(BOX, 'us-RW', LEFT, { x: 30, y: 50 });
+  assert.ok(concentration.weight(w) > 0);
+  assert.equal(ev(concentration, w, 30, 50).s, 1, 'in from the far wing');
+  assert.ok(ev(concentration, w, 30, 64).s < 0.2, 'out on the far touchline');
+  const fb = ctxOf(BOX, 'us-RB', LEFT, { x: 14, y: 50 });
+  assert.equal(ev(concentration, fb, 14, 50).s, 1, 'inside the box width');
+  assert.ok(ev(concentration, fb, 14, 62).s < 0.2);
+  const dm = ctxOf(BOX, 'us-DM', LEFT, { x: 20, y: 30 });
+  assert.equal(ev(concentration, dm, 21, 26).s, 1, 'edge of the box, ball side');
+  assert.ok(ev(concentration, dm, 21, 46).s < 0.2, 'the far side of the box');
+  assert.ok(ev(concentration, dm, 36, 26).s < 0.2, 'up in midfield');
+  for (const v of [ev(concentration, w, 30, 64).vars, ev(concentration, fb, 14, 62).vars, ev(concentration, dm, 36, 26).vars]) checkText(concentration, v);
+  assert.equal(concentration.weight(ctxOf(BOX, 'us-RW', { ...LEFT, ball: { x: 50, y: 8 }, move: { 'them-RW': { x: 50.5, y: 8.5 } } }, { x: 50, y: 50 })), 0, 'the ball in midfield');
+  assert.equal(concentration.weight(ctxOf(BOX, 'us-LW', LEFT, { x: 30, y: 14 })), 0, 'the ball-side winger is not far side');
 });

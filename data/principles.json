@@ -790,7 +790,9 @@
       ],
       "level": 2,
       "release": "v1",
-      "ruleIds": [],
+      "ruleIds": [
+        "unity"
+      ],
       "summary": {
         "standard": "As your team moves the ball forward, the defenders move up too, so the team stays connected instead of stretching.",
         "kid": "When we attack, defenders move up too, so the team stays together."
@@ -1996,7 +1998,9 @@
       ],
       "level": 2,
       "release": "v1",
-      "ruleIds": [],
+      "ruleIds": [
+        "line-height"
+      ],
       "summary": {
         "standard": "The back line steps up when the ball goes backward or the carrier is pressed and facing away, holds while the ball is under pressure, and drops when the carrier is free to play forward.",
         "kid": "When the ball goes backward, your whole line steps forward."
@@ -2161,7 +2165,9 @@
       ],
       "level": 1,
       "release": "v1",
-      "ruleIds": [],
+      "ruleIds": [
+        "concentration"
+      ],
       "summary": {
         "standard": "When the ball is in your defensive third, players away from the ball squeeze toward the centre, between the ball and goal, to protect the area where goals are scored.",
         "kid": "Ball near our goal? Everyone moves into the middle to guard it."

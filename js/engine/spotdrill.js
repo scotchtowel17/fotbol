@@ -55,8 +55,8 @@ export const SPOT_DEFAULTS = Object.freeze({
 });
 
 /** Rules that judge a defending (out of possession) or an attacking learner; spacing (F8) does both but weighs 1. */
-const DEFENDING_RULES = new Set(['press', 'cover', 'tuck', 'compact', 'screen', 'goal-side', 'level-line', 'keeps-onside', 'recovery']);
-const ATTACKING_RULES = new Set(['width', 'pin', 'lane-open', 'support-distance', 'occupancy', 'between-lines', 'box-fill', 'offside', 'half-space', 'flank-share']);
+const DEFENDING_RULES = new Set(['press', 'cover', 'tuck', 'compact', 'screen', 'goal-side', 'level-line', 'keeps-onside', 'recovery', 'cross-defence', 'drop-narrow', 'line-height', 'concentration']);
+const ATTACKING_RULES = new Set(['width', 'pin', 'lane-open', 'support-distance', 'occupancy', 'between-lines', 'box-fill', 'offside', 'half-space', 'flank-share', 'unity']);
 
 /**
  * Where the event should leave the ball, relative to the learner's zone, for each principle's rule to apply: near
@@ -579,6 +579,9 @@ export const SPOT_YIELD = Object.freeze({
   P10: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 1, W: 1, ST: 1 }),
   P1: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0.88, W: 0, ST: 0 }), // the ball-side #8, with the full-back on it out wide
   U8: Object.freeze({ CB: 1, FB: 1, DM: 1, CM: 0, W: 0, ST: 0 }), // the centre-backs, the far full-back, the #6
+  U3: Object.freeze({ CB: 1, FB: 0, DM: 0, CM: 0, W: 0, ST: 0 }), // the full-backs' line-height weighs 1.5
+  U7: Object.freeze({ CB: 0, FB: 0.63, DM: 1, CM: 0, W: 0.75, ST: 0 }), // the far full-back and winger, the #6
+  B12: Object.freeze({ CB: 1, FB: 0, DM: 0, CM: 0, W: 0, ST: 0 }), // unity weighs 1.5 for the full-backs and the #6
   // By construction, not measured: the flank-share rule needs a full-back and his winger in the wing lane together,
   // which layer A never does and a generated event never scripts.
   B6: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0, W: 0, ST: 0 }),

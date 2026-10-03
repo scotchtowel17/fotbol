@@ -35,7 +35,7 @@ const RULE_REFS = {
   cover: ['D3'], tuck: ['D4', 'U5'], compact: ['U1', 'U2'], screen: ['R3'], width: ['B1'], pin: ['B2'],
   'lane-open': ['B3'], 'support-distance': ['B3', 'B4'], occupancy: ['B5'], 'between-lines': ['P2'], spacing: ['F8'],
   'box-fill': ['P10'], recovery: ['T3', 'R4'], 'half-space': ['P1'], 'flank-share': ['B6'],
-  'cross-defence': ['U8'], 'drop-narrow': ['T2'],
+  'cross-defence': ['U8'], 'drop-narrow': ['T2'], 'line-height': ['U3'], concentration: ['U7'], unity: ['B12'],
 };
 const ENGINE_RULE_IDS = Object.keys(RULE_REFS);
 

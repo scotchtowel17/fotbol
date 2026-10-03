@@ -8,6 +8,7 @@ import { HALF_X as HALF } from '../js/engine/pitch.js';
 import offside, { offsideLineX } from '../js/engine/rules/offside.js';
 import halfSpace from '../js/engine/rules/half-space.js';
 import flankShare from '../js/engine/rules/flank-share.js';
+import unity from '../js/engine/rules/unity.js';
 import width from '../js/engine/rules/width.js';
 import pin from '../js/engine/rules/pin.js';
 import laneOpen from '../js/engine/rules/lane-open.js';
@@ -627,4 +628,17 @@ test('flank sharing: when your flank partner holds the touchline next to you, co
   assert.ok(flankShare.weight(fb) > 0, 'his winger is in the wing lane 6 m ahead');
   assert.ok(flankShare.evaluate(fb, at(46, 62)).s < 0.5);
   assert.equal(flankShare.weight(ctxFor('ipBuildUp', 'us-RB')), 0, 'the build-up fixture: winger 28 m ahead, far apart');
+});
+
+test('unity (B12): in possession from the middle third on, the back line stays within 45 m of our front line', () => {
+  // Our right winger has the ball at x 82; our front line is at about x 80.
+  const ATTACK = { ball: at(82, 60), carrierId: 'us-RW', move: { 'us-RW': at(82, 60), 'us-ST': at(84, 36), 'us-LW': at(80, 8) } };
+  const ctx = ctxFor('ipBuildUp', 'us-RCB', ATTACK, at(45, 44));
+  assert.ok(unity.weight(ctx) > 0);
+  assert.equal(unity.evaluate(ctx, at(45, 44)).s, 1, '37 m behind the front line');
+  const deep = unity.evaluate(ctx, at(28, 44));
+  assert.ok(deep.s < 0.2 && deep.vars.issue === 'deep', `54 m behind ${deep.s}`);
+  assert.match(unity.text.standard.fail(deep.vars), /^Push up: you are \d+ m behind our front line/);
+  assert.equal(unity.weight(ctxFor('ipBuildUp', 'us-RCB')), 0, 'build-up in our own third');
+  assert.equal(unity.weight(ctxFor('ipBuildUp', 'us-ST', ATTACK, at(80, 34))), 0, 'the forwards are the front line');
 });
