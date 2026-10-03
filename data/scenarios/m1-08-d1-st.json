@@ -50,6 +50,18 @@
             { "t": 3.4, "x": 85.7, "y": 46 },
             { "t": 5.0, "x": 81.7, "y": 47 }
           ]
+        },
+        {
+          "id": "us-RW",
+          "keys": [
+            { "t": 0, "x": 82, "y": 45.9 },
+            { "t": 1.6, "x": 82, "y": 45.5 },
+            { "t": 2.3, "x": 82, "y": 49 },
+            { "t": 2.8, "x": 82, "y": 53 },
+            { "t": 3.4, "x": 82, "y": 54.8 },
+            { "t": 4.2, "x": 82, "y": 55.9 },
+            { "t": 5, "x": 82, "y": 57.3 }
+          ]
         }
       ]
     },
@@ -82,5 +94,6 @@
     "license": "MIT",
     "author": "fotbol",
     "keyedBy": []
-  }
+  },
+  "notes": "Our right winger is keyed out to their left-back as the ball is switched, on the path the shape gives him with everyone on their spot. With auto players running at timeline runSpeed he was still tucked in, nearest their centre-back, when the ball arrived, and took the press that is this drill's lesson (2026-10-03)."
 }

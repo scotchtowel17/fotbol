@@ -696,7 +696,9 @@ function leadIn(rng, role, formations, D, { receive, passerFrom, short = 0 }) {
     const len = rng.range(D.carrySpeed[0], D.carrySpeed[1]) * hold;
     A0 = clampIn({ x: A.x - dir.x * len, y: A.y - dir.y * len }, D.edge);
   }
-  const params = rng.chance(D.noPressChance) ? { autoPress: false } : {};
+  // runSpeed 0: the lead-in lands on the very scene that was rated (the ball reaches the learner at the freeze, so
+  // players running to their spots would still be on the way there: timeline.js runTargets).
+  const params = { ...(rng.chance(D.noPressChance) ? { autoPress: false } : {}), runSpeed: 0 };
   const tPass = rt(hold, D);
   const passSpeed = (d) => D.passSpeed[0] + (D.passSpeed[1] - D.passSpeed[0]) * clamp((d - 6) / 24, 0, 1);
   const make = (B, tArrive, freezeAt, overrides = []) => ({

@@ -65,6 +65,16 @@ test('offside: critical only at a pass moment', () => {
   assert.equal(offside.evaluate(ctx, at(LINE + 1, 4)).critical, true);
 });
 
+test("offside: a teammate's pass about to be played (tags.nextEvent within passAhead) is judged as the pass", () => {
+  const soon = ctxFor('ipBuildUp', 'us-LW', { tags: { nextEvent: 'cross', nextEventIn: 0.5 } });
+  assert.equal(offside.evaluate(soon, at(LINE + 2, 4)).critical, true, 'the cross is half a second away');
+  assert.equal(offside.evaluate(soon, at(LINE, 4)).critical, false, 'level is still onside');
+  const later = ctxFor('ipBuildUp', 'us-LW', { tags: { nextEvent: 'cross', nextEventIn: 1.6 } });
+  assert.equal(offside.evaluate(later, at(LINE + 2, 4)).critical, false, 'too far ahead: penalised, not critical');
+  const carry = ctxFor('ipBuildUp', 'us-LW', { tags: { nextEvent: 'shot', nextEventIn: 0.3 } });
+  assert.equal(offside.evaluate(carry, at(LINE + 2, 4)).critical, false, 'not a pass');
+});
+
 test('offside: never offside in your own half, even behind a high line', () => {
   // Push every outfield opponent up to x <= 45 (their line is now in our half).
   const move = {};

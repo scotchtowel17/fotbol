@@ -76,6 +76,9 @@ const depth = (p) => DEPTH[ROLE_INFO[p.role]?.family] ?? 3;
  *   The automatic press then ranks each defender from here on `ball` (not his formation spot on the shape ball), plus
  *   pressZoneWeight per metre his formation spot ranks beyond pressZoneFree, so a defender the play has left behind is
  *   never sent to press past a teammate who is already goal-side, and one far out of his zone hands over.
+ * @param {{us?: Object<string,{x:number,y:number}>, them?: Object<string,{x:number,y:number}>}} [opts.targets]  formation targets
+ *   per team and role, used instead of teamTargets() on the shape ball (the timeline passes where the players have run
+ *   to: timeline.js runTargets); everything after them (overrides, carrier, settle, press, onside, separation) is the same
  * @param {object} [opts.params]           overrides for SCENE_DEFAULTS; params.shape (an object) overrides SHAPE_DEFAULTS
  *   of the phase shape (formation.js) for both teams
  * @returns {import('./types.js').Frame}   t = 0, tags = {}
@@ -194,7 +197,7 @@ function setup(opts) {
     const formation = team === 'us' ? formations.us : formations.them ?? formations.us;
     // A loose ball: no possession offset, but both teams take their out-of-possession shape (the
     // rules judge a loose ball as defending).
-    const targets = teamTargets(formation, team, shapeBall, { inPossession: possession === team, offset: !!attacking, shape: P.shape ?? true });
+    const targets = opts.targets?.[team] ?? teamTargets(formation, team, shapeBall, { inPossession: possession === team, offset: !!attacking, shape: P.shape ?? true });
     for (const role of ROLES) {
       const id = playerId(team, role);
       const p = overrides[id] ?? targets[role];

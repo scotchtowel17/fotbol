@@ -1,7 +1,9 @@
 // F4 Offside (IFAB Law 11). In possession, a spot in the opponent half that is nearer
 // their goal line than both the ball and the second-last opponent is an offside
-// position. Level counts as onside. Critical only at a pass moment; otherwise the
-// rule's score drops to 0 within a metre or two past the line. Its ok() text is ''
+// position. Level counts as onside. Critical only at a pass moment (the frame's event, or
+// a teammate's pass within passAhead seconds: timeline.js tags.nextEvent, so a drill frozen
+// just before the cross judges you as it is struck); otherwise the rule's score drops to 0
+// within a metre or two past the line. Its ok() text is ''
 // far behind the line: "you stayed onside" is only worth saying near it.
 // Contract: docs/ARCHITECTURE.md §5.5. Rationale: docs/RESEARCH.md §5.5, §8.1 (F4).
 
@@ -16,6 +18,7 @@ export const OFFSIDE_DEFAULTS = Object.freeze({
   exemptEvents: Object.freeze(['goal-kick', 'throw-in', 'corner']), // [S] IFAB Law 11: no offence directly from these restarts
   weightByFamily: Object.freeze({ ST: 3, W: 3, CM: 2, DM: 1, FB: 1, CB: 0.5 }), // [D] small for defenders who rarely get there
   praiseWithin: 5, // [D] only praise staying onside within this many metres of the line
+  passAhead: 1.0, // [D] s: a teammate's pass this soon (frame.tags.nextEvent / nextEventIn) is judged as played now
 });
 
 /**
@@ -37,7 +40,9 @@ const prep = perContext((ctx) => {
   if (!(w > 0)) return null;
   const line = offsideLineX(ctx);
   const by = line === ctx.lines.oppSecondLastX ? 'defender' : line === ctx.ball.x ? 'ball' : 'halfway';
-  return { D, w, line, by, pass: D.passEvents.includes(event) };
+  const tags = ctx.frame?.tags ?? {};
+  const soon = D.passEvents.includes(tags.nextEvent) && tags.nextEventIn <= D.passAhead;
+  return { D, w, line, by, pass: D.passEvents.includes(event) || soon };
 });
 
 const m = (v) => Math.max(1, Math.round(v));
