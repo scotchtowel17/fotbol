@@ -301,7 +301,8 @@ export function forwardSlot(seed, D = PASSDRILL_DEFAULTS) {
  *   the id then ends '-x-<roles>'); unlike: drills already in the set, which the new one must not look like
  *   (similarPassDrills; a skipped scene is only skipped, so the drill is the one this seed gives at that attempt, and
  *   its id ends '-a<attempt>' from the second attempt on); params: PASSDRILL_DEFAULTS overrides, params.pass:
- *   PASS_DEFAULTS overrides; trace: an array that collects { attempt, template, reason } for every rejected scene
+ *   PASS_DEFAULTS overrides; trace: an array that collects { attempt, template, reason, best? } for every rejected scene
+ *   (best: the rated best pass, { to, score, tags }, when the scene got that far: what a yield report needs to know)
  * @returns {object|null} the drill (docs/ARCHITECTURE.md §5.14), or null when no scene passed
  */
 export function generatePassDrill({ seed = 1, role, principles = [], formations, catalogue, direction = 'auto', avoid = [], unlike = [], params, trace } = {}) {
@@ -316,7 +317,11 @@ export function generatePassDrill({ seed = 1, role, principles = [], formations,
   const pictures = (unlike ?? []).map(passDrillPicture).filter(Boolean);
   const me = playerId('us', role);
   const rng = createRng(`pass|${role}|${seed}`);
-  const reject = (attempt, template, reason) => { trace?.push({ attempt, template, reason }); };
+  const reject = (attempt, template, reason, rating) => {
+    if (!trace) return;
+    const b = rating?.best;
+    trace.push({ attempt, template, reason, ...(b ? { best: { to: b.targetId, score: Math.round(b.score), tags: b.tags.map((t) => t.tag) } } : {}) });
+  };
   // What must hold of a candidate's rating before the (costlier) drill checks: a string says what does not.
   const why = (rating) => {
     const gates = passDrillGates(rating, { params: D }).problems;
@@ -355,7 +360,7 @@ export function generatePassDrill({ seed = 1, role, principles = [], formations,
       }
       const kind = template ?? variant;
       const bad = why(rating);
-      if (bad) { reject(attempt, kind, bad); continue; }
+      if (bad) { reject(attempt, kind, bad, rating); continue; }
       pick = { built, rating, kind };
       break;
     }
