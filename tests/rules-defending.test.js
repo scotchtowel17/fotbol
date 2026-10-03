@@ -19,6 +19,7 @@ import crossDefence from '../js/engine/rules/cross-defence.js';
 import dropNarrow from '../js/engine/rules/drop-narrow.js';
 import lineHeight from '../js/engine/rules/line-height.js';
 import concentration from '../js/engine/rules/concentration.js';
+import blockHeight from '../js/engine/rules/block-height.js';
 import { outnumbered } from '../js/engine/context.js';
 import { band2, perContext, paramsFor, nameOf, kidNameOf, segDist, whole } from '../js/engine/rules/_util.js';
 
@@ -955,4 +956,27 @@ test('concentration (U7): ball in our third: far winger in off the wing, far ful
   for (const v of [ev(concentration, w, 30, 64).vars, ev(concentration, fb, 14, 62).vars, ev(concentration, dm, 36, 26).vars]) checkText(concentration, v);
   assert.equal(concentration.weight(ctxOf(BOX, 'us-RW', { ...LEFT, ball: { x: 50, y: 8 }, move: { 'them-RW': { x: 50.5, y: 8.5 } } }, { x: 50, y: 50 })), 0, 'the ball in midfield');
   assert.equal(concentration.weight(ctxOf(BOX, 'us-LW', LEFT, { x: 30, y: 14 })), 0, 'the ball-side winger is not far side');
+});
+
+test('block-height (U6): in a mid block the front players stay level with the ball or near halfway, not high up the pitch', () => {
+  // The mid-block fixture: their #8 carries at x 58.5; our back line at x 28-30 (a mid block).
+  const ctx = mid('us-LW');
+  assert.equal(ctx.blockHeight, 'mid');
+  assert.ok(blockHeight.weight(ctx) > 0);
+  assert.equal(ev(blockHeight, ctx, 58, 20).s, 1, 'level with the ball');
+  const high = ev(blockHeight, ctx, 66, 20);
+  assert.ok(high.s < 0.2 && high.vars.issue === 'high', `6 m past the ball ${high.s}`);
+  checkText(blockHeight, high.vars);
+  checkText(blockHeight, ev(blockHeight, ctx, 58, 20).vars);
+  assert.equal(blockHeight.weight(mid('us-RCM')), 0, 'the first defender presses');
+  assert.equal(blockHeight.weight(mid('us-LCB')), 0, 'the back line is the line rules\'');
+  // A high block presses up the pitch: the #9 and the wingers do not drop off the ball; the #8s are other rules'.
+  const HIGH = { move: { 'us-LCB': { x: 48, y: 29 }, 'us-RCB': { x: 48, y: 40 }, 'us-LB': { x: 49, y: 17 }, 'us-RB': { x: 50, y: 52 } } };
+  const high2 = mid('us-LW', HIGH);
+  assert.equal(high2.blockHeight, 'high');
+  assert.equal(ev(blockHeight, high2, 56, 20).s, 1, '2.5 m goal-side of the ball');
+  const dropped = ev(blockHeight, high2, 44, 20);
+  assert.ok(dropped.s < 0.2 && dropped.vars.issue === 'deep', `dropped off ${dropped.s}`);
+  checkText(blockHeight, dropped.vars);
+  assert.equal(blockHeight.weight(mid('us-LCM', HIGH)), 0);
 });

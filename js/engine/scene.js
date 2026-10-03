@@ -56,6 +56,11 @@ export const SCENE_DEFAULTS = Object.freeze({
   halfSpaceFrom: 35, // [D] ...from this far up the pitch (the team's own frame; fading in over 5 m)...
   halfSpaceAhead: 3, // [D] ...at least this far ahead of the ball and short of their back line
   wingFade: 3, // [D] a player or the ball counts as in the wing lane fully this far inside its edge, fading to 0 at the edge (= CONTEXT_DEFAULTS.wingFade)
+  salida: true, // B9/B5 (params only): the #6 dropped between centre-backs who have split wide sends the full-backs high...
+  salidaSplit: 18, // [D] ...centre-backs at least this far apart (fading in over salidaFade)...
+  salidaFade: 4, // [D]
+  salidaLevel: 2, // [D] ...the #6 no more than this ahead of the deeper centre-back (fading out over 2 m more), between them...
+  salidaPush: 14, // [D] ...and each full-back at least this far ahead of the deeper centre-back (m2-10: past their winger, short of their midfield)
   halfSpaceInset: 4, // [D] B6/P1: the half-space spot is this far inside the wing lane's edge (y 17.84 / 50.16)
 });
 
@@ -239,7 +244,10 @@ function setup(opts) {
 
   // 2a. Flank sharing and the half-space (B6, P1) for the team in possession: the formation table knows nothing of
   // an authored overlap or of the full-back on the ball. Part of every auto player's spot (the learner's too).
-  if (attacking) shareFlanks(players, attacking, byId, overridden, carrier, ball, P);
+  if (attacking) {
+    shareFlanks(players, attacking, byId, overridden, carrier, ball, P);
+    if (P.salida) salida(players, attacking, byId, overridden, carrier, P);
+  }
 
   // 2b. Goal-side settle (D5, R4): the formation table knows nothing of the opponents, so out of
   // possession an #8 standing on the wrong side of an opponent near him, or a winger of the
@@ -328,6 +336,34 @@ function shareFlanks(players, team, byId, overridden, carrier, ball, P) {
         cm.y = lerp(cm.y, hs, k);
       }
     }
+  }
+}
+
+/**
+ * B9/B5 in build-up (team `team` in possession): when the #6 has dropped between centre-backs who have split wide (at
+ * least salidaSplit apart, the #6 between them and no more than salidaLevel ahead of the deeper one), a back three
+ * holds the ball and the auto-placed full-backs push up, at least salidaPush ahead of the deeper centre-back, keeping
+ * their width (a centre-back carrying the ball out past the #6 is not a back three). Layer A keeps them flat with the centre-backs (its build-up depth floor). Every weight fades. Mutates players.
+ */
+function salida(players, team, byId, overridden, carrier, P) {
+  const ids = team === 'us' ? ['us-LCB', 'us-RCB', 'us-DM', 'us-LB', 'us-RB'] : ['them-LCB', 'them-RCB', 'them-DM', 'them-LB', 'them-RB'];
+  const [l, r, dm] = ids.slice(0, 3).map((id) => byId.get(id));
+  if (!l || !r || !dm) return;
+  const own = (x) => (team === 'us' ? x : LENGTH - x); // up the pitch, in the team's own frame
+  const lo = Math.min(l.y, r.y), hi = Math.max(l.y, r.y);
+  const split = clamp((hi - lo - P.salidaSplit) / P.salidaFade + 1, 0, 1);
+  // Level with the deeper centre-back: a centre-back carrying the ball out past the #6 is not a back three.
+  const deep = Math.min(own(l.x), own(r.x));
+  const level = clamp((deep + P.salidaLevel + 2 - own(dm.x)) / 2, 0, 1);
+  const between = clamp((Math.min(dm.y - lo, hi - dm.y)) / 2, 0, 1);
+  const k = split * level * between;
+  if (!(k > 0)) return;
+  const want = deep + P.salidaPush;
+  for (const id of ids.slice(3)) {
+    const fb = byId.get(id);
+    if (!fb || overridden.has(id) || fb === carrier || own(fb.x) >= want) continue;
+    const x = lerp(own(fb.x), want, k);
+    fb.x = team === 'us' ? x : LENGTH - x;
   }
 }
 

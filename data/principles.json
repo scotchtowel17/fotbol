@@ -2122,7 +2122,9 @@
       ],
       "level": 2,
       "release": "v1",
-      "ruleIds": [],
+      "ruleIds": [
+        "block-height"
+      ],
       "summary": {
         "standard": "A team defends in a high, mid or low block depending on where it sets its lines, and each block has its own heights for the defence and the front line.",
         "kid": "We defend high up, in the middle, or low near our box."

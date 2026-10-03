@@ -24,11 +24,13 @@ import dropNarrow from './drop-narrow.js';
 import lineHeight from './line-height.js';
 import concentration from './concentration.js';
 import unity from './unity.js';
+import blockHeight from './block-height.js';
 
 export const RULES = Object.freeze([
   offside, keepsOnside, levelLine, goalSide, press, cover, tuck, compact, screen,
   width, pin, laneOpen, supportDistance, occupancy, betweenLines, spacing, boxFill, recovery,
   halfSpace, flankShare, crossDefence, dropNarrow, lineHeight, concentration, unity,
+  blockHeight,
 ]);
 
 export const RULES_BY_ID = Object.freeze(Object.fromEntries(RULES.map((r) => [r.id, r])));

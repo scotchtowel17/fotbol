@@ -89,6 +89,9 @@ export function outnumbered(defending, ball, players, carrierId = null, P = CONT
   return clamp(att - def + 1, 0, 1);
 }
 
+/** The block a scene's phase tag names (scenario.js PHASES), for a frame that shows no back line to measure it from. */
+const PHASE_BLOCK = Object.freeze({ high_press: 'high', counter_press: 'high', mid_block: 'mid', low_block: 'low' });
+
 const OPP_BACK = BACK_LINE;
 const OPP_MID = MIDFIELD;
 
@@ -144,7 +147,9 @@ export function buildContext(frame, { learnerId, base, params = {} }) {
   // Block height of the team out of possession, measured in its own frame. A loose ball counts as us defending.
   const defendingUs = moment !== 'in_possession';
   const backX = defendingUs ? ourBackLineX : LENGTH - oppBackLineX;
-  const blockHeight = backX >= P.blockHigh ? 'high' : backX < P.blockLow ? 'low' : 'mid';
+  // A smaller game (cast.js) may show none of that back line: the block the scene is tagged with (its phase) then, else mid.
+  const blockHeight = !Number.isFinite(backX) ? PHASE_BLOCK[frame.tags?.phase] ?? 'mid'
+    : backX >= P.blockHigh ? 'high' : backX < P.blockLow ? 'low' : 'mid';
 
   // Duties.
   const outfieldUs = usAtBase.filter((p) => p.role !== 'GK');

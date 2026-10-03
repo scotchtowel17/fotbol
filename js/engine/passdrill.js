@@ -119,11 +119,12 @@ const PASS_WORDS = Object.freeze({
 /**
  * Scene params every pass drill plays with. runSpeed 0: the lead-in lands on the very scene that was rated (the ball
  * reaches the learner at the freeze, so players running to their spots would still be on the way: timeline.js
- * runTargets). halfSpace false: the learner (a full-back out wide included) is on the ball at the freeze, and the
- * options are the shape's (scene.js shareFlanks' P1 step moves the ball-side #8 for a "Find your spot" lesson; here it
- * would change which teammates the small games can show).
+ * runTargets). halfSpace and salida false: the learner is on the ball at the freeze and the options are the table
+ * shape's (scene.js moves the ball-side #8 into the half-space, and the full-backs up when the #6 drops between the
+ * centre-backs, for "Find your spot" lessons; here they would change which receivers the generated sets and small
+ * games are measured on).
  */
-const SCENE_PARAMS = Object.freeze({ runSpeed: 0, halfSpace: false });
+const SCENE_PARAMS = Object.freeze({ runSpeed: 0, halfSpace: false, salida: false });
 
 // ---------------------------------------------------------------- playing and checking a drill
 

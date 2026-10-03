@@ -14,8 +14,8 @@ export const FLANK_SHARE_DEFAULTS = Object.freeze({
   weight: 2.5, // [D] the B6 lesson
   inside: 1.5, // [D] metres inside the wing lane's edge for full credit
   soft: 3, // [D] credit falls to 0 this far short of that (1.5 m out in the wing lane)
-  reach: 12, // [D] a full-back judged against a winger in the wing lane within this many metres along the pitch...
-  fade: 4, // [D] ...fading out over this many more
+  reach: 10, // [S] B6: a full-back judged against a winger in the wing lane within about 10 m along the pitch...
+  fade: 2, // [D] ...fading out over this many more
   halfSpaceInset: 4, // [D] the spot inside: this far inside the wing lane's edge (SCENE_DEFAULTS.halfSpaceInset)
 });
 

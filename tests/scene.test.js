@@ -375,6 +375,28 @@ test('half-space (P1): our full-back on the ball out wide from the middle third 
   }
 });
 
+test('build-up (B9/B5): the #6 dropped between centre-backs who have split wide sends the full-backs high, continuously', () => {
+  const ball = { x: 20, y: 34 };
+  const ov = (dmX, split = 26) => ({ 'us-LCB': { x: 18, y: 34 - split / 2 }, 'us-RCB': { x: 18, y: 34 + split / 2 }, 'us-DM': { x: dmX, y: 34 } });
+  const at = (o, params) => byId(autoFrame({ formations, ball, possession: 'us', carrierId: 'us-DM', overrides: o, params }));
+  const P = SCENE_DEFAULTS;
+  const f = at(ov(19.5));
+  for (const r of ['LB', 'RB']) assert.ok(f[`us-${r}`].x >= 18 + P.salidaPush - 1e-9, `${r} at x ${f[`us-${r}`].x.toFixed(1)}`);
+  const off = at(ov(19.5), { salida: false });
+  assert.ok(off['us-LB'].x < 18 + P.salidaPush - 2, `the table leaves the full-back flat (${off['us-LB'].x.toFixed(1)})`);
+  assert.equal(f['us-LB'].y, off['us-LB'].y, 'only the height changes');
+  // Centre-backs close together, or the #6 well ahead of them (a centre-back carrying out past him): no back three.
+  assert.deepEqual(at(ov(19.5, 12))['us-LB'], at(ov(19.5, 12), { salida: false })['us-LB']);
+  assert.deepEqual(at(ov(30))['us-LB'], at(ov(30), { salida: false })['us-LB']);
+  // Continuous as the #6 drops into the line.
+  let prev = null;
+  for (let x = 26; x >= 18; x -= 0.1) {
+    const p = at(ov(x))['us-LB'];
+    if (prev) assert.ok(dist(p, prev) < 1, `jump of ${dist(p, prev).toFixed(2)} m at x ${x.toFixed(1)}`);
+    prev = p;
+  }
+});
+
 test("possession 'none': no carrier, no press, no possession offset (out-of-possession shape for both)", () => {
   const ball = { x: 52, y: 34 };
   const f = autoFrame({ formations, ball, possession: 'none' });
