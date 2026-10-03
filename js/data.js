@@ -84,15 +84,26 @@ export function normalizeScenarioIndex(raw) {
 }
 
 /**
- * Scenario access with a per-id promise cache. load() rejects (and forgets the id) on failure.
- * @param {object[]} index normalised ScenarioMeta[]
- * @param {(path: string) => Promise<any>} getJSON rejects on failure
+ * The authored pass drills of the index (its `passes` list, scripts/build-index.mjs) → ScenarioMeta[] with kind 'pass'.
+ * They are kept apart from `scenarios`, so the coach's menus and the spot-drill readers never see one; the Road's pass
+ * sets read them (js/ui/player/road.js).
  */
-export function createScenarioStore(index, getJSON) {
-  const byId = new Map(index.map((m) => [m.id, m]));
+export function normalizePassIndex(raw) {
+  return normalizeScenarioIndex(Array.isArray(raw?.passes) ? raw.passes : []).map((m) => ({ ...m, kind: 'pass' }));
+}
+
+/**
+ * Scenario access with a per-id promise cache. load() rejects (and forgets the id) on failure.
+ * @param {object[]} index normalised ScenarioMeta[] (spot drills)
+ * @param {(path: string) => Promise<any>} getJSON rejects on failure
+ * @param {object[]} [passIndex] normalizePassIndex(): authored pass drills, loadable by id like the scenarios
+ */
+export function createScenarioStore(index, getJSON, passIndex = []) {
+  const byId = new Map([...passIndex, ...index].map((m) => [m.id, m]));
   const cache = new Map();
   return {
     index,
+    passIndex,
     meta: (id) => byId.get(id) ?? null,
     load(id) {
       if (!cache.has(id)) {
@@ -151,6 +162,6 @@ export async function loadAppData({ fetchImpl = globalThis.fetch } = {}) {
     tutorial,
     resources,
     formations: buildFormations(formationTable),
-    scenarios: createScenarioStore(normalizeScenarioIndex(scenarioIndex), (path) => fetchJSONStrict(path, fetchImpl)),
+    scenarios: createScenarioStore(normalizeScenarioIndex(scenarioIndex), (path) => fetchJSONStrict(path, fetchImpl), normalizePassIndex(scenarioIndex)),
   };
 }

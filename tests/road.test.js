@@ -392,6 +392,28 @@ test('road: a pass set is generated on the node\'s principles (authored pass dri
   assert.equal(authored.length, 5);
 });
 
+test('road: an authored pass drill goes to its position (mirrored to your side), to your group as a borrowed rep, never further', async () => {
+  const drill = await loadJSON('data/scenarios/pa8-lb-01.json');
+  const idx = [...index, { id: 'pa8-lb-01', kind: 'pass', principles: ['PA8', 'PA4'], role: 'LB' }];
+  const ld = async (id) => (id === 'pa8-lb-01' ? JSON.parse(JSON.stringify(drill)) : load(id));
+  const setFor = (group, role) => R.buildSet('free-side', { road, profile: { ...R.pickGroup(null, group), role }, index: idx, load: ld, seed: 3, generators: { pass: passStub() } });
+  const authored = (reps) => reps.filter((r) => String(r.drill?.id).startsWith('pa8-lb-01'));
+  const lb = authored(await setFor('DEF', 'LB'));
+  assert.equal(lb.length, 1);
+  assert.equal(lb[0].drill.learner.role, 'LB');
+  assert.equal(lb[0].borrowed, undefined);
+  const rb = authored(await setFor('DEF', 'RB'));
+  assert.equal(rb.length, 1);
+  assert.equal(rb[0].drill.learner.role, 'RB', 'mirrored to the right-back');
+  assert.equal(rb[0].drill.carrierId, 'us-RB');
+  assert.equal(rb[0].drill.answer.best, 'us-RW@space', 'the keyed answer is mirrored too');
+  assert.equal(rb[0].borrowed, undefined);
+  const lcb = authored(await setFor('DEF', 'LCB'));
+  assert.equal(lcb.length, 1);
+  assert.equal(lcb[0].borrowed, true, 'a centre-back plays the left-back\'s drill as a borrowed rep');
+  assert.deepEqual(authored(await setFor('STRIKER', 'ST')), [], 'a striker is never handed a full-back\'s drill');
+});
+
 test('road: the generators get the catalogue; a pass set asks 3 of 5 for a forward best, from consecutive seeds', async () => {
   const spotCalls = [], passCalls = [];
   const catalogue = { list: principlesFile.principles, byId: Object.fromEntries(principlesFile.principles.map((p) => [p.id, p])) };

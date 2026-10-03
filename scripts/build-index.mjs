@@ -9,7 +9,11 @@
 // any invalid file or a scenario id used twice stops the build (exit 1, nothing written). The index
 // is sorted by module, then file name, and keeps only what menus need before a scenario is loaded:
 //   { version: 1, generated: 'by scripts/build-index.mjs',
-//     scenarios: [ { id, file, title, module, moment, phase, principles, role, difficulty } ] }
+//     scenarios: [ { id, file, title, module, moment, phase, principles, role, difficulty } ],
+//     passes: [ { id, file, title, principles, role, difficulty } ] }
+// Authored pass drills (kind 'pass': js/engine/passdrill.js) are validated with validatePassDrill() and listed apart,
+// under `passes` (written only when there is one), so every reader of `scenarios` (the coach's menus, Player mode's
+// "Find your spot" sets) keeps seeing spot drills only; the Road's pass sets read `passes` (js/ui/player/road.js).
 // Warnings (a file name that differs from its id, a scenario its module does not list in
 // data/curriculum.json) are printed but do not fail the build.
 //
@@ -17,6 +21,7 @@
 // the browser (tests/build-index.test.js); only run() touches the file system, via dynamic imports.
 
 import { validateScenario } from '../js/engine/scenario.js';
+import { validatePassDrill } from '../js/engine/passdrill.js';
 
 export const INDEX_VERSION = 1;
 export const INDEX_GENERATED = 'by scripts/build-index.mjs';
@@ -63,6 +68,19 @@ export function indexEntry(scenario, file) {
   };
 }
 
+/** One `passes` row for an authored pass drill read from `file`. */
+export function passEntry(drill, file) {
+  const s = isObj(drill) ? drill : {};
+  return {
+    id: s.id ?? null,
+    file,
+    title: s.title ?? null,
+    principles: Array.isArray(s.principles) ? [...s.principles] : [],
+    role: s.learner?.role ?? null,
+    difficulty: Number.isFinite(s.difficulty) ? s.difficulty : 0,
+  };
+}
+
 /** Sort rows by module (natural order; rows without a module last), then file name. */
 export function sortEntries(rows) {
   return [...rows].sort((a, b) => {
@@ -85,11 +103,12 @@ export function sortEntries(rows) {
  *   index lists the valid scenarios only; the build is good when errors is empty
  */
 export function buildIndex(items, { principles, curriculum } = {}) {
-  const errors = [], warnings = [], rows = [];
+  const errors = [], warnings = [], rows = [], passes = [];
   const byId = new Map(); // id → first file
   for (const { file, scenario, error } of items) {
     if (error) { errors.push(`${file}: ${error}`); continue; }
-    const problems = validateScenario(scenario, { principles });
+    const pass = scenario?.kind === 'pass';
+    const problems = pass ? validatePassDrill(scenario, { principles }) : validateScenario(scenario, { principles });
     if (problems.length) {
       for (const p of problems) errors.push(`${file}: ${p}`);
       continue;
@@ -100,7 +119,8 @@ export function buildIndex(items, { principles, curriculum } = {}) {
     }
     byId.set(scenario.id, file);
     if (file !== `${scenario.id}.json`) warnings.push(`${file}: the file name does not match its id "${scenario.id}" (expected ${scenario.id}.json)`);
-    rows.push(indexEntry(scenario, file));
+    if (pass) passes.push(passEntry(scenario, file));
+    else rows.push(indexEntry(scenario, file));
   }
 
   const modules = Array.isArray(curriculum?.modules) ? curriculum.modules : null;
@@ -119,7 +139,9 @@ export function buildIndex(items, { principles, curriculum } = {}) {
     }
   }
 
-  return { index: { version: INDEX_VERSION, generated: INDEX_GENERATED, scenarios: sortEntries(rows) }, errors, warnings };
+  const index = { version: INDEX_VERSION, generated: INDEX_GENERATED, scenarios: sortEntries(rows) };
+  if (passes.length) index.passes = [...passes].sort((a, b) => naturalCompare(a.file, b.file));
+  return { index, errors, warnings };
 }
 
 /** One-line JSON with a space after ':' and ',' (arrays stay tight: ["D3", "U4"]). */
@@ -134,9 +156,9 @@ function inline(v) {
 
 /** The index as file text: pretty at the top, one scenario per line (small diffs), trailing newline. */
 export function serializeIndex(index) {
-  const rows = index.scenarios ?? [];
-  const body = rows.length ? `[\n${rows.map((r) => `    ${inline(r)}`).join(',\n')}\n  ]` : '[]';
-  return `{\n  "version": ${JSON.stringify(index.version)},\n  "generated": ${JSON.stringify(index.generated)},\n  "scenarios": ${body}\n}\n`;
+  const list = (rows) => (rows.length ? `[\n${rows.map((r) => `    ${inline(r)}`).join(',\n')}\n  ]` : '[]');
+  const passes = index.passes?.length ? `,\n  "passes": ${list(index.passes)}` : '';
+  return `{\n  "version": ${JSON.stringify(index.version)},\n  "generated": ${JSON.stringify(index.generated)},\n  "scenarios": ${list(index.scenarios ?? [])}${passes}\n}\n`;
 }
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -161,6 +183,12 @@ export function diffIndex(current, expected) {
   }
   for (const r of cur) if (!expById.has(r?.id)) out.push(`no longer a valid scenario file: ${r?.id ?? JSON.stringify(r)}`);
   if (!out.length && !same(cur.map((r) => r.id), expected.scenarios.map((r) => r.id))) out.push('the order differs (module, then file name)');
+  const curPass = Array.isArray(current.passes) ? current.passes : [];
+  const expPass = expected.passes ?? [];
+  if (!same(curPass, expPass)) {
+    const ids = (rows) => rows.map((r) => r?.id).join(', ') || 'none';
+    out.push(`passes (authored pass drills) differ: listed ${ids(curPass)}; expected ${ids(expPass)}${same(curPass.map((r) => r?.id), expPass.map((r) => r.id)) ? ' (a row is out of date)' : ''}`);
+  }
   return out;
 }
 
@@ -198,7 +226,8 @@ export async function run({ dir, principles, curriculum, check = false, log = co
 
   const target = new URL(INDEX_FILE, folder);
   const text = serializeIndex(index);
-  const counts = Object.entries(Object.groupBy?.(index.scenarios, (r) => r.module ?? 'no module') ?? {}).map(([m, rs]) => `${m}: ${rs.length}`).join(', ');
+  const counts = [...Object.entries(Object.groupBy?.(index.scenarios, (r) => r.module ?? 'no module') ?? {}).map(([m, rs]) => `${m}: ${rs.length}`),
+    ...(index.passes?.length ? [`pass drills: ${index.passes.length}`] : [])].join(', ');
   if (check) {
     let current = null;
     try { current = await readJSON(target); } catch { /* missing or broken: reported below */ }

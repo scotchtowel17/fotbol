@@ -1,0 +1,109 @@
+{
+  "id": "pa8-lb-02",
+  "kind": "pass",
+  "title": "Lead your #8 into the channel",
+  "titleKid": "Lead the Runner",
+  "brief": "You get the ball deep, near the touchline. The pass to your #8's feet is blocked.",
+  "briefKid": "The ball is coming to you. Where can your midfielder run?",
+  "question": "Where does your pass go?",
+  "questionKid": "Where do you pass?",
+  "takeaway": {
+    "standard": "When the pass to a teammate's feet is blocked, play it into the space ahead of them if they will get there first.",
+    "kid": "Pass into the space in front of your midfielder, where they can run."
+  },
+  "module": "pass",
+  "moment": "in_possession",
+  "phase": "build_up",
+  "principles": [
+    "PA8",
+    "PA4"
+  ],
+  "learner": {
+    "role": "LB"
+  },
+  "carrierId": "us-LB",
+  "carrier": "us-LB",
+  "timeline": {
+    "duration": 2.756,
+    "freezeAt": 2.756,
+    "ball": [
+      {
+        "t": 0,
+        "x": 24.19,
+        "y": 24.58
+      },
+      {
+        "t": 0.922,
+        "x": 24.19,
+        "y": 24.58,
+        "event": "pass"
+      },
+      {
+        "t": 2.28,
+        "x": 23.45,
+        "y": 3
+      }
+    ],
+    "possession": [
+      {
+        "t": 0,
+        "team": "us"
+      }
+    ],
+    "carrier": [
+      {
+        "t": 0,
+        "id": "us-DM"
+      },
+      {
+        "t": 0.922,
+        "id": null
+      },
+      {
+        "t": 2.28,
+        "id": "us-LB"
+      }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "them-RCM",
+          "keys": [
+            {
+              "t": 0,
+              "x": 38,
+              "y": 19.27
+            },
+            {
+              "t": 2.756,
+              "x": 48.38,
+              "y": 3.94
+            }
+          ]
+        }
+      ]
+    },
+    "tags": []
+  },
+  "answer": {
+    "mode": "pass",
+    "best": "us-LCM@space",
+    "accept": []
+  },
+  "misconceptions": [],
+  "difficulty": 0,
+  "params": {
+    "runSpeed": 0,
+    "halfSpace": false,
+    "salida": false
+  },
+  "notes": "A full-back's ball into space (PA8), which the pass generator never makes for full-backs (PASS_YIELD). Their midfielder stands in the lane to our #8's feet (PA4), but the space ahead of the #8 is free and the #8 gets there first. The keeper is the safe-but-slow decoy (PA2), and every pass inside goes across our own goal (PA10).",
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": [],
+    "from": "generatePassDrill seed 9 for LB, then their defenders moved by hand (tests: scripts/check-scenarios.mjs)"
+  }
+}

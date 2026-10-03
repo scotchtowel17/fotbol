@@ -38,5 +38,9 @@
     { "id": "m3-10-u3-lcb", "file": "m3-10-u3-lcb.json", "title": "Drop when the ball is free", "module": "M3", "moment": "out_of_possession", "phase": "mid_block", "principles": ["U3", "U4", "R1"], "role": "LCB", "difficulty": 1 },
     { "id": "m3-11-r1-rcb", "file": "m3-11-r1-rcb.json", "title": "One steps, one covers", "module": "M3", "moment": "out_of_possession", "phase": "mid_block", "principles": ["R1", "D3", "U4"], "role": "RCB", "difficulty": 1 },
     { "id": "m3-12-u7-dm", "file": "m3-12-u7-dm.json", "title": "Protect the edge of the box", "module": "M3", "moment": "out_of_possession", "phase": "low_block", "principles": ["U7", "R3", "U6"], "role": "DM", "difficulty": 1 }
+  ],
+  "passes": [
+    { "id": "pa8-lb-01", "file": "pa8-lb-01.json", "title": "Play it in behind the full-back", "principles": ["PA8", "PA4"], "role": "LB", "difficulty": 0 },
+    { "id": "pa8-lb-02", "file": "pa8-lb-02.json", "title": "Lead your #8 into the channel", "principles": ["PA8", "PA4"], "role": "LB", "difficulty": 0 }
   ]
 }

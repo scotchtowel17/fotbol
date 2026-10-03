@@ -4,7 +4,7 @@ import {
   resolveRoute, mergeSettings, effectiveWording, routeUrl, PLAYER_ROUTES, SETTINGS_COPY, navigateTo,
 } from '../js/main.js';
 import {
-  normalizePrinciples, normalizeScenarioIndex, createScenarioStore, buildFormations, loadAppData, DATA_PATHS,
+  normalizePrinciples, normalizeScenarioIndex, normalizePassIndex, createScenarioStore, buildFormations, loadAppData, DATA_PATHS,
 } from '../js/data.js';
 
 // ---- router
@@ -214,6 +214,18 @@ test('data: scenario index accepts file names, ids and objects; dedupes; skips j
   assert.equal(idx[2].title, 'Tuck in', 'metadata is kept');
   assert.equal(idx[3].file, 'nested/x-001.json');
   assert.deepEqual(normalizeScenarioIndex(undefined), []);
+});
+
+test('data: authored pass drills (the index\'s passes) stay out of the scenario list but load by id', async () => {
+  const raw = { scenarios: [{ id: 'm1-01', file: 'm1-01.json' }], passes: [{ id: 'pa8-lb-01', file: 'pa8-lb-01.json', principles: ['PA8'], role: 'LB' }] };
+  const passes = normalizePassIndex(raw);
+  assert.deepEqual(passes.map((m) => [m.id, m.kind, m.role]), [['pa8-lb-01', 'pass', 'LB']]);
+  assert.deepEqual(normalizePassIndex({ scenarios: [] }), []);
+  const store = createScenarioStore(normalizeScenarioIndex(raw), async (path) => ({ path }), passes);
+  assert.deepEqual(store.index.map((m) => m.id), ['m1-01'], 'the coach\'s menus never list a pass drill');
+  assert.deepEqual(store.passIndex.map((m) => m.id), ['pa8-lb-01']);
+  assert.deepEqual(await store.load('pa8-lb-01'), { path: `${DATA_PATHS.scenarioDir}pa8-lb-01.json` });
+  assert.deepEqual(createScenarioStore([], async () => ({})).passIndex, []);
 });
 
 test('data: scenario store loads by file, caches, and retries after a failure', async () => {

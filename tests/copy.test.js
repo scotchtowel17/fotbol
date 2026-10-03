@@ -315,7 +315,8 @@ function ruleItems() {
 
 async function scenarioItems() {
   const items = [], broken = [];
-  const index = (await loadJSON('data/scenarios/index.json')).scenarios;
+  const file = await loadJSON('data/scenarios/index.json');
+  const index = [...file.scenarios, ...(file.passes ?? [])]; // the authored pass drills too (Player mode only)
   for (const e of index) {
     const s = await loadJSON(`data/scenarios/${e.file}`);
     const src = `scenario ${s.id}`, group = `scenario ${s.id} (kid fields)`;
