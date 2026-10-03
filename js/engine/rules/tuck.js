@@ -52,7 +52,7 @@ const prep = perContext((ctx) => {
 
 export default {
   id: 'tuck',
-  principles: ['D4', 'U5'],
+  principles: ['D4', 'U5', 'R1', 'R2'], // R1: the centre-backs within about 12 m; R2: the far full-back tucks in
   critical: false,
   weight: (ctx) => prep(ctx)?.w ?? 0,
   evaluate(ctx, spot) {

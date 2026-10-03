@@ -105,7 +105,7 @@ export function goalSideRef(ctx) {
 
 export default {
   id: 'goal-side',
-  principles: ['D5'],
+  principles: ['D5', 'R2'], // R2: a full-back engages his winger goal-side
   critical: true,
   weight: (ctx) => (prep(ctx)?.ref ? 0 : prep(ctx)?.w ?? 0),
   evaluate(ctx, spot) {

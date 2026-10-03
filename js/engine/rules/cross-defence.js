@@ -43,7 +43,7 @@ const prep = perContext((ctx) => {
 
 export default {
   id: 'cross-defence',
-  principles: ['U8'],
+  principles: ['U8', 'R1'], // R1: the centre-backs stay central on crosses
   critical: false,
   weight: (ctx) => prep(ctx)?.w ?? 0,
   evaluate(ctx, spot) {

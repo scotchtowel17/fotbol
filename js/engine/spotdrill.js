@@ -81,6 +81,14 @@ export function spotPrinciples() {
 }
 const SPOT = spotPrinciples();
 
+/**
+ * The role principles belong to one position each (RESEARCH §8.7): their rules also judge other positions (cover
+ * judges any covering player, press any first defender), but a cover drill for a #6 is not R1. A generated drill only
+ * takes one of these for its own position.
+ */
+const ROLE_PRINCIPLES = Object.freeze({ R1: 'CB', R2: 'FB', R3: 'DM', R4: 'W', R5: 'ST' });
+const fitsRole = (p, family) => !ROLE_PRINCIPLES[p] || ROLE_PRINCIPLES[p] === family;
+
 // ---------------------------------------------------------------- names and words (never a side: drills are mirrored)
 
 const KID_POSITION = Object.freeze({ GK: 'keeper', CB: 'defender', FB: 'defender', DM: 'midfielder', CM: 'midfielder', W: 'winger', ST: 'striker' });
@@ -215,7 +223,7 @@ export function checkSpotDrill(scenario, { formations, principles, want, params,
   const frame = frameAt(s, t, { formations });
   const base = learnerBaseAt(s, t, { formations });
   const ctx = buildContext(frame, { learnerId: me, base });
-  const wanted = new Set(want ?? s.principles);
+  const wanted = new Set((want ?? s.principles).filter((p) => fitsRole(p, ROLE_INFO[s.learner.role]?.family)));
   // The gates that need no ghost first (quick: a generator's failed try stops here, before the costly ghost).
   const problems = [];
   const moment = frame.possession === 'us' ? 'in_possession' : 'out_of_possession';
@@ -318,7 +326,9 @@ export function generateSpotDrill({ seed = 1, role, principles = [], formations,
   if (!formations?.us) throw new TypeError('generateSpotDrill: formations.us is required');
   if (!LEARNABLE_ROLES.includes(role)) throw new TypeError(`generateSpotDrill: role ${role} is not a learnable role`);
   const S = { ...SPOT_DEFAULTS, ...params };
+  const family = ROLE_INFO[role].family;
   const asked = (principles.length ? principles.filter((p) => SPOT[p]) : Object.keys(SPOT))
+    .filter((p) => fitsRole(p, family)) // R1-R5 only for their own position
     // Ideas this position never gets a drill on (canGenerateSpot) are left out at once, unless asked to try (fastFail false).
     .filter((p) => !S.fastFail || canGenerateSpot(role, [p]));
   if (!asked.length) return null; // no idea asked has a rule that judges this position: the engine cannot key such a drill
@@ -587,10 +597,14 @@ export const SPOT_YIELD = Object.freeze({
   // which layer A never does and a generated event never scripts.
   B6: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0, W: 0, ST: 0 }),
   // By construction, not measured: the recovery rule judges only after we lose the ball (or in a recovery phase), and a
-  // generated event never changes possession.
+  // generated event never changes possession (R4's width half is measured below).
   T3: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0, W: 0, ST: 0 }),
-  R4: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0, W: 0, ST: 0 }),
+  R4: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0, W: 0.63, ST: 0 }), // width in possession (the recovery half never: no turnover)
   T2: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0, W: 0, ST: 0 }), // the press rule's delay and drop-narrow judge only while we recover
+  // The role principles: measured for their own position (fitsRole leaves the others out).
+  R1: Object.freeze({ CB: 1, FB: 0, DM: 0, CM: 0, W: 0, ST: 0 }),
+  R2: Object.freeze({ CB: 0, FB: 1, DM: 0, CM: 0, W: 0, ST: 0 }),
+  R5: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0, W: 0, ST: 1 }),
 });
 
 /**
@@ -606,7 +620,7 @@ export function canGenerateSpot(roleOrFamily, principles = [], { min = 0.01 } = 
   const fam = ROLE_INFO[roleOrFamily]?.family ?? roleOrFamily;
   const list = typeof principles === 'string' ? [principles] : principles ?? [];
   if (!list.length) return true;
-  return list.some((p) => SPOT[p] && (SPOT_YIELD[p]?.[fam] ?? 1) >= min);
+  return list.some((p) => SPOT[p] && fitsRole(p, fam) && (SPOT_YIELD[p]?.[fam] ?? 1) >= min);
 }
 
 /** The ids of the rule-backed principles (a copy), and how each can be generated: { rules, moments: ['us'|'them'] }. */

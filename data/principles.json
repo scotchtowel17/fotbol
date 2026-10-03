@@ -2252,7 +2252,12 @@
       ],
       "level": 1,
       "release": "v1",
-      "ruleIds": [],
+      "ruleIds": [
+        "level-line",
+        "cover",
+        "tuck",
+        "cross-defence"
+      ],
       "summary": {
         "standard": "The two centre-backs work as a pair: in possession they split wide to build, and out of possession one sets the line while the other covers, never too far apart.",
         "kid": "Centre-backs: one goes to the ball, the other backs them up."
@@ -2292,7 +2297,11 @@
       ],
       "level": 1,
       "release": "v1",
-      "ruleIds": [],
+      "ruleIds": [
+        "goal-side",
+        "press",
+        "tuck"
+      ],
       "summary": {
         "standard": "With the ball on your side, engage the winger and show them outside with your centre-back covering; with the ball on the far side, tuck in toward your centre-back and stay level.",
         "kid": "Ball on the far side? Come in beside your centre-back."
@@ -2370,6 +2379,7 @@
       "level": 1,
       "release": "v1",
       "ruleIds": [
+        "width",
         "recovery"
       ],
       "summary": {
@@ -2407,7 +2417,11 @@
       ],
       "level": 1,
       "release": "v1",
-      "ruleIds": [],
+      "ruleIds": [
+        "press",
+        "pin",
+        "box-fill"
+      ],
       "summary": {
         "standard": "In possession, play on the last defender's shoulder; when pressing, lead the press and block the pass between their centre-backs; on crosses, attack the near post or the penalty spot.",
         "kid": "Stay on their last defender, chase first, and attack crosses in the box."

@@ -24,7 +24,7 @@ const prep = perContext((ctx) => {
 
 export default {
   id: 'level-line',
-  principles: ['U4'],
+  principles: ['U4', 'R1'], // R1: the centre-back nearest the ball sets the line
   critical: false,
   weight: (ctx) => prep(ctx)?.w ?? 0,
   evaluate(ctx, spot) {

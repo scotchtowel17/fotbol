@@ -31,11 +31,11 @@ const byId = Object.fromEntries(principles.map((p) => [p.id, p]));
 
 /** The 17 v1 engine rules and the principles each checks (RESEARCH 5.5, "Section 8 ref" column). */
 const RULE_REFS = {
-  offside: ['F4'], 'keeps-onside': ['U4'], 'level-line': ['U4'], 'goal-side': ['D5'], press: ['D1', 'D2', 'T2'],
-  cover: ['D3'], tuck: ['D4', 'U5'], compact: ['U1', 'U2'], screen: ['R3'], width: ['B1'], pin: ['B2'],
+  offside: ['F4'], 'keeps-onside': ['U4'], 'level-line': ['U4', 'R1'], 'goal-side': ['D5', 'R2'], press: ['D1', 'D2', 'T2', 'R2', 'R5'],
+  cover: ['D3', 'R1'], tuck: ['D4', 'U5', 'R1', 'R2'], compact: ['U1', 'U2'], screen: ['R3'], width: ['B1', 'R4'], pin: ['B2', 'R5'],
   'lane-open': ['B3'], 'support-distance': ['B3', 'B4'], occupancy: ['B5'], 'between-lines': ['P2'], spacing: ['F8'],
-  'box-fill': ['P10'], recovery: ['T3', 'R4'], 'half-space': ['P1'], 'flank-share': ['B6'],
-  'cross-defence': ['U8'], 'drop-narrow': ['T2'], 'line-height': ['U3'], concentration: ['U7'], unity: ['B12'],
+  'box-fill': ['P10', 'R5'], recovery: ['T3', 'R4'], 'half-space': ['P1'], 'flank-share': ['B6'],
+  'cross-defence': ['U8', 'R1'], 'drop-narrow': ['T2'], 'line-height': ['U3'], concentration: ['U7'], unity: ['B12'],
   'block-height': ['U6'],
 };
 const ENGINE_RULE_IDS = Object.keys(RULE_REFS);

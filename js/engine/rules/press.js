@@ -65,7 +65,7 @@ const prep = perContext((ctx) => {
 
 export default {
   id: 'press',
-  principles: ['D1', 'D2', 'T2'],
+  principles: ['D1', 'D2', 'T2', 'R2', 'R5'], // R2: the full-back engages; R5: the #9 leads the press
   critical: false,
   weight: (ctx) => prep(ctx)?.w ?? 0,
   evaluate(ctx, spot) {
