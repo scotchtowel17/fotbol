@@ -54,12 +54,12 @@ test('possession, carrier and tags are step functions', () => {
   assert.equal(frameAt(S, 3.5, { formations }).carrierId, 'us-RB');
   assert.equal(carrierAt({ timeline: { carrier: [{ t: 1, id: 'them-ST' }] } }, 0.5), undefined, 'automatic before the first key');
 
-  assert.deepEqual(frameAt(S, 0.5, { formations }).tags, { carrierFacing: 'forward' });
-  assert.deepEqual(frameAt(S, 1, { formations }).tags, { carrierFacing: 'forward', nextEvent: 'pass', nextEventIn: 1 }, 'the pass is 1 s away');
-  assert.deepEqual(frameAt(S, 2.5, { formations }).tags, { carrierFacing: 'forward', event: 'pass' });
-  assert.deepEqual(frameAt(S, 3.5, { formations }).tags, { carrierFacing: 'backward', event: 'pass' });
+  assert.deepEqual(frameAt(S, 0.5, { formations }).tags, { carrierFacing: 'forward', lesson: 'D1' });
+  assert.deepEqual(frameAt(S, 1, { formations }).tags, { carrierFacing: 'forward', lesson: 'D1', nextEvent: 'pass', nextEventIn: 1 }, 'the pass is 1 s away');
+  assert.deepEqual(frameAt(S, 2.5, { formations }).tags, { carrierFacing: 'forward', event: 'pass', lesson: 'D1' });
+  assert.deepEqual(frameAt(S, 3.5, { formations }).tags, { carrierFacing: 'backward', event: 'pass', lesson: 'D1' }, 'the lesson is the first principle');
   const constant = { ...S, phase: 'mid_block', timeline: { ...S.timeline, tags: { pressureOnBall: true } } };
-  assert.deepEqual(frameAt(constant, 0.5, { formations }).tags, { pressureOnBall: true, phase: 'mid_block' });
+  assert.deepEqual(frameAt(constant, 0.5, { formations }).tags, { pressureOnBall: true, phase: 'mid_block', lesson: 'D1' });
 });
 
 test('overrides interpolate linearly and win; the explicit carrier is placed at the ball', () => {

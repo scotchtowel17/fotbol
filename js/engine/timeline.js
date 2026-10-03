@@ -248,7 +248,8 @@ export function sampleTimes(scenario, { hz = TIMELINE_DEFAULTS.sampleHz, from = 
  *   ball, possession and carrier key, and kept until the next one. At a key the press is ranked on
  *   where the players are at that moment (autoFrame's rankFrom), not on their formation spots, so
  *   after a turnover nobody is sent to press past a teammate who is already goal-side.
- * - frame.tags: the tag keys so far, merged; `phase` defaults to scenario.phase; `ballMovingBack`
+ * - frame.tags: the tag keys so far, merged; `phase` defaults to scenario.phase and `lesson` to the scenario's first
+ *   principle (score.js LESSON_CAP); `ballMovingBack`
  *   is derived from the last ballBackWindow seconds of ball movement unless a tag sets it; `nextEvent` and
  *   `nextEventIn` name the next event (not a carry) by the team on the ball within eventAhead seconds; `lostAgo`
  *   says how long ago our team lost the ball, within lostWindow seconds (unless a tag sets them).
@@ -453,7 +454,7 @@ export function overridesAt(tl, t, learnerId, learnerSpot) {
   return out;
 }
 
-/** Cumulative tags at t, plus scenario.phase and the derived ballMovingBack, nextEvent, nextEventIn and lostAgo when not authored. */
+/** Cumulative tags at t, plus scenario.phase, the lesson (scenario.principles[0]) and the derived ballMovingBack, nextEvent, nextEventIn and lostAgo when not authored. */
 export function tagsAt(scenario, t, possession, P) {
   const src = scenario.timeline?.tags;
   const keys = Array.isArray(src) ? src : src && typeof src === 'object' ? [{ ...src, t: -Infinity }] : [];
@@ -464,6 +465,8 @@ export function tagsAt(scenario, t, possession, P) {
     Object.assign(tags, rest);
   }
   if (tags.phase === undefined && scenario.phase) tags.phase = scenario.phase;
+  // The drill's own idea (its first principle): score.js caps a spot that clearly fails the rule that judges it.
+  if (tags.lesson === undefined && Array.isArray(scenario.principles) && typeof scenario.principles[0] === 'string') tags.lesson = scenario.principles[0];
   if (tags.ballMovingBack === undefined && (possession === 'us' || possession === 'them')) {
     const dx = ballAt(scenario, t).x - ballAt(scenario, t - P.ballBackWindow).x;
     if ((possession === 'us' ? -dx : dx) >= P.ballBackDist) tags.ballMovingBack = true;
