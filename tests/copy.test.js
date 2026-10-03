@@ -264,6 +264,8 @@ const BRANCHES = Object.freeze({
   pin: ['deep', 'beyond', 'offside'].map((issue) => ({ issue, dx: issue === 'deep' ? -8 : 4, depth: 2 })),
   press: ['far', 'close', 'wrong-side', 'line', 'show-inside', 'inside', 'too-round', 'other'].map((issue) => ({ issue })),
   recovery: ['wrong-side', 'level', 'ok'].map((issue) => ({ issue })),
+  'half-space': ['wide', 'central', 'ok'].map((issue) => ({ issue })),
+  'flank-share': ['wide', 'ok'].map((issue) => ({ issue })),
   screen: ['deep', 'high', 'wide', 'lane', 'other'].map((issue) => ({ issue })),
   spacing: [{ d: 2, min: 8, max: 20 }, { d: 30, min: 8, max: 20 }, { d: 10, min: 0, max: 20 }],
   'support-distance': [{ part: 'angle' }, { part: 'distance', d: 3, lo: 5, hi: 10, pressured: true }, { part: 'distance', d: 20, lo: 5, hi: 10, pressured: true },

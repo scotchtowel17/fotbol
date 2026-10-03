@@ -562,7 +562,9 @@
       ],
       "level": 2,
       "release": "v1",
-      "ruleIds": [],
+      "ruleIds": [
+        "flank-share"
+      ],
       "summary": {
         "standard": "The full-back and winger on one side should not stand in the same strip of pitch: if one holds the touchline, the other moves inside, and the other way round.",
         "kid": "Only one of you stays wide; the other comes inside."
@@ -824,7 +826,9 @@
       ],
       "level": 3,
       "release": "v1",
-      "ruleIds": [],
+      "ruleIds": [
+        "half-space"
+      ],
       "summary": {
         "standard": "With the ball in midfield or the final third, get a teammate into the ball-side half-space between their midfield and defence, where their full-back and centre-back can't agree who should mark you.",
         "kid": "Stand in the gap between the middle and the wing."

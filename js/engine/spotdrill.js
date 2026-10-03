@@ -55,15 +55,16 @@ export const SPOT_DEFAULTS = Object.freeze({
 });
 
 /** Rules that judge a defending (out of possession) or an attacking learner; spacing (F8) does both but weighs 1. */
-const DEFENDING_RULES = new Set(['press', 'cover', 'tuck', 'compact', 'screen', 'goal-side', 'level-line', 'keeps-onside']);
-const ATTACKING_RULES = new Set(['width', 'pin', 'lane-open', 'support-distance', 'occupancy', 'between-lines', 'box-fill', 'offside']);
+const DEFENDING_RULES = new Set(['press', 'cover', 'tuck', 'compact', 'screen', 'goal-side', 'level-line', 'keeps-onside', 'recovery']);
+const ATTACKING_RULES = new Set(['width', 'pin', 'lane-open', 'support-distance', 'occupancy', 'between-lines', 'box-fill', 'offside', 'half-space', 'flank-share']);
 
 /**
  * Where the event should leave the ball, relative to the learner's zone, for each principle's rule to apply: near
  * the learner (press), near a teammate beside them (cover), in the far wing lane (tuck), close enough to support,
- * wide in the final third (crosses), or anywhere.
+ * wide in the final third (crosses), out wide on the learner's own side in midfield where the full-back takes it (the
+ * half-space), or anywhere.
  */
-const FOCUS = Object.freeze({ D1: 'near', D2: 'near', D3: 'cover', D4: 'far', U5: 'far', B3: 'support', B4: 'support', P10: 'cross' });
+const FOCUS = Object.freeze({ D1: 'near', D2: 'near', D3: 'cover', D4: 'far', U5: 'far', B3: 'support', B4: 'support', P10: 'cross', P1: 'own-wing' });
 
 /** Principles that have a rule (from the rule registry), and the moments that rule judges. */
 export function spotPrinciples() {
@@ -486,6 +487,10 @@ function endOffset(rng, focus, role, team) {
     }
     case 'support': // close to the learner, level or behind, for them to support
       return { dx: -fwd * rng.range(-3, 14), dy: rng.range(-12, 12) };
+    case 'own-wing': { // in the learner's own wing lane in midfield, where our full-back receives (P1: the #8 goes inside)
+      if (side === 'C') return null;
+      return { abs: true, at: { x: rng.range(40, 68), y: side === 'R' ? rng.range(58, 65) : rng.range(3, 10) } };
+    }
     case 'cross': { // wide in the final third, on the far side for a winger or #8
       const far = side === 'L' ? 1 : side === 'R' ? -1 : rng.chance(0.5) ? 1 : -1;
       return { abs: true, at: { x: rng.range(80, 97), y: far > 0 ? rng.range(56, 65) : rng.range(3, 12) } };
@@ -568,6 +573,10 @@ export const SPOT_YIELD = Object.freeze({
   P2: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0.75, W: 0, ST: 0 }),
   F8: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0, W: 0, ST: 0 }),
   P10: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 1, W: 1, ST: 1 }),
+  P1: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0.88, W: 0, ST: 0 }), // the ball-side #8, with the full-back on it out wide
+  // By construction, not measured: the flank-share rule needs a full-back and his winger in the wing lane together,
+  // which layer A never does and a generated event never scripts.
+  B6: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0, W: 0, ST: 0 }),
   // By construction, not measured: the recovery rule judges only after we lose the ball (or in a recovery phase), and a
   // generated event never changes possession.
   T3: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0, W: 0, ST: 0 }),

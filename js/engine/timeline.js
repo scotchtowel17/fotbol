@@ -503,10 +503,16 @@ export function lostAt(scenario, t) {
  * @returns {{t:number, event:string}|null}
  */
 export function nextEventAfter(scenario, t, possession, ahead = TIMELINE_DEFAULTS.eventAhead) {
-  for (const e of ballEvents(scenario)) {
-    if (!(e.t > t) || e.event === 'carry') continue;
-    if (e.t - t > ahead + 1e-9) return null;
-    return possessionAt(scenario, e.t - 1e-6) === possession ? e : null;
-  }
-  return null;
+  // The earliest ball or tag key after t with an event other than a carry (no arrays built: this runs every frame).
+  const tl = scenario.timeline ?? {};
+  let next = null;
+  const scan = (keys) => {
+    for (const k of keys ?? []) {
+      if (!k.event || k.event === 'carry' || !(k.t > t) || k.t - t > ahead + 1e-9) continue;
+      if (!next || k.t < next.t) next = { t: k.t, event: k.event };
+    }
+  };
+  scan(tl.ball);
+  if (Array.isArray(tl.tags)) scan(tl.tags);
+  return next && possessionAt(scenario, next.t - 1e-6) === possession ? next : null;
 }

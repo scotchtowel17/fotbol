@@ -172,6 +172,7 @@ test('context: with the ball wide in our half the full-back engages the winger a
   assert.equal(CONTEXT_DEFAULTS.fbEngage, SCENE_DEFAULTS.pressFbEngage);
   assert.equal(CONTEXT_DEFAULTS.fbEngageFrom, SCENE_DEFAULTS.pressFbEngageFrom);
   assert.equal(CONTEXT_DEFAULTS.fbEngageTo, SCENE_DEFAULTS.pressFbEngageTo);
+  for (const k of ['shareReach', 'shareFade', 'shareBehind', 'shareBehindFade', 'wingFade']) assert.equal(CONTEXT_DEFAULTS[k], SCENE_DEFAULTS[k], k);
 });
 
 test('context: a midfield first defender well ahead of the back line is covered from midfield, not by a centre-back', () => {

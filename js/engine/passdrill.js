@@ -116,6 +116,15 @@ const PASS_WORDS = Object.freeze({
   questionKid: "Who's open?",
 });
 
+/**
+ * Scene params every pass drill plays with. runSpeed 0: the lead-in lands on the very scene that was rated (the ball
+ * reaches the learner at the freeze, so players running to their spots would still be on the way: timeline.js
+ * runTargets). halfSpace false: the learner (a full-back out wide included) is on the ball at the freeze, and the
+ * options are the shape's (scene.js shareFlanks' P1 step moves the ball-side #8 for a "Find your spot" lesson; here it
+ * would change which teammates the small games can show).
+ */
+const SCENE_PARAMS = Object.freeze({ runSpeed: 0, halfSpace: false });
+
 // ---------------------------------------------------------------- playing and checking a drill
 
 /** The frame of a pass drill at t, as it is played and judged: nobody held back, the learner on the ball at the freeze. */
@@ -524,7 +533,7 @@ function naturalScene(rng, role, formations, D) {
   const S = { x: rng.range(10, 95), y: rng.range(6, 62) };
   const B0 = clampIn(teamTargets(formations.us, 'us', S, { inPossession: true })[role], D.edge);
   const short = D.shortFamilies.includes(ROLE_INFO[role].family) && rng.chance(D.shortChance) ? rng.range(D.shortDist[0], D.shortDist[1]) : 0;
-  return leadIn(rng, role, formations, D, { receive: B0, passerFrom: autoFrame({ formations, ball: B0, possession: 'us', carrierId: me }), short });
+  return leadIn(rng, role, formations, D, { receive: B0, passerFrom: autoFrame({ formations, ball: B0, possession: 'us', carrierId: me, params: SCENE_PARAMS }), short });
 }
 
 /**
@@ -539,7 +548,7 @@ function switchScene(rng, role, formations, D) {
   const S = { x: rng.range(15, 62), y: side === 'L' ? rng.range(4, 22) : rng.range(46, 64) };
   const B0 = clampIn(teamTargets(formations.us, 'us', S, { inPossession: true })[role], D.edge);
   const me = playerId('us', role);
-  const scene = leadIn(rng, role, formations, D, { receive: B0, passerFrom: autoFrame({ formations, ball: B0, possession: 'us', carrierId: me }) });
+  const scene = leadIn(rng, role, formations, D, { receive: B0, passerFrom: autoFrame({ formations, ball: B0, possession: 'us', carrierId: me, params: SCENE_PARAMS }) });
   if (typeof scene === 'string') return scene;
   const B = scene.receive;
   const off = B.y - MID_Y;
@@ -583,7 +592,7 @@ function ownGoalScene(rng, role, formations, D) {
   const side = ROLE_INFO[role].side;
   const B0 = { x: rng.range(11, 19), y: side === 'L' ? rng.range(11, 19) : rng.range(49, 57) };
   const me = playerId('us', role);
-  const scene = leadIn(rng, role, formations, D, { receive: B0, passerFrom: autoFrame({ formations, ball: B0, possession: 'us', carrierId: me }) });
+  const scene = leadIn(rng, role, formations, D, { receive: B0, passerFrom: autoFrame({ formations, ball: B0, possession: 'us', carrierId: me, params: SCENE_PARAMS }) });
   if (typeof scene === 'string') return scene;
   const B = scene.receive;
   if (B.x > 24 || Math.abs(B.y - MID_Y) < 10) return 'not at the corner of our box';
@@ -696,9 +705,7 @@ function leadIn(rng, role, formations, D, { receive, passerFrom, short = 0 }) {
     const len = rng.range(D.carrySpeed[0], D.carrySpeed[1]) * hold;
     A0 = clampIn({ x: A.x - dir.x * len, y: A.y - dir.y * len }, D.edge);
   }
-  // runSpeed 0: the lead-in lands on the very scene that was rated (the ball reaches the learner at the freeze, so
-  // players running to their spots would still be on the way there: timeline.js runTargets).
-  const params = { ...(rng.chance(D.noPressChance) ? { autoPress: false } : {}), runSpeed: 0 };
+  const params = { ...(rng.chance(D.noPressChance) ? { autoPress: false } : {}), ...SCENE_PARAMS };
   const tPass = rt(hold, D);
   const passSpeed = (d) => D.passSpeed[0] + (D.passSpeed[1] - D.passSpeed[0]) * clamp((d - 6) / 24, 0, 1);
   const make = (B, tArrive, freezeAt, overrides = []) => ({

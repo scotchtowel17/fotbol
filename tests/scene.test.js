@@ -327,6 +327,54 @@ test('goal-side settle: out of possession an #8 drops goal-side of an opponent n
   assert.deepEqual(byId(inPoss)['us-LCM'], byId(autoFrame({ formations, ball, possession: 'us', overrides: { 'them-RCM': { x: table.x - 3, y: table.y + 1 } }, params: { settle: false } }))['us-LCM']);
 });
 
+test('flank sharing (B6): a full-back overlapping in his winger\'s wing lane brings the winger inside, continuously; in possession only', () => {
+  const ball = { x: 60, y: 40 };
+  const P = SCENE_DEFAULTS;
+  const rw = (ov, possession = 'us') => byId(autoFrame({ formations, ball, possession, carrierId: possession === 'us' ? 'us-RCM' : null, autoPress: false, overrides: ov }))['us-RW'];
+  const plain = rw({});
+  assert.ok(plain.y > 54.16 + P.wingFade, `the table puts him in the wing lane (${plain.y.toFixed(1)})`);
+  const over = rw({ 'us-RB': { x: plain.x + 1, y: 65 } });
+  approx(over.y, 54.16 - P.halfSpaceInset, 1e-9, 'level or overlapping: he comes inside to the half-space');
+  assert.equal(over.x, plain.x, 'only his channel changes');
+  const without = (ov) => byId(autoFrame({ formations, ball, possession: 'us', carrierId: 'us-RCM', autoPress: false, overrides: ov, params: { flankShare: false } }))['us-RW'];
+  for (const [ov, why] of [[{ 'us-RB': { x: plain.x - 20, y: 65 } }, 'a full-back 20 m behind him holds nothing for him'],
+    [{ 'us-RB': { x: plain.x + 1, y: 50 } }, 'a full-back inside the wing lane leaves him wide']]) assert.deepEqual(rw(ov), without(ov), why);
+  // Continuous as the full-back runs up the line past him.
+  let prev = null;
+  for (let dx = -20; dx <= 5; dx += 0.1) {
+    const y = rw({ 'us-RB': { x: plain.x + dx, y: 65 } }).y;
+    if (prev !== null) assert.ok(Math.abs(y - prev) < 0.6, `jump of ${Math.abs(y - prev).toFixed(2)} m at dx ${dx.toFixed(1)}`);
+    prev = y;
+  }
+  // Out of possession nothing moves; params.flankShare false turns it off.
+  const opp = { 'us-RB': { x: plain.x + 1, y: 65 } };
+  assert.deepEqual(byId(autoFrame({ formations, ball, possession: 'them', autoPress: false, overrides: opp }))['us-RW'], byId(autoFrame({ formations, ball, possession: 'them', autoPress: false, overrides: opp, params: { flankShare: false } }))['us-RW']);
+  assert.ok(without(opp).y > 54.16, 'params.flankShare false leaves him wide');
+});
+
+test('half-space (P1): our full-back on the ball out wide from the middle third sends the ball-side #8 between their lines', () => {
+  const at = (ball, params) => byId(autoFrame({ formations, ball, possession: 'us', carrierId: 'us-RB', params }));
+  const P = SCENE_DEFAULTS;
+  const f = at({ x: 58, y: 63 });
+  const rcm = f['us-RCM'];
+  approx(rcm.y, 54.16 - P.halfSpaceInset, 1e-9, 'in the ball-side half-space');
+  assert.ok(rcm.x >= 58 + P.halfSpaceAhead - 1e-9, `ahead of the ball (${rcm.x.toFixed(1)})`);
+  const theirBack = ['LB', 'LCB', 'RCB', 'RB'].map((r) => f[`them-${r}`].x).sort((a, b) => a - b);
+  assert.ok(rcm.x <= (theirBack[1] + theirBack[2]) / 2 - 2 + 1e-9, 'short of their back line');
+  const off = at({ x: 58, y: 63 }, { halfSpace: false })['us-RCM'];
+  assert.ok(off.y > 54.16, `the table alone leaves him wide (${off.y.toFixed(1)})`);
+  // In our own third, or with the ball in the middle, the table spot stands; the far #8 never moves.
+  assert.deepEqual(at({ x: 25, y: 63 })['us-RCM'], at({ x: 25, y: 63 }, { halfSpace: false })['us-RCM']);
+  assert.deepEqual(f['us-LCM'], at({ x: 58, y: 63 }, { halfSpace: false })['us-LCM']);
+  // Continuous as the ball moves up the line from the defensive third (the full-back keeps it).
+  let prev = null;
+  for (let x = 30; x <= 45; x += 0.1) {
+    const p = at({ x, y: 63 })['us-RCM'];
+    if (prev) assert.ok(dist(p, prev) < 1, `jump of ${dist(p, prev).toFixed(2)} m at x ${x.toFixed(1)}`);
+    prev = p;
+  }
+});
+
 test("possession 'none': no carrier, no press, no possession offset (out-of-possession shape for both)", () => {
   const ball = { x: 52, y: 34 };
   const f = autoFrame({ formations, ball, possession: 'none' });

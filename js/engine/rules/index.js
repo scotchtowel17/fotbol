@@ -17,10 +17,13 @@ import betweenLines from './between-lines.js';
 import spacing from './spacing.js';
 import boxFill from './box-fill.js';
 import recovery from './recovery.js';
+import halfSpace from './half-space.js';
+import flankShare from './flank-share.js';
 
 export const RULES = Object.freeze([
   offside, keepsOnside, levelLine, goalSide, press, cover, tuck, compact, screen,
   width, pin, laneOpen, supportDistance, occupancy, betweenLines, spacing, boxFill, recovery,
+  halfSpace, flankShare,
 ]);
 
 export const RULES_BY_ID = Object.freeze(Object.fromEntries(RULES.map((r) => [r.id, r])));

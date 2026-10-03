@@ -27,8 +27,40 @@ export const CONTEXT_DEFAULTS = Object.freeze({
   fbEngageTo: 55, // [D] ...fading out by this x (in their half the winger or #8 presses)
   blockHigh: 45, // [D] back-line x (in the defending team's own frame) at or above this = high block
   blockLow: 25, // [D] below this = low block
+  shareReach: 12, // [D] B6: a full-back in his winger's wing lane within this many metres along the pitch of him... (SCENE_DEFAULTS.shareReach)
+  shareFade: 4, // [D] ...fading out over this many more (SCENE_DEFAULTS.shareFade)...
+  shareBehind: 3, // [D] ...and at most this far behind him holds the width for him (SCENE_DEFAULTS.shareBehind)...
+  shareBehindFade: 6, // [D] ...fading out over this many metres more, so the winger drifts in as the full-back arrives (SCENE_DEFAULTS.shareBehindFade)
+  wingFade: 3, // [D] a player counts as in a wing lane fully this far inside its edge, fading to 0 at the edge (SCENE_DEFAULTS.wingFade)
   offsideMarkMargin: 1, // [D] U4/F4: an opponent this far or more in an offside position (behind our second-last player and the ball, in our half) is nobody's mark: the line holds and leaves him offside
 });
+
+/**
+ * How far into its wing lane a point is on `side` ('L' | 'R'), as a weight: 0 at the lane edge (or inside it), 1 from
+ * wingFade metres into the wing lane.
+ */
+export function wingDepth(p, side, P = CONTEXT_DEFAULTS) {
+  const d = side === 'R' ? p.y - LANE_EDGES[4] : LANE_EDGES[1] - p.y;
+  return clamp(d / P.wingFade, 0, 1);
+}
+
+/**
+ * B6, one wide, one inside: how much a full-back holds his winger's wing lane (0..1): in it, within shareReach of
+ * the winger along the pitch and level with or ahead of him (no more than shareBehind behind), every edge faded so a
+ * placement that follows it stays continuous. Shared by scene.js (the winger comes inside) and buildContext (he is
+ * then not the width-holder).
+ * @param {'us'|'them'} team  the team in possession (which way is "ahead")
+ * @param {{x:number,y:number}} fb  the full-back
+ * @param {{x:number,y:number}} w   the winger on the same side
+ * @param {'L'|'R'} side
+ */
+export function flankShare(team, fb, w, side, P = CONTEXT_DEFAULTS) {
+  const sign = team === 'us' ? 1 : -1;
+  const reach = clamp((P.shareReach + P.shareFade - Math.abs(fb.x - w.x)) / P.shareFade, 0, 1);
+  const behind = sign * (w.x - fb.x); // > 0: the full-back is behind the winger
+  const level = clamp((P.shareBehind + P.shareBehindFade - behind) / P.shareBehindFade, 0, 1);
+  return wingDepth(fb, side, P) * reach * level;
+}
 
 const OPP_BACK = BACK_LINE;
 const OPP_MID = MIDFIELD;
@@ -167,8 +199,13 @@ export function buildContext(frame, { learnerId, base, params = {} }) {
   }
 
   const lane = laneOf(ball.y);
+  // Width: the tagged holders, else the wingers, except a winger whose full-back holds his wing lane (B6: flankShare).
   const widthHolders = frame.tags?.widthHolders;
-  const widthHolder = moment === 'in_possession' && (Array.isArray(widthHolders) ? widthHolders.includes(role) : info.family === 'W');
+  let widthHolder = moment === 'in_possession' && (Array.isArray(widthHolders) ? widthHolders.includes(role) : info.family === 'W');
+  if (widthHolder && !Array.isArray(widthHolders) && (info.side === 'L' || info.side === 'R')) {
+    const fb = teammates.find((p) => p.role === info.side + 'B');
+    if (fb && flankShare('us', fb, learnerAtBase, info.side, P) >= 0.5) widthHolder = false;
+  }
 
   return {
     frame,

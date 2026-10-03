@@ -109,13 +109,13 @@
     ]
   },
   "answer": {
-    "mode": "authored",
+    "mode": "engine",
     "ideal": {
       "x": 71,
       "y": 50.5
     }
   },
-  "notes": "Authored answer (engine disagreement). Layer A ignores tags.widthHolders and the overridden full-back, so the winger's base stays on the touchline beside the overlapping full-back: base (70.7, 64.0). In engine mode the ghost is (71.7, 60.0), still in the wing lane 5 m from the full-back, and the start spot (70, 64), 2 m from him, scores 90 (S). B6 says the winger comes inside when the full-back overlaps, so the zone is centred on the half-space pocket between their full-back and centre-back, in front of their back line; the rules agree there (ghost 98: lane-open, occupancy, support-distance and offside 1.00, between-lines 0.78 because their lines are only 4.7 m apart).",
+  "notes": "Engine answer since 2026-10-03 (it was authored: layer A ignored the overlapping full-back and left the winger on the touchline beside him, base (70.7, 64.0), where the start spot scored 90). scene.js now brings a winger inside when his full-back holds his wing lane, level or overlapping (shareFlanks, B6), and the flank-share rule judges it: base (70.6, 50.2), the best spot (71.6, 50.2) scores 99, 0.7 m from the keyed ideal; the start scores 19, staying on the touchline with him about 21, the middle beside the #9 about 28.",
   "misconceptions": [
     {
       "id": "shared-the-touchline",
