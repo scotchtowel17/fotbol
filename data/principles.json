@@ -1385,7 +1385,10 @@
       ],
       "level": 2,
       "release": "v1",
-      "ruleIds": [],
+      "ruleIds": [
+        "press",
+        "drop-narrow"
+      ],
       "summary": {
         "standard": "If you can't win the ball back straight away, or you're outnumbered, back off toward your goal and squeeze toward the middle to slow the attack until help arrives.",
         "kid": "Can't win the ball? Back off and slow them down."
@@ -2201,7 +2204,9 @@
       ],
       "level": 1,
       "release": "v1",
-      "ruleIds": [],
+      "ruleIds": [
+        "cross-defence"
+      ],
       "summary": {
         "standard": "When the ball is wide near your box, someone pressures the crosser, the centre-backs protect the goal, the far full-back joins at the back post and a midfielder guards the cut-back.",
         "kid": "When they cross, guard the goal, the back post and the edge."

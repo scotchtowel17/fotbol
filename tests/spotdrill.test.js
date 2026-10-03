@@ -235,7 +235,7 @@ test('the player the question names is on the ball at the freeze and standing, n
 });
 
 test('a principle without a rule, or a rule that never judges the position, cannot be keyed by the engine: null (fast)', () => {
-  const none = [['LCB', ['T3']], ['LCB', ['U8']], ['LCB', ['B6', 'P1']], ['LCB', ['U3', 'R1']], ['LCB', ['PA5']], ['LW', ['R3']], ['DM', ['U4']], ['LB', ['P10']], ['CB', ['F8']]];
+  const none = [['LCB', ['T3']], ['LW', ['U8']], ['LCB', ['B6', 'P1']], ['LCB', ['U3', 'R1']], ['LCB', ['PA5']], ['LW', ['R3']], ['DM', ['U4']], ['LB', ['P10']], ['CB', ['F8']]];
   for (const [role, p] of none) {
     assert.equal(canGenerateSpot(role, p), false, `${role} ${p}`);
     if (role !== 'CB') assert.equal(generateSpotDrill({ seed: 1, role, principles: p, formations }), null, `${role} ${p}`);

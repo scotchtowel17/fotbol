@@ -32,6 +32,9 @@ export const CONTEXT_DEFAULTS = Object.freeze({
   shareBehind: 3, // [D] ...and at most this far behind him holds the width for him (SCENE_DEFAULTS.shareBehind)...
   shareBehindFade: 6, // [D] ...fading out over this many metres more, so the winger drifts in as the full-back arrives (SCENE_DEFAULTS.shareBehindFade)
   wingFade: 3, // [D] a player counts as in a wing lane fully this far inside its edge, fading to 0 at the edge (SCENE_DEFAULTS.wingFade)
+  delayReach: 25, // [D] T2: attackers and defenders within this of the ball (fading out over delayFade more)...
+  delayFade: 5, // [D]
+  delayGoalSide: 1, // [D] ...and at least this far goal-side of it (fading in over 2 m) are the numbers between the ball and goal
   offsideMarkMargin: 1, // [D] U4/F4: an opponent this far or more in an offside position (behind our second-last player and the ball, in our half) is nobody's mark: the line holds and leaves him offside
 });
 
@@ -60,6 +63,30 @@ export function flankShare(team, fb, w, side, P = CONTEXT_DEFAULTS) {
   const behind = sign * (w.x - fb.x); // > 0: the full-back is behind the winger
   const level = clamp((P.shareBehind + P.shareBehindFade - behind) / P.shareBehindFade, 0, 1);
   return wingDepth(fb, side, P) * reach * level;
+}
+
+/**
+ * T2, delay when outnumbered: compares the attackers and the defenders between the ball and the defending team's goal
+ * (within delayReach of the ball, at least delayGoalSide goal-side of it; goalkeepers and the carrier left out; every
+ * count soft, so it is continuous). Returns how much the defending team is outnumbered there, 0..1: 1 with as many
+ * attackers as defenders or more ("keep more defenders than attackers between the ball and goal"), 0 with one
+ * defender more. The press rule backs the first defender off to delay (3-5 m) by this much while we recover.
+ * @param {'us'|'them'} defending
+ * @param {{x:number,y:number}} ball
+ * @param {object[]} players  everyone (the learner where the duties are computed: at base)
+ * @param {string|null} carrierId
+ */
+export function outnumbered(defending, ball, players, carrierId = null, P = CONTEXT_DEFAULTS) {
+  const toGoal = defending === 'us' ? -1 : 1; // the defending team's goal is at x 0 for us
+  let att = 0, def = 0;
+  for (const p of players) {
+    if (p.role === 'GK' || p.id === carrierId) continue;
+    const near = clamp((P.delayReach + P.delayFade - dist(p, ball)) / P.delayFade, 0, 1);
+    const ahead = (p.x - ball.x) * toGoal; // > 0: between the ball and the defending goal
+    const k = near * clamp((ahead - P.delayGoalSide + 2) / 2, 0, 1);
+    if (p.team === defending) def += k; else att += k;
+  }
+  return clamp(att - def + 1, 0, 1);
 }
 
 const OPP_BACK = BACK_LINE;

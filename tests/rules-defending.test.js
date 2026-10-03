@@ -15,6 +15,9 @@ import tuck from '../js/engine/rules/tuck.js';
 import compact from '../js/engine/rules/compact.js';
 import screen from '../js/engine/rules/screen.js';
 import recovery, { RECOVERY_DEFAULTS } from '../js/engine/rules/recovery.js';
+import crossDefence from '../js/engine/rules/cross-defence.js';
+import dropNarrow from '../js/engine/rules/drop-narrow.js';
+import { outnumbered } from '../js/engine/context.js';
 import { band2, perContext, paramsFor, nameOf, kidNameOf, segDist, whole } from '../js/engine/rules/_util.js';
 
 const RULES = [press, cover, levelLine, keepsOnside, goalSide, tuck, compact, screen];
@@ -840,4 +843,73 @@ test('_util: player names from the learner\'s point of view', () => {
   assert.equal(nameOf(null, ctx), 'the ball');
   assert.equal(kidNameOf(P('them-ST'), ctx), 'their striker');
   assert.equal(kidNameOf(P('us-DM'), ctx), 'your teammate');
+});
+
+test('cross-defence (U8): ball wide near our box: centre-backs between the posts, far full-back at the far post, #6 on the spot', () => {
+  // Their left winger is about to cross from our right byline; our RB presses him.
+  const CROSS_IN = {
+    ball: { x: 9, y: 60 }, carrierId: 'them-LW',
+    move: { 'them-LW': { x: 9.5, y: 60.5 }, 'us-RB': { x: 11, y: 58 }, 'us-RCB': { x: 8, y: 38 }, 'us-LCB': { x: 8, y: 31 }, 'us-LB': { x: 8, y: 25 }, 'us-DM': { x: 14, y: 36 } },
+  };
+  const cb = ctxOf(BOX, 'us-LCB', CROSS_IN, { x: 8, y: 31 });
+  assert.ok(crossDefence.weight(cb) > 2, `weight ${crossDefence.weight(cb)}`);
+  assert.equal(ev(crossDefence, cb, 8, 34).s, 1, 'between the posts');
+  const near = ev(crossDefence, cb, 8, 45);
+  assert.ok(near.s < 0.2 && near.vars.issue === 'wide', `dragged to the near post ${near.s}`);
+  assert.equal(ev(crossDefence, cb, 1, 34).vars.issue, 'line');
+  const fb = ctxOf(BOX, 'us-LB', CROSS_IN, { x: 8, y: 25 });
+  assert.equal(ev(crossDefence, fb, 8, 27).s, 1, 'at the far post');
+  assert.ok(ev(crossDefence, fb, 8, 12).s < 0.2, 'out wide on the far side');
+  const dm = ctxOf(BOX, 'us-DM', CROSS_IN, { x: 14, y: 36 });
+  assert.equal(ev(crossDefence, dm, 13, 34).s, 1, 'on the penalty spot');
+  assert.ok(ev(crossDefence, dm, 5, 34).s < 0.2, 'on top of the defenders');
+  // Not the presser, not the near full-back, not with the ball at the edge of the box or in the middle.
+  assert.equal(crossDefence.weight(ctxOf(BOX, 'us-RB', CROSS_IN, { x: 11, y: 58 })), 0);
+  assert.equal(crossDefence.weight(ctxOf(BOX, 'us-LCB', { ...CROSS_IN, ball: { x: 24, y: 60 }, move: { ...CROSS_IN.move, 'them-LW': { x: 24.5, y: 60.5 } } }, { x: 8, y: 31 })), 0);
+  assert.equal(crossDefence.weight(ctxOf(BOX, 'us-LCB', { ...CROSS_IN, ball: { x: 9, y: 40 }, move: { ...CROSS_IN.move, 'them-LW': { x: 9.5, y: 40.5 } } }, { x: 8, y: 31 })), 0);
+  for (const v of [near.vars, ev(crossDefence, fb, 8, 12).vars, ev(crossDefence, dm, 5, 34).vars, ev(crossDefence, cb, 8, 34).vars]) checkText(crossDefence, v);
+});
+
+test('press, delay (T2): outnumbered while we recover, the first defender backs off to 3-5 m instead of diving in', () => {
+  // Their #8 breaks at our #8 with their #9 and right winger running ahead of him; only our two centre-backs are back.
+  const BREAK = {
+    ball: { x: 50, y: 38 }, carrierId: 'them-LCM',
+    move: {
+      'them-LCM': { x: 50.5, y: 38.5 }, 'us-RCM': { x: 47, y: 38 }, 'them-ST': { x: 34, y: 34 }, 'them-RW': { x: 36, y: 22 }, 'them-LW': { x: 38, y: 50 },
+      'us-LCB': { x: 26, y: 30 }, 'us-RCB': { x: 26, y: 40 }, 'us-DM': { x: 56, y: 36 }, 'us-LB': { x: 56, y: 12 }, 'us-RB': { x: 56, y: 58 }, 'us-LCM': { x: 58, y: 30 },
+    },
+  };
+  const calm = ctxOf('oopMidBlock', 'us-RCM', { ...BREAK }, { x: 47, y: 38 });
+  const rec = ctxOf('oopMidBlock', 'us-RCM', { ...BREAK, tags: { lostAgo: 1 } }, { x: 47, y: 38 });
+  assert.equal(rec.duty, 'first-defender');
+  assert.ok(outnumbered('us', rec.ball, [...rec.usAtBase, ...rec.opponents], 'them-LCM') > 0.9, 'three runners ahead of the ball, two centre-backs and the presser');
+  const at = (ctx, d) => ev(press, ctx, 50.5 - d, 38.5);
+  assert.equal(at(calm, 2).s, 1, 'not recovering: close down to 2 m');
+  assert.ok(at(rec, 2).s < 1, 'recovering and outnumbered: 2 m is diving in');
+  assert.equal(at(rec, 2).vars.issue, 'close');
+  assert.equal(at(rec, 2).vars.principle, 'T2');
+  assert.equal(at(rec, 4).s, 1, '4 m holds them up');
+  checkText(press, at(rec, 2).vars);
+  checkText(press, at(rec, 4).vars);
+  // One defender more between the ball and goal: press as usual.
+  const covered = { ...BREAK, move: { ...BREAK.move, 'us-LB': { x: 30, y: 20 }, 'us-RB': { x: 30, y: 48 } } };
+  assert.equal(at(ctxOf('oopMidBlock', 'us-RCM', { ...covered, tags: { lostAgo: 1 } }, { x: 47, y: 38 }), 2).s, 1);
+});
+
+test('drop-narrow (T2): while we recover, a defender who cannot press drops goal-side of the ball and into the middle', () => {
+  const rec = mid('us-DM', { tags: { lostAgo: 1 } });
+  assert.ok(dropNarrow.weight(rec) > 0, 'the #6 recovering');
+  assert.equal(dropNarrow.weight(mid('us-DM')), 0, 'not recovering');
+  assert.equal(dropNarrow.weight(mid('us-RCM', { tags: { lostAgo: 1 } })), 0, 'the first defender presses (or delays)');
+  const ball = rec.ball; // (58, 44)
+  assert.equal(ev(dropNarrow, rec, ball.x - 6, 36).s, 1, 'goal-side of the ball, in the middle');
+  const chase = ev(dropNarrow, rec, ball.x + 2, 40);
+  assert.ok(chase.s < 0.2 && chase.vars.issue === 'chasing', `chasing from behind ${chase.s}`);
+  const wide = ev(dropNarrow, rec, ball.x - 6, 58);
+  assert.ok(wide.s < 0.5 && wide.vars.issue === 'wide', `wide ${wide.s}`);
+  for (const v of [chase.vars, wide.vars, { issue: 'ok' }]) checkText(dropNarrow, v);
+  // A defender with a man to mark only drops: where he marks is the recovery rule's.
+  const cb = mid('us-RCB', { tags: { lostAgo: 1 } });
+  assert.equal(cb.markTarget.id, 'them-ST');
+  assert.equal(ev(dropNarrow, cb, 30, 60).s, 1, 'goal-side, however wide');
 });
