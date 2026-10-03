@@ -33,7 +33,7 @@ const m = (v) => Math.max(1, Math.round(v));
 
 export default {
   id: 'width',
-  principles: ['B1'],
+  principles: ['B1', 'R4'], // R4: in possession the winger stays high and wide
   critical: false,
   weight: (ctx) => prep(ctx)?.w ?? 0,
 

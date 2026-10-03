@@ -262,7 +262,17 @@ const BRANCHES = Object.freeze({
   occupancy: [{ part: 'line' }, { part: 'lane' }],
   offside: ['defender', 'ball', 'halfway'].flatMap((by) => [{ by, beyond: 3, nearLine: true }, { by, beyond: 3, nearLine: false }]),
   pin: ['deep', 'beyond', 'offside'].map((issue) => ({ issue, dx: issue === 'deep' ? -8 : 4, depth: 2 })),
-  press: ['far', 'close', 'wrong-side', 'line', 'show-inside', 'inside', 'too-round', 'other'].map((issue) => ({ issue })),
+  press: ['far', 'close', 'wrong-side', 'line', 'show-inside', 'inside', 'too-round', 'other'].flatMap((issue) => [{ issue }, { issue, delay: true }]),
+  recovery: ['wrong-side', 'level', 'ok'].map((issue) => ({ issue })),
+  'half-space': ['wide', 'central', 'ok'].map((issue) => ({ issue })),
+  'flank-share': ['wide', 'ok'].map((issue) => ({ issue })),
+  'drop-narrow': ['ok', 'chasing', 'wide'].map((issue) => ({ issue })),
+  'line-height': ['step', 'drop'].flatMap((mode) => ['ok', 'x'].map((issue) => ({ mode, issue }))),
+  concentration: ['winger', 'full-back', 'edge'].flatMap((job) => ['ok', 'wide'].map((issue) => ({ job, issue }))),
+  unity: [{ issue: 'deep', gap: 50, max: 45 }],
+  'gk-angle-depth': ['ok', 'angle', 'deep', 'high'].map((issue) => ({ issue, by: 3, want: 11 })),
+  'block-height': ['high', 'mid', 'low'].flatMap((block) => ['ok', 'x'].map((issue) => ({ block, issue, by: 4 }))),
+  'cross-defence': ['posts', 'far-post', 'cut-back'].flatMap((job) => ['ok', 'wide', 'line', 'high', 'deep'].map((issue) => ({ job, issue }))),
   screen: ['deep', 'high', 'wide', 'lane', 'other'].map((issue) => ({ issue })),
   spacing: [{ d: 2, min: 8, max: 20 }, { d: 30, min: 8, max: 20 }, { d: 10, min: 0, max: 20 }],
   'support-distance': [{ part: 'angle' }, { part: 'distance', d: 3, lo: 5, hi: 10, pressured: true }, { part: 'distance', d: 20, lo: 5, hi: 10, pressured: true },
@@ -270,7 +280,7 @@ const BRANCHES = Object.freeze({
   tuck: ['centre', 'wide'].flatMap((mode) => [{ mode, issue: 'narrow' }, { mode, issue: 'wide' }]),
   width: [{ d: 12, max: 4 }],
 });
-const BRANCH_KEYS = ['issue', 'part', 'where', 'mode', 'unit', 'by', 'nearLine', 'pressured', 'kidZone'];
+const BRANCH_KEYS = ['issue', 'part', 'where', 'mode', 'unit', 'by', 'nearLine', 'pressured', 'kidZone', 'job', 'delay', 'block'];
 const describeVars = (v) => BRANCH_KEYS.filter((k) => v[k] !== undefined).map((k) => `${k}=${v[k]}`).join(', ');
 
 function ruleItems() {
@@ -305,7 +315,8 @@ function ruleItems() {
 
 async function scenarioItems() {
   const items = [], broken = [];
-  const index = (await loadJSON('data/scenarios/index.json')).scenarios;
+  const file = await loadJSON('data/scenarios/index.json');
+  const index = [...file.scenarios, ...(file.passes ?? [])]; // the authored pass drills too (Player mode only)
   for (const e of index) {
     const s = await loadJSON(`data/scenarios/${e.file}`);
     const src = `scenario ${s.id}`, group = `scenario ${s.id} (kid fields)`;

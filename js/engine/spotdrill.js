@@ -55,15 +55,16 @@ export const SPOT_DEFAULTS = Object.freeze({
 });
 
 /** Rules that judge a defending (out of possession) or an attacking learner; spacing (F8) does both but weighs 1. */
-const DEFENDING_RULES = new Set(['press', 'cover', 'tuck', 'compact', 'screen', 'goal-side', 'level-line', 'keeps-onside']);
-const ATTACKING_RULES = new Set(['width', 'pin', 'lane-open', 'support-distance', 'occupancy', 'between-lines', 'box-fill', 'offside']);
+const DEFENDING_RULES = new Set(['press', 'cover', 'tuck', 'compact', 'screen', 'goal-side', 'level-line', 'keeps-onside', 'recovery', 'cross-defence', 'drop-narrow', 'line-height', 'concentration', 'block-height', 'gk-angle-depth']);
+const ATTACKING_RULES = new Set(['width', 'pin', 'lane-open', 'support-distance', 'occupancy', 'between-lines', 'box-fill', 'offside', 'half-space', 'flank-share', 'unity']);
 
 /**
  * Where the event should leave the ball, relative to the learner's zone, for each principle's rule to apply: near
  * the learner (press), near a teammate beside them (cover), in the far wing lane (tuck), close enough to support,
- * wide in the final third (crosses), or anywhere.
+ * wide in the final third (crosses), out wide on the learner's own side in midfield where the full-back takes it (the
+ * half-space), wide near our goal line about to be crossed (defending crosses), or anywhere.
  */
-const FOCUS = Object.freeze({ D1: 'near', D2: 'near', D3: 'cover', D4: 'far', U5: 'far', B3: 'support', B4: 'support', P10: 'cross' });
+const FOCUS = Object.freeze({ D1: 'near', D2: 'near', D3: 'cover', D4: 'far', U5: 'far', B3: 'support', B4: 'support', P10: 'cross', P1: 'own-wing', U8: 'our-cross' });
 
 /** Principles that have a rule (from the rule registry), and the moments that rule judges. */
 export function spotPrinciples() {
@@ -79,6 +80,14 @@ export function spotPrinciples() {
   return Object.fromEntries(Object.entries(out).map(([p, e]) => [p, { rules: e.rules, moments: [...e.moments] }]));
 }
 const SPOT = spotPrinciples();
+
+/**
+ * The role principles belong to one position each (RESEARCH §8.7): their rules also judge other positions (cover
+ * judges any covering player, press any first defender), but a cover drill for a #6 is not R1. A generated drill only
+ * takes one of these for its own position.
+ */
+const ROLE_PRINCIPLES = Object.freeze({ R1: 'CB', R2: 'FB', R3: 'DM', R4: 'W', R5: 'ST' });
+const fitsRole = (p, family) => !ROLE_PRINCIPLES[p] || ROLE_PRINCIPLES[p] === family;
 
 // ---------------------------------------------------------------- names and words (never a side: drills are mirrored)
 
@@ -214,7 +223,7 @@ export function checkSpotDrill(scenario, { formations, principles, want, params,
   const frame = frameAt(s, t, { formations });
   const base = learnerBaseAt(s, t, { formations });
   const ctx = buildContext(frame, { learnerId: me, base });
-  const wanted = new Set(want ?? s.principles);
+  const wanted = new Set((want ?? s.principles).filter((p) => fitsRole(p, ROLE_INFO[s.learner.role]?.family)));
   // The gates that need no ghost first (quick: a generator's failed try stops here, before the costly ghost).
   const problems = [];
   const moment = frame.possession === 'us' ? 'in_possession' : 'out_of_possession';
@@ -317,7 +326,9 @@ export function generateSpotDrill({ seed = 1, role, principles = [], formations,
   if (!formations?.us) throw new TypeError('generateSpotDrill: formations.us is required');
   if (!LEARNABLE_ROLES.includes(role)) throw new TypeError(`generateSpotDrill: role ${role} is not a learnable role`);
   const S = { ...SPOT_DEFAULTS, ...params };
+  const family = ROLE_INFO[role].family;
   const asked = (principles.length ? principles.filter((p) => SPOT[p]) : Object.keys(SPOT))
+    .filter((p) => fitsRole(p, family)) // R1-R5 only for their own position
     // Ideas this position never gets a drill on (canGenerateSpot) are left out at once, unless asked to try (fastFail false).
     .filter((p) => !S.fastFail || canGenerateSpot(role, [p]));
   if (!asked.length) return null; // no idea asked has a rule that judges this position: the engine cannot key such a drill
@@ -384,7 +395,7 @@ function writeEvent(rng, role, focus, formations, S) {
   const hold = rt(rng.range(S.holdTime[0], S.holdTime[1]));
   const atB = autoFrame({ formations, ball: B, possession: team, learnerId: me });
   const eligible = (p) => p.team === team && p.role !== 'GK' && p.id !== me;
-  const base = { moment: inPossession ? 'in_possession' : 'out_of_possession', learner: { role }, principles: [focus] };
+  const base = { moment: inPossession ? 'in_possession' : 'out_of_possession', learner: { role }, principles: [focus], params: { runSpeed: 0 } };
 
   if (rng.chance(S.carryChance)) {
     const holder = atB.carrierId;
@@ -486,6 +497,14 @@ function endOffset(rng, focus, role, team) {
     }
     case 'support': // close to the learner, level or behind, for them to support
       return { dx: -fwd * rng.range(-3, 14), dy: rng.range(-12, 12) };
+    case 'own-wing': { // in the learner's own wing lane in midfield, where our full-back receives (P1: the #8 goes inside)
+      if (side === 'C') return null;
+      return { abs: true, at: { x: rng.range(40, 68), y: side === 'R' ? rng.range(58, 65) : rng.range(3, 10) } };
+    }
+    case 'our-cross': { // wide near our goal line, about to be crossed: on the far side for a full-back (the far post)
+      const far = side === 'L' ? 1 : side === 'R' ? -1 : rng.chance(0.5) ? 1 : -1;
+      return { abs: true, at: { x: rng.range(6, 15), y: far > 0 ? rng.range(56, 65) : rng.range(3, 12) } };
+    }
     case 'cross': { // wide in the final third, on the far side for a winger or #8
       const far = side === 'L' ? 1 : side === 'R' ? -1 : rng.chance(0.5) ? 1 : -1;
       return { abs: true, at: { x: rng.range(80, 97), y: far > 0 ? rng.range(56, 65) : rng.range(3, 12) } };
@@ -534,7 +553,7 @@ function finish(ev, { seed, used, attempt, role, asked, principles, catalogue, S
     answer: { mode: 'engine' },
     misconceptions: [{ id: 'stood-still', region: { type: 'circle', x: start.x, y: start.y, r: S.stillRadius }, text: SPOT_WORDS.stillText, textKid: SPOT_WORDS.stillTextKid }],
     difficulty: 0,
-    params: {},
+    params: { runSpeed: 0 }, // frozen 0.4-1 s after a pass of up to 35 m: everyone on their spot there (timeline.js runTargets), as drafted
     source: { kind: 'generated', generator: 'fotbol spotdrill v1', seed: String(used), requestedSeed: String(seed), attempt, license: 'MIT', author: 'fotbol' },
     notes: `Generated by js/engine/spotdrill.js (${ev.kind} by ${ev.team === 'us' ? 'us' : 'them'}); kept because it passed the drill-quality gates.`,
   };
@@ -568,6 +587,25 @@ export const SPOT_YIELD = Object.freeze({
   P2: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0.75, W: 0, ST: 0 }),
   F8: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0, W: 0, ST: 0 }),
   P10: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 1, W: 1, ST: 1 }),
+  P1: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0.88, W: 0, ST: 0 }), // the ball-side #8, with the full-back on it out wide
+  U8: Object.freeze({ CB: 1, FB: 1, DM: 1, CM: 0, W: 0, ST: 0 }), // the centre-backs, the far full-back, the #6
+  U3: Object.freeze({ CB: 1, FB: 0, DM: 0, CM: 0, W: 0, ST: 0 }), // the full-backs' line-height weighs 1.5
+  U7: Object.freeze({ CB: 0, FB: 0.63, DM: 1, CM: 0, W: 0.75, ST: 0 }), // the far full-back and winger, the #6
+  B12: Object.freeze({ CB: 1, FB: 0, DM: 0, CM: 0, W: 0, ST: 0 }), // unity weighs 1.5 for the full-backs and the #6
+  U6: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0, W: 1, ST: 0 }), // block-height weighs 1.5 for the #8s and the #9
+  // By construction, not measured: the flank-share rule needs a full-back and his winger in the wing lane together,
+  // which layer A never does and a generated event never scripts.
+  B6: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0, W: 0, ST: 0 }),
+  // By construction, not measured: the recovery rule judges only after we lose the ball (or in a recovery phase), and a
+  // generated event never changes possession (R4's width half is measured below).
+  T3: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0, W: 0, ST: 0 }),
+  R4: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0, W: 0.63, ST: 0 }), // width in possession (the recovery half never: no turnover)
+  T2: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0, W: 0, ST: 0 }), // the press rule's delay and drop-narrow judge only while we recover
+  // The role principles: measured for their own position (fitsRole leaves the others out).
+  R1: Object.freeze({ CB: 1, FB: 0, DM: 0, CM: 0, W: 0, ST: 0 }),
+  R2: Object.freeze({ CB: 0, FB: 1, DM: 0, CM: 0, W: 0, ST: 0 }),
+  R5: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0, W: 0, ST: 1 }),
+  G1: Object.freeze({ CB: 0, FB: 0, DM: 0, CM: 0, W: 0, ST: 0 }), // the keeper's rule; generated drills are outfield only
 });
 
 /**
@@ -583,7 +621,7 @@ export function canGenerateSpot(roleOrFamily, principles = [], { min = 0.01 } = 
   const fam = ROLE_INFO[roleOrFamily]?.family ?? roleOrFamily;
   const list = typeof principles === 'string' ? [principles] : principles ?? [];
   if (!list.length) return true;
-  return list.some((p) => SPOT[p] && (SPOT_YIELD[p]?.[fam] ?? 1) >= min);
+  return list.some((p) => SPOT[p] && fitsRole(p, fam) && (SPOT_YIELD[p]?.[fam] ?? 1) >= min);
 }
 
 /** The ids of the rule-backed principles (a copy), and how each can be generated: { rules, moments: ['us'|'them'] }. */

@@ -57,7 +57,7 @@ const prep = perContext((ctx) => {
 
 export default {
   id: 'cover',
-  principles: ['D3'],
+  principles: ['D3', 'R1'], // R1: a centre-back covers his partner
   critical: false,
   weight: (ctx) => prep(ctx)?.w ?? 0,
   evaluate(ctx, spot) {

@@ -4,7 +4,7 @@
 // as `npm run check` keys it, the learner-facing text follows the copy rules, and the curriculum lists
 // exactly the indexed scenarios.
 import { test, assert, loadJSON } from './harness.js';
-import { checkScenario, CHECK_DEFAULTS } from '../scripts/check-scenarios.mjs';
+import { checkScenario, checkPass, CHECK_DEFAULTS } from '../scripts/check-scenarios.mjs';
 import { createFormation } from '../js/engine/formation.js';
 import { mirrorScenario, normalizeScenario, learnerId } from '../js/engine/scenario.js';
 import { frameAt } from '../js/engine/timeline.js';
@@ -19,7 +19,9 @@ import { WIDTH } from '../js/engine/pitch.js';
 const principlesData = await loadJSON('data/principles.json');
 const byId = Object.fromEntries(principlesData.principles.map((p) => [p.id, p]));
 const curriculum = await loadJSON('data/curriculum.json');
-const index = (await loadJSON('data/scenarios/index.json')).scenarios;
+const indexFile = await loadJSON('data/scenarios/index.json');
+const index = indexFile.scenarios;
+const passDrills = await Promise.all((indexFile.passes ?? []).map((e) => loadJSON(`data/scenarios/${e.file}`)));
 const F = createFormation(await loadJSON('data/formations/helios-433.json'));
 const formations = { us: F, them: F };
 const scenarios = await Promise.all(index.map(async (e) => ({ entry: e, raw: await loadJSON(`data/scenarios/${e.file}`) })));
@@ -139,6 +141,25 @@ test('scenarios: learner text is present in both wordings, short for kids, never
       assert.doesNotMatch(t, SIDE_WORDS, `${id}: "${t}" names a side (scenarios are mirrored)`);
       assert.doesNotMatch(t, /\b(he|his|him|himself|she|her|hers|herself)\b/i, `${id}: "${t}" (players are "they": the copy is for every player)`);
     }
+  }
+});
+
+test('authored pass drills (the index\'s passes): the pass gates hold on the drill and its mirror, the scene teaches the first idea, and the text never names a side or a gender', () => {
+  assert.ok(passDrills.length >= 2, 'the full-backs\' "lead the runner" drills (PA8: the generator never makes one for a full-back)');
+  for (const raw of passDrills) {
+    const r = checkPass(raw, { principles: principlesData, formations });
+    assert.deepEqual(r.errors, [], raw.id);
+    assert.deepEqual(r.problems, [], raw.id);
+    assert.equal(r.best.id, raw.answer.best, `${raw.id}: the keyed best is the engine's`);
+    assert.ok(r.stages.small || r.stages.medium, `${raw.id}: a smaller game`);
+    assert.equal(byId[raw.principles[0]]?.release, 'v1', `${raw.id}: the first idea is a v1 principle`);
+    const texts = [raw.title, raw.titleKid, raw.brief, raw.briefKid, raw.question, raw.questionKid, raw.takeaway.standard, raw.takeaway.kid];
+    for (const t of texts) {
+      assert.ok(typeof t === 'string' && t.trim(), `${raw.id}: every learner text is written`);
+      assert.doesNotMatch(t, SIDE_WORDS, `${raw.id}: "${t}" names a side (drills are mirrored)`);
+      assert.doesNotMatch(t, /\b(he|his|him|himself|she|her|hers|herself)\b/i, `${raw.id}: "${t}"`);
+    }
+    assert.ok(words(raw.takeaway.kid) <= KID_WORDS && words(raw.briefKid) <= KID_WORDS, raw.id);
   }
 });
 

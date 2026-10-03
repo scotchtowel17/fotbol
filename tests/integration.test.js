@@ -68,6 +68,29 @@ test('integration: the ghost scores S (>= 90) for every situation and role, and 
   assert.deepEqual(low, [], `ghosts below 90:\n${low.join('\n')}`);
 });
 
+test('integration: the keeper (Explore only) gets an S ghost on the G1 spot, and a keeper off his line is told so', () => {
+  for (const situation of SITUATIONS) {
+    const scene = analyseScene(sceneOptions(situation, 'us-GK', formations));
+    const { ghost } = scene;
+    assert.ok(ghost.score >= 90, `${situation.id} / GK: ghost ${ghost.score}`);
+    assert.equal(ghost.result.critical, false, `${situation.id} / GK`);
+    if (situation.possession !== 'them') continue;
+    const g1 = ghost.result.rules.find((r) => r.id === 'gk-angle-depth');
+    assert.ok(g1 && g1.s >= 0.99, `${situation.id} / GK: G1 met at the ghost`);
+    // Ten metres further off the line fails G1, and the feedback says so first.
+    const far = { x: ghost.spot.x + 10, y: ghost.spot.y };
+    const { result, feedback } = judgeSpot(scene, far, { principles: byId });
+    assert.ok(result.score < 70, `${situation.id} / GK: 10 m off the G1 spot scores ${result.score}`);
+    assert.equal(feedback.reasons[0]?.ruleId, 'gk-angle-depth', `${situation.id} / GK: G1 leads the feedback`);
+    assert.match(feedback.reasons[0]?.text ?? '', SENTENCE, `${situation.id} / GK: a sentence of feedback`);
+  }
+  // With a shot on (the ball 20 m out, left of goal), a keeper who leaves the near post open is a critical fail.
+  const shot = analyseScene({ ...sceneOptions({ id: 'shot', ball: { x: 16, y: 24 }, possession: 'them' }, 'us-GK', formations) });
+  const open = judgeSpot(shot, { x: shot.ghost.spot.x, y: shot.ghost.spot.y + 4 }, { principles: byId });
+  assert.equal(open.result.critical, true, 'off the angle with a shot on is critical');
+  assert.ok(open.result.score <= CRITICAL_CAP);
+});
+
 test('integration: a spot 20 m from the ghost (and outside the ghost search around the base) scores <= 40', () => {
   // The ghost can sit up to the search radius (15 m) from the base, so a spot 20 m from the ghost
   // can be as close as 5 m to the base, a spot the engine itself would have considered. Those are

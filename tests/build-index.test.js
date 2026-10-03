@@ -6,6 +6,7 @@ import {
 } from '../scripts/build-index.mjs';
 
 const example = await loadJSON('data/scenarios/_example.json');
+const passDrill = await loadJSON('data/scenarios/pa8-lb-01.json');
 const principles = await loadJSON('data/principles.json');
 const clone = (v) => JSON.parse(JSON.stringify(v));
 
@@ -91,6 +92,24 @@ test('build-index: warnings (file name vs id, curriculum listing) do not fail th
   assert.ok(has(/no-such-module\.json: module "M9" is not in data\/curriculum\.json/));
   assert.ok(has(/M1 lists "ghost-id", but no valid scenario has that id/));
   assert.ok(!has(/listed\.json:/), 'a listed scenario whose file matches its id has no warning');
+});
+
+test('build-index: authored pass drills are validated as pass drills and listed apart, under passes', () => {
+  const p = { ...clone(passDrill), id: 'pa-x' };
+  const { errors, warnings, index } = buildIndex([item(scenario('m1-a')), item(p)], { principles, curriculum: { modules: [{ id: 'M1', scenarios: ['m1-a'] }] } });
+  assert.deepEqual(errors, []);
+  assert.deepEqual(warnings, [], 'a pass drill is in no curriculum module, and that is no warning');
+  assert.deepEqual(index.scenarios.map((r) => r.id), ['m1-a'], 'the spot list never holds a pass drill');
+  assert.deepEqual(index.passes, [{ id: 'pa-x', file: 'pa-x.json', title: p.title, principles: ['PA8', 'PA4'], role: 'LB', difficulty: 0 }]);
+  const text = serializeIndex(index);
+  assert.deepEqual(JSON.parse(text), index);
+  assert.deepEqual(diffIndex(JSON.parse(text), index), []);
+  assert.ok(diffIndex({ ...JSON.parse(text), passes: [] }, index).some((d) => /passes/.test(d)), 'a missing pass row is stale');
+  assert.equal('passes' in buildIndex([item(scenario('m1-a'))], { principles }).index, false, 'no passes list without a pass drill');
+  // A pass drill is checked with the pass drill rules: the learner must be on the ball at the freeze.
+  const bad = clone(p);
+  bad.timeline.carrier = bad.timeline.carrier.slice(0, 2);
+  assert.ok(buildIndex([item(bad)], { principles }).errors.some((e) => /must have the ball at the freeze/.test(e)));
 });
 
 test('build-index: the file text is JSON, one scenario per line, with a trailing newline', () => {

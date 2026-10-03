@@ -16,7 +16,7 @@
   "principles": [
     "P1",
     "P2",
-    "B5"
+    "B3"
   ],
   "learner": {
     "role": "RCM",
@@ -147,7 +147,7 @@
     ]
   },
   "answer": {
-    "mode": "authored",
+    "mode": "engine",
     "ideal": {
       "x": 67.5,
       "y": 52
@@ -189,5 +189,5 @@
     "author": "fotbol",
     "keyedBy": []
   },
-  "notes": "Authored answer (engine disagreement). With the ball wide on the #8's side, layer A (HELIOS) drags the ball-side #8 into the wing lane 5-10 m inside and behind the ball, in front of their midfield line: base (54.5, 56.2). In engine mode the ghost is (49.5, 55.2) scoring 87 (A) with between-lines 0.00, occupancy 0.60 and support-distance 0.65: a deep support spot behind the ball, not P1. P1 has no rule of its own (its ruleIds are empty), so the zone is centred on the ball-side half-space pocket between their #6/#8 and their centre-back/full-back, with a tighter tolerance (4 x 3 m) so the ghost search does not drift into the wing lane, where their #8 follows the learner (scene.js settle) and the spot is judged 84 in the drill frame. The rules agree at the ideal (ghost 96: between-lines 1.00, lane-open 1.00; the support angle with the #9 is 0.65). The #9 is keyed on their centre-back's shoulder in the centre lane, as in the P1 picture (he pins the centre-back so the half-space stays free)."
+  "notes": "Engine answer since 2026-10-03 (it was authored: layer A dragged the ball-side #8 into the wing lane behind the ball, base (54.5, 56.2), a support spot, not P1). scene.js now sends the ball-side #8 into the half-space between their lines when his full-back has the ball out wide from the middle third (shareFlanks, P1), and the half-space rule judges the channel: base (66.6, 50.2), the best spot (67.6, 53.2) scores 96, 1.2 m from the keyed ideal; the start scores 20. The tighter tolerance (4 x 3 m) is kept. Its third idea is B3 (it was B5, which stood in while P1 had no rule): the answer is praised for the open passing lane it gives the full-back, and with B5 the smaller games praised the spacing across the lanes instead, so no smaller game held. The #9 is keyed on their centre-back's shoulder in the centre lane, as in the P1 picture (he pins the centre-back so the half-space stays free)."
 }

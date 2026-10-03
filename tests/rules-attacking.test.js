@@ -6,6 +6,9 @@ import { buildContext } from '../js/engine/context.js';
 import { ROLES } from '../js/engine/roles.js';
 import { HALF_X as HALF } from '../js/engine/pitch.js';
 import offside, { offsideLineX } from '../js/engine/rules/offside.js';
+import halfSpace from '../js/engine/rules/half-space.js';
+import flankShare from '../js/engine/rules/flank-share.js';
+import unity from '../js/engine/rules/unity.js';
 import width from '../js/engine/rules/width.js';
 import pin from '../js/engine/rules/pin.js';
 import laneOpen from '../js/engine/rules/lane-open.js';
@@ -63,6 +66,16 @@ test('offside: critical only at a pass moment', () => {
   assert.equal(offside.evaluate(ctx, at(LINE, 4)).critical, false, 'level is onside even at the pass');
   assert.equal(offside.evaluate(ctx, at(LINE + 0.2, 4)).critical, false);
   assert.equal(offside.evaluate(ctx, at(LINE + 1, 4)).critical, true);
+});
+
+test("offside: a teammate's pass about to be played (tags.nextEvent within passAhead) is judged as the pass", () => {
+  const soon = ctxFor('ipBuildUp', 'us-LW', { tags: { nextEvent: 'cross', nextEventIn: 0.5 } });
+  assert.equal(offside.evaluate(soon, at(LINE + 2, 4)).critical, true, 'the cross is half a second away');
+  assert.equal(offside.evaluate(soon, at(LINE, 4)).critical, false, 'level is still onside');
+  const later = ctxFor('ipBuildUp', 'us-LW', { tags: { nextEvent: 'cross', nextEventIn: 1.6 } });
+  assert.equal(offside.evaluate(later, at(LINE + 2, 4)).critical, false, 'too far ahead: penalised, not critical');
+  const carry = ctxFor('ipBuildUp', 'us-LW', { tags: { nextEvent: 'shot', nextEventIn: 0.3 } });
+  assert.equal(offside.evaluate(carry, at(LINE + 2, 4)).critical, false, 'not a pass');
 });
 
 test('offside: never offside in your own half, even behind a high line', () => {
@@ -570,4 +583,62 @@ test('rules expose the contract shape and a cue highlight', () => {
   assert.deepEqual(laneOpen.cue(ctxFor('ipBuildUp', 'us-RCM'), at(46, 34)), { type: 'segment', a: at(22, 26), b: at(46, 34) });
   assert.deepEqual(supportDistance.cue(ctxFor('ipBuildUp', 'us-DM')), { type: 'player', id: 'us-LCB' });
   assert.deepEqual(spacing.cue(ctxFor('ipBuildUp', 'us-LCM'), at(33, 31)), { type: 'player', id: 'us-DM' });
+});
+
+// ---------------------------------------------------------------- half-space (P1) and flank sharing (B6)
+
+/** Our right-back carries the ball up the touchline in midfield (x 58); our right #8 is the learner. */
+const FB_WIDE = { ball: at(58, 63), carrierId: 'us-RB', move: { 'us-RB': at(57.2, 63), 'us-RCM': at(52, 58) } };
+
+test('half-space: with our full-back on the ball out wide from the middle third, the ball-side #8 takes the channel', () => {
+  const ctx = ctxFor('ipBuildUp', 'us-RCM', FB_WIDE, at(66, 50));
+  assert.ok(halfSpace.weight(ctx) > 2, `weight ${halfSpace.weight(ctx)}`);
+  assert.equal(halfSpace.evaluate(ctx, at(66, 49)).s, 1, 'in the right half-space');
+  const wide = halfSpace.evaluate(ctx, at(60, 60));
+  assert.ok(wide.s < 0.2 && wide.vars.issue === 'wide', `wide ${wide.s}`);
+  const central = halfSpace.evaluate(ctx, at(66, 36));
+  assert.ok(central.s < 0.2 && central.vars.issue === 'central', `central ${central.s}`);
+  assert.ok(wide.target.y < 54.16 && wide.target.y > 43.16, 'the target is in the channel');
+  // Not the far #8, not in our third, not with the #8 himself on the ball, not out of possession.
+  assert.equal(halfSpace.weight(ctxFor('ipBuildUp', 'us-LCM', FB_WIDE, at(60, 30))), 0);
+  assert.equal(halfSpace.weight(ctxFor('ipBuildUp', 'us-RCM', { ...FB_WIDE, ball: at(25, 63), move: { 'us-RB': at(24.2, 63) } }, at(35, 50))), 0);
+  assert.equal(halfSpace.weight(ctxFor('ipBuildUp', 'us-RCM', { ...FB_WIDE, ball: at(58, 34), move: { 'us-RB': at(57.2, 34) } }, at(66, 50))), 0, 'the ball in the middle');
+  for (const v of ['ok', 'wide', 'central']) for (const w of ['standard', 'kid']) assert.match(halfSpace.text[w][v === 'ok' ? 'ok' : 'fail']({ issue: v, who: 'your right-back' }), /^[A-Z].*[.!?]$/);
+});
+
+test('flank sharing: when your flank partner holds the touchline next to you, come inside; the width-holder is left alone', () => {
+  // Our right-back overlaps our right winger up the touchline.
+  const OVERLAP = { ball: at(60, 44), carrierId: 'us-RCM', move: { 'us-RCM': at(59.2, 44), 'us-RB': at(70, 65), 'us-RW': at(68, 64) }, tags: { widthHolders: ['RB', 'LW'] } };
+  const ctx = ctxFor('ipBuildUp', 'us-RW', OVERLAP, at(68, 50));
+  assert.equal(ctx.widthHolder, false);
+  assert.ok(flankShare.weight(ctx) > 2, `weight ${flankShare.weight(ctx)}`);
+  assert.equal(flankShare.evaluate(ctx, at(68, 50)).s, 1);
+  const shared = flankShare.evaluate(ctx, at(68, 63));
+  assert.equal(shared.s, 0);
+  assert.equal(shared.vars.issue, 'wide');
+  assert.match(flankShare.text.standard.fail(shared.vars), /^Your right-back holds the width/);
+  // No tags: the winger is the width-holder unless his full-back holds his wing lane (context.js flankShare).
+  const untagged = ctxFor('ipBuildUp', 'us-RW', { ...OVERLAP, tags: {} }, at(68, 50));
+  assert.equal(untagged.widthHolder, false, 'his full-back is overlapping him');
+  assert.equal(ctxFor('ipBuildUp', 'us-RW', { ...OVERLAP, tags: {}, move: { ...OVERLAP.move, 'us-RB': at(40, 63) } }, at(68, 64)).widthHolder, true, 'a full-back 28 m behind holds nothing');
+  // The full-back who is the width-holder is never told to come inside.
+  assert.equal(flankShare.weight(ctxFor('ipBuildUp', 'us-RB', OVERLAP, at(70, 65))), 0);
+  // A full-back whose winger hugs the touchline right in front of him comes inside.
+  const fb = ctxFor('ipBuildUp', 'us-RB', { ball: at(40, 40), carrierId: 'us-DM', move: { 'us-DM': at(39.2, 40), 'us-RW': at(52, 65), 'us-RB': at(46, 64) } }, at(46, 62));
+  assert.ok(flankShare.weight(fb) > 0, 'his winger is in the wing lane 6 m ahead');
+  assert.ok(flankShare.evaluate(fb, at(46, 62)).s < 0.5);
+  assert.equal(flankShare.weight(ctxFor('ipBuildUp', 'us-RB')), 0, 'the build-up fixture: winger 28 m ahead, far apart');
+});
+
+test('unity (B12): in possession from the middle third on, the back line stays within 45 m of our front line', () => {
+  // Our right winger has the ball at x 82; our front line is at about x 80.
+  const ATTACK = { ball: at(82, 60), carrierId: 'us-RW', move: { 'us-RW': at(82, 60), 'us-ST': at(84, 36), 'us-LW': at(80, 8) } };
+  const ctx = ctxFor('ipBuildUp', 'us-RCB', ATTACK, at(45, 44));
+  assert.ok(unity.weight(ctx) > 0);
+  assert.equal(unity.evaluate(ctx, at(45, 44)).s, 1, '37 m behind the front line');
+  const deep = unity.evaluate(ctx, at(28, 44));
+  assert.ok(deep.s < 0.2 && deep.vars.issue === 'deep', `54 m behind ${deep.s}`);
+  assert.match(unity.text.standard.fail(deep.vars), /^Push up: you are \d+ m behind our front line/);
+  assert.equal(unity.weight(ctxFor('ipBuildUp', 'us-RCB')), 0, 'build-up in our own third');
+  assert.equal(unity.weight(ctxFor('ipBuildUp', 'us-ST', ATTACK, at(80, 34))), 0, 'the forwards are the front line');
 });

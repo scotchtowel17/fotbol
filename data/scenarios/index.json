@@ -24,7 +24,7 @@
     { "id": "m2-08-b6-rw", "file": "m2-08-b6-rw.json", "title": "Full-back overlaps: come inside", "module": "M2", "moment": "in_possession", "phase": "progression", "principles": ["B6", "P1", "P2"], "role": "RW", "difficulty": 0 },
     { "id": "m2-09-p2-lcm", "file": "m2-09-p2-lcm.json", "title": "Find the gap between their lines", "module": "M2", "moment": "in_possession", "phase": "progression", "principles": ["P2", "B3"], "role": "LCM", "difficulty": 1 },
     { "id": "m2-10-b5-lb", "file": "m2-10-b5-lb.json", "title": "Don't make a flat line", "module": "M2", "moment": "in_possession", "phase": "build_up", "principles": ["B5", "B1"], "role": "LB", "difficulty": 0 },
-    { "id": "m2-11-p1-rcm", "file": "m2-11-p1-rcm.json", "title": "Ball goes wide: take the half-space", "module": "M2", "moment": "in_possession", "phase": "progression", "principles": ["P1", "P2", "B5"], "role": "RCM", "difficulty": 1 },
+    { "id": "m2-11-p1-rcm", "file": "m2-11-p1-rcm.json", "title": "Ball goes wide: take the half-space", "module": "M2", "moment": "in_possession", "phase": "progression", "principles": ["P1", "P2", "B3"], "role": "RCM", "difficulty": 1 },
     { "id": "m2-12-p10-lw", "file": "m2-12-p10-lw.json", "title": "Cross coming: attack the back post", "module": "M2", "moment": "in_possession", "phase": "final_third", "principles": ["P10", "B1", "F4"], "role": "LW", "difficulty": 1 },
     { "id": "m3-01-u2-lcm", "file": "m3-01-u2-lcm.json", "title": "Slide across with the switch", "module": "M3", "moment": "out_of_possession", "phase": "mid_block", "principles": ["U2", "U1"], "role": "LCM", "difficulty": -1 },
     { "id": "m3-02-u4-rb", "file": "m3-02-u4-rb.json", "title": "Back into the line", "module": "M3", "moment": "out_of_possession", "phase": "mid_block", "principles": ["U4", "R2"], "role": "RB", "difficulty": -1 },
@@ -38,5 +38,9 @@
     { "id": "m3-10-u3-lcb", "file": "m3-10-u3-lcb.json", "title": "Drop when the ball is free", "module": "M3", "moment": "out_of_possession", "phase": "mid_block", "principles": ["U3", "U4", "R1"], "role": "LCB", "difficulty": 1 },
     { "id": "m3-11-r1-rcb", "file": "m3-11-r1-rcb.json", "title": "One steps, one covers", "module": "M3", "moment": "out_of_possession", "phase": "mid_block", "principles": ["R1", "D3", "U4"], "role": "RCB", "difficulty": 1 },
     { "id": "m3-12-u7-dm", "file": "m3-12-u7-dm.json", "title": "Protect the edge of the box", "module": "M3", "moment": "out_of_possession", "phase": "low_block", "principles": ["U7", "R3", "U6"], "role": "DM", "difficulty": 1 }
+  ],
+  "passes": [
+    { "id": "pa8-lb-01", "file": "pa8-lb-01.json", "title": "Play it in behind the full-back", "principles": ["PA8", "PA4"], "role": "LB", "difficulty": 0 },
+    { "id": "pa8-lb-02", "file": "pa8-lb-02.json", "title": "Lead your #8 into the channel", "principles": ["PA8", "PA4"], "role": "LB", "difficulty": 0 }
   ]
 }

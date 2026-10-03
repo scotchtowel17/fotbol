@@ -18,7 +18,7 @@ import { createFormation, teamTargets } from '../../engine/formation.js';
 import { nameOf, kidNameOf } from '../../engine/rules/_util.js';
 import { RULES_BY_ID } from '../../engine/rules/index.js';
 import { offsideLineX } from '../../engine/rules/offside.js';
-import { LEARNABLE_ROLES, ROLE_INFO, playerId } from '../../engine/roles.js';
+import { EXPLORE_ROLES, LEARNABLE_ROLES, ROLE_INFO, playerId } from '../../engine/roles.js';
 import { HALF_X, MID_Y, clampToPitch } from '../../engine/pitch.js';
 import { dist } from '../../engine/geometry.js';
 import { orientationFor } from '../session.js';
@@ -192,10 +192,10 @@ export function randomBall(from, rng = Math.random, { min = EXPLORE_DEFAULTS.new
   return { x: Math.round(best.x * 2) / 2, y: Math.round(best.y * 2) / 2 };
 }
 
-/** The role in '#/explore/<ROLE>' (case-insensitive), or null. */
+/** The role in '#/explore/<ROLE>' (case-insensitive), or null. The keeper is explorable here only. */
 export function roleFromParams(params) {
   const r = String(params?.[0] ?? '').toUpperCase();
-  return LEARNABLE_ROLES.includes(r) ? r : null;
+  return EXPLORE_ROLES.includes(r) ? r : null;
 }
 
 // ------------------------------------------------------------------ mode
@@ -212,8 +212,10 @@ export async function mount(root, app, params) {
   const wording = () => (app.settings.wording === 'kid' ? 'kid' : 'standard');
   const copy = () => COPY[wording()];
 
+  // An outfield role in the URL becomes the coach's role; the keeper stays local to Explore, because
+  // drills and Live mode read settings.role and have no keeper content yet.
   const paramRole = roleFromParams(params);
-  if (paramRole && paramRole !== app.settings.role) app.setSettings({ role: paramRole });
+  if (paramRole && LEARNABLE_ROLES.includes(paramRole) && paramRole !== app.settings.role) app.setSettings({ role: paramRole });
   const stored = app.store.get('explore', {}) ?? {};
 
   const kickoffSpot = (role) => {
@@ -225,7 +227,7 @@ export async function mount(root, app, params) {
   };
 
   const state = {
-    role: app.settings.role,
+    role: paramRole ?? app.settings.role,
     ball: { ...P.startBall },
     possession: P.startPossession,
     spot: null,
@@ -492,8 +494,12 @@ export async function mount(root, app, params) {
     panel = createFeedbackPanel(liveHost, { app });
 
     const roleId = uid('ex-role');
-    const roleSelect = el('select', { id: roleId, class: 'field-select ex-role-select', onchange: (e) => app.setSettings({ role: e.target.value }) },
-      LEARNABLE_ROLES.map((r) => el('option', { value: r, selected: r === state.role, text: ROLE_INFO[r].label })));
+    const pickRole = (r) => {
+      setRole(r);
+      if (LEARNABLE_ROLES.includes(r) && r !== app.settings.role) app.setSettings({ role: r });
+    };
+    const roleSelect = el('select', { id: roleId, class: 'field-select ex-role-select', onchange: (e) => pickRole(e.target.value) },
+      EXPLORE_ROLES.map((r) => el('option', { value: r, selected: r === state.role, text: ROLE_INFO[r].label })));
     actions.replaceChildren(el('div', { class: 'ex-toolbar' }, [
       el('div', { class: 'ex-tool ex-tool--role' }, [el('label', { class: 'field-label', for: roleId, text: C.roleLabel }), roleSelect]),
       el('div', { class: 'ex-tool ex-tool--possession' }, [segmented({
@@ -542,7 +548,7 @@ export async function mount(root, app, params) {
   }
 
   function setRole(role) {
-    if (role === state.role) return;
+    if (role === state.role || !EXPLORE_ROLES.includes(role)) return;
     state.role = role;
     state.spot = kickoffSpot(role);
     state.fullShown = false;
@@ -559,9 +565,14 @@ export async function mount(root, app, params) {
   }
 
   // Settings: a new role re-places you; new wording re-phrases everything without moving anyone.
+  // Only a change of settings.role moves you: exploring the keeper is not undone by a wording change.
   let lastWording = wording();
+  let lastRole = app.settings.role;
   const offSettings = app.onSettings?.((s) => {
-    if (s.role !== state.role && LEARNABLE_ROLES.includes(s.role)) setRole(s.role);
+    if (s.role !== lastRole) {
+      lastRole = s.role;
+      if (s.role !== state.role && LEARNABLE_ROLES.includes(s.role)) setRole(s.role);
+    }
     if (wording() !== lastWording) {
       lastWording = wording();
       buildPanel();

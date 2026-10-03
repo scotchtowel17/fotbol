@@ -220,7 +220,7 @@ test('explore: randomBall moves the ball far enough and stays in the area; roleF
   }
   assert.equal(roleFromParams(['lcb']), 'LCB');
   assert.equal(roleFromParams(['ST']), 'ST');
-  assert.equal(roleFromParams(['GK']), null, 'the keeper is not learnable in v1');
+  assert.equal(roleFromParams(['gk']), 'GK', 'the keeper can be explored, though no drill teaches it yet');
   assert.equal(roleFromParams(['banana']), null);
   assert.equal(roleFromParams([]), null);
   for (const r of LEARNABLE_ROLES) assert.equal(roleFromParams([r.toLowerCase()]), r);

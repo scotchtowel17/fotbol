@@ -6,7 +6,7 @@
 // checked for tactical sense in the canonical frame.
 
 import { test, assert, loadJSON, isNode } from './harness.js';
-import { FAMILIES, LEARNABLE_ROLES, ROLE_INFO, ROLES, BACK_LINE, parsePlayerId } from '../js/engine/roles.js';
+import { FAMILIES, LEARNABLE_ROLES, EXPLORE_ROLES, ROLE_INFO, ROLES, BACK_LINE, parsePlayerId } from '../js/engine/roles.js';
 import { onPitch, laneOf, THIRD_EDGES, HALF_X, LENGTH, WIDTH, OWN_GOAL } from '../js/engine/pitch.js';
 import { dist } from '../js/engine/geometry.js';
 
@@ -31,10 +31,12 @@ const byId = Object.fromEntries(principles.map((p) => [p.id, p]));
 
 /** The 17 v1 engine rules and the principles each checks (RESEARCH 5.5, "Section 8 ref" column). */
 const RULE_REFS = {
-  offside: ['F4'], 'keeps-onside': ['U4'], 'level-line': ['U4'], 'goal-side': ['D5'], press: ['D1', 'D2'],
-  cover: ['D3'], tuck: ['D4', 'U5'], compact: ['U1', 'U2'], screen: ['R3'], width: ['B1'], pin: ['B2'],
+  offside: ['F4'], 'keeps-onside': ['U4'], 'level-line': ['U4', 'R1'], 'goal-side': ['D5', 'R2'], press: ['D1', 'D2', 'T2', 'R2', 'R5'],
+  cover: ['D3', 'R1'], tuck: ['D4', 'U5', 'R1', 'R2'], compact: ['U1', 'U2'], screen: ['R3'], width: ['B1', 'R4'], pin: ['B2', 'R5'],
   'lane-open': ['B3'], 'support-distance': ['B3', 'B4'], occupancy: ['B5'], 'between-lines': ['P2'], spacing: ['F8'],
-  'box-fill': ['P10'],
+  'box-fill': ['P10', 'R5'], recovery: ['T3', 'R4'], 'half-space': ['P1'], 'flank-share': ['B6'],
+  'cross-defence': ['U8', 'R1'], 'drop-narrow': ['T2'], 'line-height': ['U3'], concentration: ['U7'], unity: ['B12'],
+  'block-height': ['U6'], 'gk-angle-depth': ['G1'],
 };
 const ENGINE_RULE_IDS = Object.keys(RULE_REFS);
 
@@ -122,6 +124,7 @@ function passingUrls(md) {
 const PASSING_ROWS = passingRows(passingResearch);
 const PASSING_VERIFIED = passingUrls(passingResearch);
 const LEARNABLE_FAMILIES = new Set(LEARNABLE_ROLES.map((r) => ROLE_INFO[r].family));
+const EXPLORABLE_FAMILIES = new Set(EXPLORE_ROLES.map((r) => ROLE_INFO[r].family)); // the keeper too (Explore, G1)
 
 function checkLink(url, where) {
   assert.match(url, /^https:\/\//, `${where}: ${url} is not https`);
@@ -217,10 +220,11 @@ test('principles: families are valid, and every v1 principle suits a learnable r
     assert.ok(Array.isArray(p.families) && p.families.length > 0, `${p.id} families`);
     assert.equal(new Set(p.families).size, p.families.length, `${p.id} duplicate family`);
     for (const f of p.families) assert.ok(FAMILIES.includes(f), `${p.id} family ${f}`);
-    if (p.release === 'v1') assert.ok(p.families.some((f) => LEARNABLE_FAMILIES.has(f)), `${p.id} is v1 but only for non-learnable roles`);
+    if (p.release === 'v1') assert.ok(p.families.some((f) => EXPLORABLE_FAMILIES.has(f)), `${p.id} is v1 but only for roles nobody can play`);
   }
   assert.deepEqual(byId.G1.families, ['GK']);
-  assert.notEqual(byId.G1.release, 'v1', 'the GK role is v1.1');
+  assert.equal(byId.G1.release, 'v1', 'the keeper is judged (gk-angle-depth) in Explore; G2-G4 stay later');
+  for (const id of ['G2', 'G3', 'G4']) assert.notEqual(byId[id].release, 'v1', id);
 });
 
 test('principles: ruleIds are engine rule IDs that follow the RESEARCH 5.5 map', () => {

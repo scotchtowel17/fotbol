@@ -68,9 +68,8 @@
     ]
   },
   "answer": {
-    "mode": "authored",
-    "ideal": { "x": 54, "y": 11 },
-    "tol": { "tx": 3, "ty": 4 }
+    "mode": "engine",
+    "ideal": { "x": 54, "y": 11 }
   },
   "misconceptions": [
     {
@@ -93,5 +92,5 @@
     "author": "fotbol",
     "keyedBy": []
   },
-  "notes": "Authored answer: the engine's best spot is the winger's layer-A spot (about (60.4, 10)), 5 m past the ball and 8 m into their half, which contradicts the lesson (back to halfway, just in front of the midfield, goal-side of the ball). The coach's spot is (54, 11) with a winger zone narrowed to tx 3, so a spot still past the ball drops out of S (the old engine spot scores about 73). stayed-high covers everything from 4 m past the ball up the flank; it holds no S spot. History: the ideal was (58.5, 15.5), then the engine's (60.5, 10)."
+  "notes": "Engine answer since 2026-10-03 (it was authored: the engine's best spot was the winger's layer-A spot, about (60.4, 10), 5 m past the ball and 8 m into their half, which contradicts the lesson: back to halfway, just in front of the midfield, goal-side of the ball). The block-height rule (U6) now keeps a winger in a mid block no further forward than the ball plus 1 m or halfway plus 3 m, so the narrowed winger zone (tx 3) it needed is gone: the best spot (55.4, 10) scores 100, 1.7 m from the keyed ideal (54, 11), and the start scores 57. stayed-high covers everything from 4 m past the ball up the flank; it holds no S spot."
 }

@@ -908,7 +908,11 @@ function setContext(opts, road) {
   const group = profile.group ?? groupOfRole(profile.role) ?? 'MID';
   const role = profile.role ?? road?.defaultRoles?.[group] ?? DEFAULT_ROLE[group];
   const families = road?.groups?.[group] ?? GROUP_FAMILIES[group];
-  const index = Array.isArray(opts.index) ? opts.index : Array.isArray(opts.index?.index) ? opts.index.index : Array.isArray(store?.index) ? store.index : [];
+  const given = Array.isArray(opts.index) ? opts.index : Array.isArray(opts.index?.index) ? opts.index.index : Array.isArray(store?.index) ? store.index : [];
+  // The authored pass drills (the store's passIndex, js/data.js) join the index the pass sets read, once each.
+  const passIndex = [opts.index?.passIndex, store?.passIndex].find(Array.isArray) ?? [];
+  const listed = new Set(given.map((e) => e?.id));
+  const index = passIndex.some((e) => !listed.has(e?.id)) ? [...given, ...passIndex.filter((e) => !listed.has(e?.id))] : given;
   const load = typeof opts.load === 'function' ? opts.load
     : typeof opts.index?.load === 'function' ? (id) => opts.index.load(id)
       : typeof store?.load === 'function' ? (id) => store.load(id) : fetchScenarios(index);
@@ -1203,15 +1207,30 @@ async function passSet(node, ctx) {
   const targets = node.kind === 'mix' || node.parts?.length ? mixParts(ctx.road, node, 'pass') : [node];
   const want = new Set(targets.flatMap((t) => t.principles));
   const rng = seededRandom(`${ctx.seed}|${node.id}|pass`);
+  // Authored pass drills on these ideas: written for your position (mirrored to your side: a left-back's drill is a
+  // right-back's too), then for another position of your group (borrowed, at most maxBorrowed a set); a drill written
+  // for no position is anyone's. Seeded order within each tier.
   const authored = ctx.index
     .filter((e) => isObj(e) && e.kind === 'pass' && typeof e.id === 'string' && (e.principles ?? []).some((p) => want.has(p)))
-    .map((e) => ({ e, k: rng() })).sort((a, b) => a.k - b.k).map((x) => x.e);
-  for (const e of authored) {
+    .map((e) => {
+      const written = e.role ?? e.learner?.role;
+      const mirror = LEARNABLE_ROLES.includes(written) && sidesDiffer(written, ctx.role);
+      const as = LEARNABLE_ROLES.includes(written) ? (mirror ? mirrorRole(written) : written) : null;
+      return { e, mirror, as, tier: !as || as === ctx.role ? 0 : 1, k: rng() };
+    })
+    .filter((x) => x.tier === 0 || ctx.families.includes(familyOf(x.as)))
+    .sort((a, b) => a.tier - b.tier || a.k - b.k);
+  for (const { e, mirror, tier } of authored) {
     if (out.length >= n) break;
+    if (tier && !set.canBorrow()) continue;
     try {
-      const drill = await ctx.load(e.id);
+      let drill = await ctx.load(e.id);
+      const engine = isObj(drill) && (mirror || !drill.rating) ? await engineModule('pass') : null;
+      if (isObj(drill) && mirror) drill = engine?.mirrorPassDrill?.(drill, { formations: ctx.formations ?? undefined }) ?? null;
+      // An authored drill is stored without its rating (npm run check rates it): rate it here, as generated ones come rated.
+      else if (isObj(drill) && !drill.rating && ctx.formations && engine?.passDrillRating) drill = { ...drill, rating: engine.passDrillRating(drill, { formations: ctx.formations }) };
       if (isObj(drill)) {
-        const rep = { kind: 'pass', drill, nodeId: node.id };
+        const rep = { kind: 'pass', drill, nodeId: node.id, ...(tier ? set.lend() : {}) };
         set.take(e.id, rep);
         out.push(rep);
       }

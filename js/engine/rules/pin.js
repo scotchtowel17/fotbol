@@ -34,7 +34,7 @@ const m = (v) => Math.max(1, Math.round(v));
 
 export default {
   id: 'pin',
-  principles: ['B2'],
+  principles: ['B2', 'R5'], // R5: on the last defender's shoulder
   critical: false,
   weight: (ctx) => prep(ctx)?.w ?? 0,
 

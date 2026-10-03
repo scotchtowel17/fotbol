@@ -18,12 +18,17 @@
 
 import { lerp, clamp } from './geometry.js';
 import { MID_Y, HALF_X, clampToPitch } from './pitch.js';
-import { playerId } from './roles.js';
+import { ROLES, playerId } from './roles.js';
+import { teamTargets } from './formation.js';
 import { autoFrame, autoRoles } from './scene.js';
 
 export const TIMELINE_DEFAULTS = Object.freeze({
   reactionLag: 0.3, // [D] s: auto players react to where the ball was this long ago
   shapeWindow: 1.0, // [D] s: ...averaged over this window, so a pass shifts the shape gradually rather than at ball speed
+  lostWindow: 6, // [D] s: within this long after our team loses the ball, tags.lostAgo says how long ago (a recovery run, T3)
+  runSpeed: 7, // [D] m/s: an auto player follows his own formation target no faster than this (runTargets), so after a
+  //             long pass the team shifts at a run instead of at 15-25 m/s (targets move up to 1.6 m per metre of ball)
+  runStep: 0.05, // [D] s: the grid that run is integrated on
   possessionBlend: 1.0, // [D] s: minimum time for the shape change after a turnover
   carrierBlend: 0.5, // [D] s: minimum time for passer, receiver and presser to re-position after a carrier or presser change
   pressCommit: 0.5, // [D] at a key time the automatic presser is committed to (pressing fully until the next key) if its range weight is at least this
@@ -33,6 +38,8 @@ export const TIMELINE_DEFAULTS = Object.freeze({
   sampleHz: 10, // [D] live-mode scoring rate (RESEARCH 5.7)
   ballBackWindow: 1.0, // [D] s: look-back window for deriving tags.ballMovingBack
   ballBackDist: 3, // [D] m: ball travel towards the possessing team's own goal that counts as "moving back"
+  eventAhead: 1.0, // [D] s: an event this soon after t (by the team on the ball) is derived as tags.nextEvent / nextEventIn,
+  //                  so a rule can judge the moment the ball is about to be played (offside at a pass, F4)
   adjustStep: 0.1, // [D] s: the goal-side settle and the separation (scene.js) are sampled on this grid...
   adjustWindow: 0.5, // [D] s: ...and averaged over this window centred on t, so they never snap (a change of d metres
   //                     takes the window: an auto player is no longer flung 3-4 m in 0.1 s as two players cross); 0 = off
@@ -82,6 +89,93 @@ export function meanBallAt(scenario, a, b) {
     p = q;
   }
   return { x: sx / (b - a), y: sy / (b - a) };
+}
+
+// Run-limited formation targets: per ball-key array (WeakMap, so scenarios can be collected), one track per formation,
+// parameter set, team and shape mode. A track keeps a copy of the keys it was built from: sequence.js writes keys while
+// it plays (and tries one and takes it back), so a changed key drops only the samples that could have seen it.
+const RUN_TRACKS = new WeakMap();
+const FORMATION_IDS = new WeakMap();
+let formationCount = 0;
+const NO_KEYS = [];
+
+function runTrack(keys, id, P) {
+  let byId = RUN_TRACKS.get(keys);
+  if (!byId) RUN_TRACKS.set(keys, (byId = new Map()));
+  let tr = byId.get(id);
+  if (!tr) byId.set(id, (tr = { keys: [], samples: [] }));
+  let j = 0;
+  const n = Math.min(keys.length, tr.keys.length);
+  while (j < n && keys[j].t === tr.keys[j].t && keys[j].x === tr.keys[j].x && keys[j].y === tr.keys[j].y) j++;
+  if (j < keys.length || j < tr.keys.length) {
+    // Samples whose shape window ends at or before key j-1 never saw key j onward.
+    const keep = j > 0 ? Math.floor((keys[j - 1].t + P.reactionLag) / P.runStep + 1e-9) + 1 : 0;
+    if (tr.samples.length > keep) tr.samples.length = Math.max(0, keep);
+    tr.keys = keys.map((k) => ({ t: k.t, x: k.x, y: k.y }));
+  }
+  return tr;
+}
+
+/** Each of `to`'s points moved from `from` by at most `max` metres (Float64Array [x0, y0, x1, y1, ...]). */
+function stepTowards(from, to, max) {
+  const out = new Float64Array(to.length);
+  for (let i = 0; i < to.length; i += 2) {
+    const dx = to[i] - from[i], dy = to[i + 1] - from[i + 1], d = Math.hypot(dx, dy);
+    const u = d <= max ? 1 : max > 0 ? max / d : 0; // max can be a hair below 0 on the grid (floating point)
+    out[i] = from[i] + dx * u;
+    out[i + 1] = from[i + 1] + dy * u;
+  }
+  return out;
+}
+
+/**
+ * Formation targets as auto players run to them: each player follows his own target (formation.js teamTargets for the
+ * shape ball, in the shape a possession gives his team) at no more than runSpeed m/s, integrated from t = 0 on a
+ * runStep grid, so it is a pure, continuous function of t. Without it a 25 m pass moved the averaged ball at up to
+ * 22 m/s, and touchline targets up to 1.6 m per metre of it. A player whose target moves slower than a run is exactly
+ * on it. The learner's base is judged on the targets themselves (learnerBaseAt: where the role belongs once the shape
+ * has shifted), so the run never moves a drill's answer zone. runSpeed 0 (generated drills, which land on a rated
+ * still scene) = no run: undefined, and autoFrame computes the targets itself.
+ * @param {object} scenario
+ * @param {number} t
+ * @param {{ formations: {us:object, them?:object}, possession: 'us'|'them'|'none', params?: object }} opts
+ *   params: TIMELINE_DEFAULTS and SCENE params (params.shape as for autoFrame)
+ * @returns {{ us: Object<string,{x:number,y:number}>, them: Object<string,{x:number,y:number}> }|undefined}
+ */
+export function runTargets(scenario, t, { formations, possession, params } = {}) {
+  const P = params ?? TIMELINE_DEFAULTS;
+  const v = P.runSpeed, h = P.runStep;
+  if (!(v > 0 && h > 0) || scenario.timeline?.players?.auto === false) return undefined;
+  const keys = scenario.timeline?.ball ?? NO_KEYS;
+  const shapeAt = (at) => meanBallAt(scenario, at - P.reactionLag - P.shapeWindow, at - P.reactionLag);
+  const attacking = possession === 'us' || possession === 'them';
+  const shape = P.shape ?? true;
+  const out = {};
+  for (const team of ['us', 'them']) {
+    const formation = team === 'us' ? formations.us : formations.them ?? formations.us;
+    if (!FORMATION_IDS.has(formation)) FORMATION_IDS.set(formation, ++formationCount);
+    const inPossession = possession === team;
+    const opts = { inPossession, offset: attacking, shape };
+    const id = `${FORMATION_IDS.get(formation)}|${team}|${inPossession}|${attacking}|${P.reactionLag}|${P.shapeWindow}|${v}|${h}|${typeof shape === 'object' ? JSON.stringify(shape) : shape}`;
+    const tr = runTrack(keys, id, P);
+    const targetAt = (at) => {
+      const q = teamTargets(formation, team, shapeAt(at), opts);
+      const a = new Float64Array(ROLES.length * 2);
+      ROLES.forEach((role, i) => { a[2 * i] = q[role].x; a[2 * i + 1] = q[role].y; });
+      return a;
+    };
+    const S = tr.samples;
+    const k = t > 0 ? Math.floor(t / h + 1e-9) : 0;
+    while (S.length <= k) {
+      const i = S.length;
+      S.push(i === 0 ? targetAt(0) : stepTowards(S[i - 1], targetAt(i * h), v * h));
+    }
+    const at = t > 0 && t - k * h > 0 ? stepTowards(S[k], targetAt(t), v * (t - k * h)) : t > 0 ? S[k] : targetAt(t);
+    const roles = {};
+    ROLES.forEach((role, i) => { roles[role] = { x: at[2 * i], y: at[2 * i + 1] }; });
+    out[team] = roles;
+  }
+  return out;
 }
 
 /** Possession at t: step function over timeline.possession, else derived from `moment`, else 'none'. */
@@ -146,15 +240,19 @@ export function sampleTimes(scenario, { hz = TIMELINE_DEFAULTS.sampleHz, from = 
 /**
  * The frame of a scenario at time t.
  * - Auto players follow autoFrame(): the formation reacts to the ball's mean position over
- *   [t - reactionLag - shapeWindow, t - reactionLag]; the carrier, press spot and onside line use
+ *   [t - reactionLag - shapeWindow, t - reactionLag], each player running to his target at no more than runSpeed
+ *   (runTargets); the carrier, press spot and onside line use
  *   the ball at t. `players.auto: false` freezes the shape at its t = 0 position.
  * - Overrides (linear between keys) win over everything. The explicit carrier is placed at the ball.
  *   Automatic carriers (before the first carrier key) and pressers are decided at t = 0 and at every
  *   ball, possession and carrier key, and kept until the next one. At a key the press is ranked on
  *   where the players are at that moment (autoFrame's rankFrom), not on their formation spots, so
  *   after a turnover nobody is sent to press past a teammate who is already goal-side.
- * - frame.tags: the tag keys so far, merged; `phase` defaults to scenario.phase; `ballMovingBack`
- *   is derived from the last ballBackWindow seconds of ball movement unless a tag sets it.
+ * - frame.tags: the tag keys so far, merged; `phase` defaults to scenario.phase and `lesson` to the scenario's first
+ *   principle (score.js LESSON_CAP); `ballMovingBack`
+ *   is derived from the last ballBackWindow seconds of ball movement unless a tag sets it; `nextEvent` and
+ *   `nextEventIn` name the next event (not a carry) by the team on the ball within eventAhead seconds; `lostAgo`
+ *   says how long ago our team lost the ball, within lostWindow seconds (unless a tag sets them).
  * - `scenario.params` is merged over SCENE_DEFAULTS / TIMELINE_DEFAULTS (opts.params wins), and may
  *   also set autoPress, autoCarrier or onsideClamp.
  * - `learner.start` is for the UI: pass it as learnerSpot to pin the learner there.
@@ -219,8 +317,9 @@ export function adjustmentOf(full, bare) {
  * out there so no decision waits on a later one), then the placement at t: the state's placement without
  * settle and separation, what is left of its blend, then the averaged settle and separation (adjustCells).
  * The average reaches up to adjustWindow / 2 ahead, so the states are decided that far ahead too.
- * `unblended`: the current state's placement at t without what is left of its blend (the states and the
- * averaged settle and separation are exactly the blended playback's).
+ * `unblended`: the current state's placement at t without what is left of its blend and on the formation targets
+ * themselves (not run-limited: runTargets); the states and the averaged settle and separation are exactly the blended
+ * playback's.
  */
 function play(scenario, t, opts, unblended) {
   const tl = scenario.timeline ?? {};
@@ -228,7 +327,7 @@ function play(scenario, t, opts, unblended) {
   // learnerId: null = nobody is held back as the learner (every player auto-placed).
   const learnerId = opts.learnerId === null ? undefined : opts.learnerId ?? (scenario.learner?.role ? playerId('us', scenario.learner.role) : undefined);
 
-  // Scene inputs at time `at` (everything but the discrete state).
+  // Scene inputs at time `at` (everything but the discrete state and the run-limited targets).
   const sceneAt = (at) => {
     const lagged = tl.players?.auto === false ? 0 : at - P.reactionLag;
     return {
@@ -245,7 +344,8 @@ function play(scenario, t, opts, unblended) {
     const possession = possessionAt(scenario, at), carrier = carrierAt(scenario, at), inFlight = carrier === null;
     const rankFrom = players ? Object.fromEntries(players.map((p) => [p.id, { x: p.x, y: p.y }])) : undefined;
     // Hard switch: the lead-based handover only exists to keep a static scene smooth under a dragged ball.
-    const roles = autoRoles({ ...sceneAt(at), possession, carrierId: carrier ?? null, inFlight, rankFrom, params: { ...P, pressHandover: 0 } });
+    const targets = runTargets(scenario, at, { formations: opts.formations, possession, params: P });
+    const roles = autoRoles({ ...sceneAt(at), targets, possession, carrierId: carrier ?? null, inFlight, rankFrom, params: { ...P, pressHandover: 0 } });
     const presserId = roles.presser && roles.presser.w >= P.pressCommit ? roles.presser.id : null;
     return { t: at, possession, inFlight, carrierId: roles.carrierId, presserId };
   };
@@ -255,11 +355,13 @@ function play(scenario, t, opts, unblended) {
   const smooth = P.adjustStep > 0 && P.adjustWindow > 0;
   const bareP = smooth ? { ...P, settle: false, separationPasses: 0 } : P;
   // How state j places the players at time `at` (with `params`: bareP leaves settle and separation out).
-  const frameOf = (j, at, params) => {
+  // `settled`: the targets themselves, not where the auto players have run to (the learner's base: see learnerBaseAt).
+  const frameOf = (j, at, params, settled) => {
     const s = segs[j];
-    return autoFrame({ ...sceneAt(at), params, possession: s.possession, carrierId: s.carrierId, autoCarrier: false, inFlight: s.inFlight, presserId: s.presserId });
+    const targets = settled ? undefined : runTargets(scenario, at, { formations: opts.formations, possession: s.possession, params: P });
+    return autoFrame({ ...sceneAt(at), targets, params, possession: s.possession, carrierId: s.carrierId, autoCarrier: false, inFlight: s.inFlight, presserId: s.presserId });
   };
-  const raw = (j, at) => frameOf(j, at, bareP);
+  const raw = (j, at, settled) => frameOf(j, at, bareP, settled);
   const stateAt = (at) => {
     let j = segs.length - 1;
     while (j > 0 && segs[j].t > at) j--;
@@ -303,7 +405,7 @@ function play(scenario, t, opts, unblended) {
     if (s.possession !== prev.possession || s.carrierId !== prev.carrierId || s.inFlight !== prev.inFlight || s.presserId !== prev.presserId) segs.push(s);
   }
   const k = stateAt(t);
-  return { f: applyAdjustments(unblended ? raw(k, t) : place(k, t), cells, adjustAt), state: segs[k], P };
+  return { f: applyAdjustments(unblended ? raw(k, t, true) : place(k, t), cells, adjustAt), state: segs[k], P };
 }
 
 /** Times after 0 and up to tMax at which the playback state is decided: every ball, possession and carrier key. */
@@ -319,9 +421,10 @@ function keyTimes(scenario, tMax) {
  * freezes there (docs/ARCHITECTURE.md §5.3; the playback twin of scene.js learnerBase()). It is the
  * learner role's spot in the same playback with nobody held back as the learner: its formation
  * spot, or its press spot when the playback commits it to press. It is where the CURRENT state
- * wants the role (the blends are off): the blend only exists so auto players never teleport, and a
- * learner must not be judged against an auto player still half-way through a recovery run or a
- * press. The states themselves are the blended playback's (so who presses is decided from where
+ * wants the role (the blends are off, and it stands on its formation target, not run-limited): the
+ * blend and the run only exist so auto players never teleport or fly, and a learner must not be
+ * judged against an auto player still half-way through a recovery run, a press or a shift after a
+ * long pass. The states themselves are the blended playback's (so who presses is decided from where
  * the players really are, as in the frame). If that playback would put the learner's role on the
  * ball, the role's own spot is used instead (authors choose the carriers). Other players in the
  * frame keep their blended positions.
@@ -351,7 +454,7 @@ export function overridesAt(tl, t, learnerId, learnerSpot) {
   return out;
 }
 
-/** Cumulative tags at t, plus scenario.phase and a derived ballMovingBack when not authored. */
+/** Cumulative tags at t, plus scenario.phase, the lesson (scenario.principles[0]) and the derived ballMovingBack, nextEvent, nextEventIn and lostAgo when not authored. */
 export function tagsAt(scenario, t, possession, P) {
   const src = scenario.timeline?.tags;
   const keys = Array.isArray(src) ? src : src && typeof src === 'object' ? [{ ...src, t: -Infinity }] : [];
@@ -362,9 +465,57 @@ export function tagsAt(scenario, t, possession, P) {
     Object.assign(tags, rest);
   }
   if (tags.phase === undefined && scenario.phase) tags.phase = scenario.phase;
+  // The drill's own idea (its first principle): score.js caps a spot that clearly fails the rule that judges it.
+  if (tags.lesson === undefined && Array.isArray(scenario.principles) && typeof scenario.principles[0] === 'string') tags.lesson = scenario.principles[0];
   if (tags.ballMovingBack === undefined && (possession === 'us' || possession === 'them')) {
     const dx = ballAt(scenario, t).x - ballAt(scenario, t - P.ballBackWindow).x;
     if ((possession === 'us' ? -dx : dx) >= P.ballBackDist) tags.ballMovingBack = true;
   }
+  if (tags.lostAgo === undefined && P.lostWindow > 0 && possession !== 'us') {
+    const lost = lostAt(scenario, t);
+    if (lost !== null && t - lost <= P.lostWindow) tags.lostAgo = Math.round((t - lost) * 1000) / 1000;
+  }
+  if (tags.nextEvent === undefined && P.eventAhead > 0 && (possession === 'us' || possession === 'them')) {
+    const next = nextEventAfter(scenario, t, possession, P.eventAhead);
+    if (next) { tags.nextEvent = next.event; tags.nextEventIn = Math.round((next.t - t) * 1000) / 1000; }
+  }
   return tags;
+}
+
+/**
+ * When our team last lost the ball at or before t: the time of the last possession key that took it from 'us' (to
+ * 'them' or a loose ball), or null if we have not had it and lost it since the start.
+ * @returns {number|null}
+ */
+export function lostAt(scenario, t) {
+  const keys = scenario.timeline?.possession ?? [];
+  let had = false, at = null;
+  for (const k of keys) {
+    if (!(k.t <= t)) break;
+    if (k.team === 'us') had = true;
+    else if (had) { at = k.t; had = false; }
+  }
+  return at;
+}
+
+/**
+ * The first ball or tag event (not a carry) strictly after t and within `ahead` seconds, played while
+ * `possession` still has the ball (a turnover first means the event is the other team's). A ball-key
+ * 'pass' or 'cross' is the moment the ball is struck, so a drill frozen just before it is judged as the
+ * pass is played (the offside rule reads it: F4).
+ * @returns {{t:number, event:string}|null}
+ */
+export function nextEventAfter(scenario, t, possession, ahead = TIMELINE_DEFAULTS.eventAhead) {
+  // The earliest ball or tag key after t with an event other than a carry (no arrays built: this runs every frame).
+  const tl = scenario.timeline ?? {};
+  let next = null;
+  const scan = (keys) => {
+    for (const k of keys ?? []) {
+      if (!k.event || k.event === 'carry' || !(k.t > t) || k.t - t > ahead + 1e-9) continue;
+      if (!next || k.t < next.t) next = { t: k.t, event: k.event };
+    }
+  };
+  scan(tl.ball);
+  if (Array.isArray(tl.tags)) scan(tl.tags);
+  return next && possessionAt(scenario, next.t - 1e-6) === possession ? next : null;
 }

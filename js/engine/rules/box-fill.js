@@ -78,7 +78,7 @@ const m = (v) => Math.max(1, Math.round(v));
 
 export default {
   id: 'box-fill',
-  principles: ['P10'],
+  principles: ['P10', 'R5'], // R5: the #9 attacks the near post or the spot
   critical: false,
   weight: (ctx) => prep(ctx)?.w ?? 0,
 

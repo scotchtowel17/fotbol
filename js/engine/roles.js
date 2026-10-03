@@ -24,6 +24,8 @@ export const FAMILY_LABEL = Object.freeze({
 
 /** Roles a learner can pick in v1 (outfield only; GK arrives in v1.1). */
 export const LEARNABLE_ROLES = Object.freeze(ROLES.filter((r) => r !== 'GK'));
+/** Roles Coach mode's Explore and the dev playground offer: every learnable role, and the keeper (G1, gk-angle-depth). */
+export const EXPLORE_ROLES = Object.freeze([...LEARNABLE_ROLES, 'GK']);
 
 export const BACK_LINE = Object.freeze(['LB', 'LCB', 'RCB', 'RB']);
 export const MIDFIELD = Object.freeze(['DM', 'LCM', 'RCM']);

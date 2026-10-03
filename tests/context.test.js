@@ -1,3 +1,4 @@
+import { FLANK_SHARE_DEFAULTS } from '../js/engine/rules/flank-share.js';
 import { test, assert, approx } from './harness.js';
 import { buildContext, CONTEXT_DEFAULTS } from '../js/engine/context.js';
 import { SCENE_DEFAULTS } from '../js/engine/scene.js';
@@ -172,6 +173,11 @@ test('context: with the ball wide in our half the full-back engages the winger a
   assert.equal(CONTEXT_DEFAULTS.fbEngage, SCENE_DEFAULTS.pressFbEngage);
   assert.equal(CONTEXT_DEFAULTS.fbEngageFrom, SCENE_DEFAULTS.pressFbEngageFrom);
   assert.equal(CONTEXT_DEFAULTS.fbEngageTo, SCENE_DEFAULTS.pressFbEngageTo);
+  for (const k of ['shareReach', 'shareFade', 'shareBehind', 'shareBehindFade', 'wingFade']) assert.equal(CONTEXT_DEFAULTS[k], SCENE_DEFAULTS[k], k);
+  // The scene sends a full-back inside only where the flank-share rule asks it: both are gone at the same distance.
+  assert.equal(SCENE_DEFAULTS.fbShareReach + SCENE_DEFAULTS.fbShareFade, FLANK_SHARE_DEFAULTS.reach + FLANK_SHARE_DEFAULTS.fade);
+  assert.ok(SCENE_DEFAULTS.fbShareReach <= FLANK_SHARE_DEFAULTS.reach);
+  assert.equal(SCENE_DEFAULTS.fbShareInside, FLANK_SHARE_DEFAULTS.inside);
 });
 
 test('context: a midfield first defender well ahead of the back line is covered from midfield, not by a centre-back', () => {

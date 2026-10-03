@@ -13,7 +13,7 @@ import { analyseScene, judgeSpot } from '../../engine/analyse.js';
 import { createFormation } from '../../engine/formation.js';
 import { phraseMove } from '../../engine/explain.js';
 import { nameOf } from '../../engine/rules/_util.js';
-import { LEARNABLE_ROLES, ROLE_INFO, playerId } from '../../engine/roles.js';
+import { EXPLORE_ROLES, ROLE_INFO, playerId } from '../../engine/roles.js';
 import { MID_Y, HALF_X, clampToPitch } from '../../engine/pitch.js';
 
 export const DEV_DEFAULTS = Object.freeze({
@@ -225,7 +225,7 @@ export async function mount(root, app) {
   layout.panel.body.append(el('div', { class: 'dev-controls' }, [
     readout,
     selectField({ label: 'Situation', value: SITUATIONS[0].id, options: SITUATIONS.map((s) => ({ value: s.id, label: s.title })), onChange: (v) => load(SITUATIONS.find((s) => s.id === v)) }),
-    selectField({ label: 'You play', value: state.role, options: LEARNABLE_ROLES.map((r) => ({ value: r, label: ROLE_INFO[r].label })), onChange: (v) => { state.role = v; load(state.situation); } }),
+    selectField({ label: 'You play', value: state.role, options: EXPLORE_ROLES.map((r) => ({ value: r, label: ROLE_INFO[r].label })), onChange: (v) => { state.role = v; load(state.situation); } }),
     possessionControl,
     segmented({ legend: 'Orientation', value: state.orientation, options: [{ value: 'auto', label: 'Auto' }, { value: 'horizontal', label: 'Across' }, { value: 'vertical', label: 'Up' }], onChange: (v) => { state.orientation = v; board.setOrientation(v); updatePanel(); } }),
     segmented({ legend: 'Theme', value: app.settings.theme, options: [{ value: 'auto', label: 'Auto' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }], onChange: (theme) => app.setSettings({ theme }) }),
