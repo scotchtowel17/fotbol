@@ -1,13 +1,13 @@
 // Defending crosses (U8): with the ball wide near our box, protect the width of the goal first. The centre-backs
 // stay central, between the posts and inside the box (never dragged to the near post); the far full-back joins the
 // line at the far post; the #6 covers the penalty spot and the edge of the box for the pull-back. Someone presses the
-// crosser (the press rule: the first defender is not judged here), and marking a runner goal-side is the goal-side
-// rule's, so this rule judges only where in front of goal you stand.
+// crosser (the press rule: the first defender is not judged here, nor the defender covering them), and marking a runner
+// goal-side is the goal-side rule's, so this rule judges only where in front of goal you stand. A loose ball is no cross.
 // Contract: docs/ARCHITECTURE.md §5.5. Rationale: docs/RESEARCH.md §8.6 (U8).
 
 import { band } from '../geometry.js';
 import { POSTS, PENALTY_AREA, PENALTY_SPOT_DIST, MID_Y, LANE_EDGES } from '../pitch.js';
-import { perContext, paramsFor, notApplicable, defending, onFarSide, clamp01 } from './_util.js';
+import { perContext, paramsFor, notApplicable, onFarSide, clamp01 } from './_util.js';
 
 export const CROSS_DEFENCE_DEFAULTS = Object.freeze({
   weights: Object.freeze({ CB: 2.5, FB: 2.5, DM: 2 }), // [D] U8: the centre-backs, the far full-back, the #6
@@ -22,7 +22,8 @@ export const CROSS_DEFENCE_DEFAULTS = Object.freeze({
 });
 
 const prep = perContext((ctx) => {
-  if (!defending(ctx) || ctx.duty === 'first-defender') return null;
+  // A cross needs a crosser: they have the ball (a loose ball is anyone's, and the shape and the press judge it).
+  if (ctx.moment !== 'out_of_possession' || ctx.duty === 'first-defender') return null;
   const D = paramsFor(ctx, 'cross-defence', CROSS_DEFENCE_DEFAULTS);
   const fam = ctx.learner.family;
   let w = D.weights[fam] ?? 0;
@@ -32,7 +33,7 @@ const prep = perContext((ctx) => {
   const k = clamp01((D.crossFrom - b.x) / D.crossFade) * clamp01((off + D.wideFade) / D.wideFade);
   if (!(k > 0)) return null;
   let job;
-  if (fam === 'CB') job = 'posts';
+  if (fam === 'CB') { if (ctx.duty === 'second-defender') return null; job = 'posts'; } // a covering centre-back covers the presser (D3)
   else if (fam === 'FB') { if (!onFarSide(ctx)) return null; job = 'far-post'; }
   else { if (ctx.duty === 'second-defender') return null; job = 'cut-back'; } // a covering #6 covers the presser
   w *= k;

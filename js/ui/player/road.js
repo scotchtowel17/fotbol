@@ -1225,7 +1225,10 @@ async function passSet(node, ctx) {
     if (tier && !set.canBorrow()) continue;
     try {
       let drill = await ctx.load(e.id);
-      if (isObj(drill) && mirror) drill = (await engineModule('pass'))?.mirrorPassDrill?.(drill, { formations: ctx.formations ?? undefined }) ?? null;
+      const engine = isObj(drill) && (mirror || !drill.rating) ? await engineModule('pass') : null;
+      if (isObj(drill) && mirror) drill = engine?.mirrorPassDrill?.(drill, { formations: ctx.formations ?? undefined }) ?? null;
+      // An authored drill is stored without its rating (npm run check rates it): rate it here, as generated ones come rated.
+      else if (isObj(drill) && !drill.rating && ctx.formations && engine?.passDrillRating) drill = { ...drill, rating: engine.passDrillRating(drill, { formations: ctx.formations }) };
       if (isObj(drill)) {
         const rep = { kind: 'pass', drill, nodeId: node.id, ...(tier ? set.lend() : {}) };
         set.take(e.id, rep);

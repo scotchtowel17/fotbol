@@ -19,7 +19,7 @@ import crossDefence from '../js/engine/rules/cross-defence.js';
 import dropNarrow from '../js/engine/rules/drop-narrow.js';
 import lineHeight from '../js/engine/rules/line-height.js';
 import concentration from '../js/engine/rules/concentration.js';
-import blockHeight from '../js/engine/rules/block-height.js';
+import blockHeight, { BLOCK_HEIGHT_DEFAULTS } from '../js/engine/rules/block-height.js';
 import { outnumbered } from '../js/engine/context.js';
 import { band2, perContext, paramsFor, nameOf, kidNameOf, segDist, whole } from '../js/engine/rules/_util.js';
 
@@ -871,6 +871,11 @@ test('cross-defence (U8): ball wide near our box: centre-backs between the posts
   assert.equal(crossDefence.weight(ctxOf(BOX, 'us-LCB', { ...CROSS_IN, ball: { x: 24, y: 60 }, move: { ...CROSS_IN.move, 'them-LW': { x: 24.5, y: 60.5 } } }, { x: 8, y: 31 })), 0);
   assert.equal(crossDefence.weight(ctxOf(BOX, 'us-LCB', { ...CROSS_IN, ball: { x: 9, y: 40 }, move: { ...CROSS_IN.move, 'them-LW': { x: 9.5, y: 40.5 } } }, { x: 8, y: 31 })), 0);
   for (const v of [near.vars, ev(crossDefence, fb, 8, 12).vars, ev(crossDefence, dm, 5, 34).vars, ev(crossDefence, cb, 8, 34).vars]) checkText(crossDefence, v);
+  // A loose ball is no cross (the shape and the press judge it), and a centre-back covering the presser covers (D3).
+  assert.equal(crossDefence.weight(ctxOf(BOX, 'us-LCB', { ...CROSS_IN, possession: 'none', carrierId: null }, { x: 8, y: 31 })), 0);
+  const covering = ctxOf(BOX, 'us-RCB', { ...CROSS_IN, move: { ...CROSS_IN.move, 'us-RCB': { x: 6.5, y: 54 } } }, { x: 6.5, y: 54 });
+  assert.equal(covering.duty, 'second-defender');
+  assert.equal(crossDefence.weight(covering), 0);
 });
 
 test('press, delay (T2): outnumbered while we recover, the first defender backs off to 3-5 m instead of diving in', () => {
@@ -979,4 +984,9 @@ test('block-height (U6): in a mid block the front players stay level with the ba
   assert.ok(dropped.s < 0.2 && dropped.vars.issue === 'deep', `dropped off ${dropped.s}`);
   checkText(blockHeight, dropped.vars);
   assert.equal(blockHeight.weight(mid('us-LCM', HIGH)), 0);
+  // With the ball in their box the front line presses from its edge: never asked past highMax.
+  const deep = mid('us-LW', { ...HIGH, ball: { x: 97, y: 20 }, carrierId: 'them-RCB', move: { ...HIGH.move, 'them-RCB': { x: 97.5, y: 20 } } });
+  assert.equal(deep.blockHeight, 'high');
+  assert.equal(ev(blockHeight, deep, BLOCK_HEIGHT_DEFAULTS.highMax, 20).s, 1, `x ${BLOCK_HEIGHT_DEFAULTS.highMax} is high enough`);
+  assert.ok(ev(blockHeight, deep, BLOCK_HEIGHT_DEFAULTS.highMax - 6, 20).s < 0.2);
 });

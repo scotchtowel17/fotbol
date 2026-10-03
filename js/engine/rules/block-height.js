@@ -4,7 +4,7 @@
 // a winger, #8 or #9 who is not pressing stands no further forward than the ball plus `past`, or the block's front
 // line (halfway plus `frontPast` in a mid block, `lowFront` in a low one), whichever is further forward. In a high
 // block the front line presses up the pitch: the #9 and the wingers (the first defender too) stay within `highDrop`
-// metres goal-side of the ball, not dropping off it (how they press is the press rule's).
+// metres goal-side of the ball (never asked past `highMax`), not dropping off it (how they press is the press rule's).
 // Contract: docs/ARCHITECTURE.md §5.5. Rationale: docs/RESEARCH.md §8.6 (U6).
 
 import { HALF_X } from '../pitch.js';
@@ -15,7 +15,9 @@ export const BLOCK_HEIGHT_DEFAULTS = Object.freeze({
   past: Object.freeze({ W: 1, CM: 2, ST: 4 }), // [D] at most this far past the ball (the #9 stays a little higher, the outlet)...
   frontPast: 3, // [D] ...or, in a mid block, up to this far past halfway (U6: the front line near halfway)...
   lowFront: 40, // [D] ...or, in a low block, up to this x (our half)
-  highDrop: 8, // [D] in a high block the #9 and the wingers stay within this far goal-side of the ball
+  highDrop: 8, // [D] in a high block the #9 and the wingers stay within this far goal-side of the ball...
+  highMax: 80, // [D] ...but are never asked past this x (layer A's front three stand at x 82 at most, HELIOS): with the
+  //              ball in their box the front line presses from its edge
   soft: 4, // [D]
 });
 
@@ -27,7 +29,7 @@ const prep = perContext((ctx) => {
   if (!w) return null;
   if (ctx.blockHeight === 'high') {
     if (fam !== 'ST' && fam !== 'W') return null;
-    return { D, w, x: ctx.ball.x - D.highDrop, block: 'high', high: true };
+    return { D, w, x: Math.min(ctx.ball.x - D.highDrop, D.highMax), block: 'high', high: true };
   }
   if (ctx.duty === 'first-defender') return null;
   const front = ctx.blockHeight === 'mid' ? HALF_X + D.frontPast : D.lowFront;

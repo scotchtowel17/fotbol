@@ -50,7 +50,12 @@ export const SCENE_DEFAULTS = Object.freeze({
   shareReach: 12, // [D] ...with the full-back within this many metres of him along the pitch... (= CONTEXT_DEFAULTS.shareReach)
   shareFade: 4, // [D] ...fading out over this many more... (= CONTEXT_DEFAULTS.shareFade)
   shareBehind: 3, // [D] ...and no more than this far behind him (= CONTEXT_DEFAULTS.shareBehind)...
-  shareBehindFade: 6, // [D] ...fading out over this many metres more (= CONTEXT_DEFAULTS.shareBehindFade)
+  shareBehindFade: 6, // [D] ...fading out over this many metres more (= CONTEXT_DEFAULTS.shareBehindFade);
+  //                     the other way round, a winger in his wing lane ahead of his full-back sends the full-back inside...
+  fbShareReach: 9, // [D] ...in full with the winger within this many metres of him along the pitch (from 9 m ahead the winger's own step is gone)...
+  fbShareFade: 3, // [D] ...fading out over this many more: gone where the flank-share rule's weight is (FLANK_SHARE_DEFAULTS
+  //                  reach + fade, 12 m; tested equal), more gently than the rule, so the shape never jumps...
+  fbShareInside: 1.5, // [D] ...to this far inside the wing lane's edge (= FLANK_SHARE_DEFAULTS.inside: all the rule asks)
   halfSpace: true, // P1 (params only): our ball-side full-back on the ball in a wing lane, from the middle third on, sends
   //                  the ball-side #8 into the half-space between their lines (layer A puts him wide, behind the ball)
   halfSpaceFrom: 35, // [D] ...from this far up the pitch (the team's own frame; fading in over 5 m)...
@@ -245,8 +250,8 @@ function setup(opts) {
   // 2a. Flank sharing and the half-space (B6, P1) for the team in possession: the formation table knows nothing of
   // an authored overlap or of the full-back on the ball. Part of every auto player's spot (the learner's too).
   if (attacking) {
+    if (P.salida) salida(players, attacking, byId, overridden, carrier, P); // first: it moves the full-backs up the wing
     shareFlanks(players, attacking, byId, overridden, carrier, ball, P);
-    if (P.salida) salida(players, attacking, byId, overridden, carrier, P);
   }
 
   // 2b. Goal-side settle (D5, R4): the formation table knows nothing of the opponents, so out of
@@ -313,7 +318,19 @@ function shareFlanks(players, team, byId, overridden, carrier, ball, P) {
     const fb = byId.get(fbId), w = byId.get(wId);
     if (!fb || (wingDepth(fb, side, P) === 0 && carrier !== fb)) continue; // nothing on this flank for either step
     const hs = halfSpaceY(side, P);
-    // B6: the winger comes inside when his full-back holds the wing (context.js flankShare, which buildContext also reads).
+    // B6: the winger comes inside when his full-back holds the wing (context.js flankShare, which buildContext also reads);
+    // the other way round, with the winger on the touchline ahead of him (not level: flankShare's level fades out), the
+    // full-back comes inside, just inside the wing lane (RESEARCH B6: "if the winger hugs the touchline, the FB goes
+    // inside"; the flank-share rule's reach and edge, so a full-back's base is where that rule wants it).
+    if (P.flankShare && fb && w && !fixed(fb)) {
+      const sign = team === 'us' ? 1 : -1;
+      const reach = clamp((P.fbShareReach + P.fbShareFade - Math.abs(fb.x - w.x)) / P.fbShareFade, 0, 1);
+      const level = clamp((P.shareBehind + P.shareBehindFade - sign * (w.x - fb.x)) / P.shareBehindFade, 0, 1);
+      const k = wingDepth(w, side, P) * reach * (1 - level);
+      const inY = side === 'R' ? LANE_EDGES[4] - P.fbShareInside : LANE_EDGES[1] + P.fbShareInside;
+      const wider = side === 'R' ? fb.y > inY : fb.y < inY;
+      if (k > 0 && wider) fb.y = lerp(fb.y, inY, k);
+    }
     if (P.flankShare && fb && !fixed(w)) {
       const k = flankShare(team, fb, w, side, P);
       const wider = side === 'R' ? w.y > hs : w.y < hs;

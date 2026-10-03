@@ -24,7 +24,9 @@ const catalogue = await loadJSON('data/principles.json');
 const byId = Object.fromEntries(catalogue.principles.map((p) => [p.id, p]));
 const F = createFormation(await loadJSON('data/formations/helios-433.json'));
 const formations = { us: F, them: F };
-const index = (await loadJSON('data/scenarios/index.json')).scenarios;
+// The spot drills and the authored pass drills (the index's passes, as js/data.js hands them to the Road).
+const indexFile = await loadJSON('data/scenarios/index.json');
+const index = [...indexFile.scenarios, ...(indexFile.passes ?? []).map((e) => ({ ...e, kind: 'pass' }))];
 const fileOf = Object.fromEntries(index.map((e) => [e.id, e.file ?? `${e.id}.json`]));
 const scenarioCache = new Map();
 const load = (id) => {
@@ -119,6 +121,7 @@ export async function sweep(group, t) {
         for (const r of reps) {
           assert.equal(r.kind, 'pass', where);
           assert.ok(r.drill.rating?.best && r.drill.learner?.role, `${where}: ${r.drill.id} is playable`);
+          if (r.drill.source?.kind !== 'generated') continue; // an authored drill has its own words
           const p = byId[r.drill.principles[0]];
           assert.equal(r.drill.titleKid, p.kidName, `${where}: ${r.drill.id} takes its name from data/principles.json`);
           assert.equal(r.drill.takeaway.kid, p.summary.kid, `${where}: ${r.drill.id} takes its takeaway from data/principles.json`);

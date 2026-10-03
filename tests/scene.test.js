@@ -352,6 +352,27 @@ test('flank sharing (B6): a full-back overlapping in his winger\'s wing lane bri
   assert.ok(without(opp).y > 54.16, 'params.flankShare false leaves him wide');
 });
 
+test('flank sharing (B6), the other way: a winger on the touchline ahead of his full-back sends the full-back inside, continuously', () => {
+  // Build-up: the #6 on the ball; the back three pushes the right-back up the wing (salida).
+  const ball = { x: 36, y: 44 };
+  const P = SCENE_DEFAULTS;
+  const rb = (ov, params) => byId(autoFrame({ formations, ball, possession: 'us', carrierId: 'us-DM', autoPress: false, overrides: ov, params }))['us-RB'];
+  const plain = rb({}, { flankShare: false });
+  assert.ok(plain.y > 54.16 + P.wingFade, `the shape puts him in the wing lane (${plain.y.toFixed(1)})`);
+  const ahead = rb({ 'us-RW': { x: plain.x + P.fbShareReach, y: 65 } });
+  approx(ahead.y, 54.16 - P.fbShareInside, 1e-9, 'a winger 9 m ahead on the touchline: he comes inside the wing lane');
+  assert.equal(ahead.x, plain.x, 'only his channel changes');
+  assert.ok(rb({ 'us-RW': { x: plain.x + 1, y: 65 } }).y > 54.16 + P.wingFade, 'level with him, the winger is the one who comes inside');
+  assert.deepEqual(rb({ 'us-RW': { x: plain.x + 12, y: 65 } }), plain, 'a winger 12 m ahead is no flank partner (B6: about 10 m)');
+  assert.deepEqual(rb({ 'us-RW': { x: plain.x + 10, y: 50 } }), plain, 'a winger inside leaves him wide');
+  let prev = null;
+  for (let dx = -5; dx <= 16; dx += 0.1) {
+    const y = rb({ 'us-RW': { x: plain.x + dx, y: 65 } }).y;
+    if (prev !== null) assert.ok(Math.abs(y - prev) < 0.6, `jump of ${Math.abs(y - prev).toFixed(2)} m at dx ${dx.toFixed(1)}`);
+    prev = y;
+  }
+});
+
 test('half-space (P1): our full-back on the ball out wide from the middle third sends the ball-side #8 between their lines', () => {
   const at = (ball, params) => byId(autoFrame({ formations, ball, possession: 'us', carrierId: 'us-RB', params }));
   const P = SCENE_DEFAULTS;
@@ -384,7 +405,8 @@ test('build-up (B9/B5): the #6 dropped between centre-backs who have split wide 
   for (const r of ['LB', 'RB']) assert.ok(f[`us-${r}`].x >= 18 + P.salidaPush - 1e-9, `${r} at x ${f[`us-${r}`].x.toFixed(1)}`);
   const off = at(ov(19.5), { salida: false });
   assert.ok(off['us-LB'].x < 18 + P.salidaPush - 2, `the table leaves the full-back flat (${off['us-LB'].x.toFixed(1)})`);
-  assert.equal(f['us-LB'].y, off['us-LB'].y, 'only the height changes');
+  // Only the height changes (with his winger then on the touchline just ahead of him, B6 may bring him inside after).
+  assert.equal(at(ov(19.5), { flankShare: false })['us-LB'].y, at(ov(19.5), { salida: false, flankShare: false })['us-LB'].y, 'only the height changes');
   // Centre-backs close together, or the #6 well ahead of them (a centre-back carrying out past him): no back three.
   assert.deepEqual(at(ov(19.5, 12))['us-LB'], at(ov(19.5, 12), { salida: false })['us-LB']);
   assert.deepEqual(at(ov(30))['us-LB'], at(ov(30), { salida: false })['us-LB']);
