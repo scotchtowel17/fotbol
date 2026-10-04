@@ -421,7 +421,14 @@ export function rateOptions(frame, carrierId = frame.carrierId, params) {
     if (top) space.push(top);
   }
   space.sort((a, b) => b.worth - a.worth);
-  raw.push(...space.slice(0, P.maxSpaceTargets));
+  // A tie across the cut drops every tied target, so a frame and its mirror rate the same options (a symmetric frame's
+  // left and right runners are worth the same, and which of them the sort put first must not decide).
+  let cut = Math.min(P.maxSpaceTargets, space.length);
+  if (cut < space.length && space[cut - 1].worth - space[cut].worth <= 1e-9) {
+    const tie = space[cut].worth;
+    while (cut > 0 && space[cut - 1].worth - tie <= 1e-9) cut--;
+  }
+  raw.push(...space.slice(0, cut));
 
   // Scores: the worth given up against the best option that can be starred (not critical, and not cut out while any
   // pass is not), on a fixed scale, then the category rules. So the starred pass always scores 100.

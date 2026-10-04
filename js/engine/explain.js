@@ -118,11 +118,11 @@ export function explain(evalResult, ctx, spot, opts = {}) {
     return fails && Number.isFinite(b.s) && r.s >= b.s - P.tradeoffMargin;
   };
 
-  // Failing rules first (criticals, then by w (1 - s): RESEARCH 5.6); the zone after them, since a
+  // Failing rules first (criticals, then a missed lesson: score.js LESSON_CAP, then by w (1 - s): RESEARCH 5.6); the zone after them, since a
   // named principle says more than "you are out of your spot".
   const failing = results
     .filter((r) => (r.critical || r.s < P.failBelow) && !tradeoff(r))
-    .sort((a, b) => (b.critical - a.critical) || (b.weight * (1 - b.s) - a.weight * (1 - a.s)));
+    .sort((a, b) => (b.critical - a.critical) || (!!b.lesson - !!a.lesson) || (b.weight * (1 - b.s) - a.weight * (1 - a.s)));
   const sZone = evalResult.sZone;
   const role = ROLE_INFO[ctx?.learner?.role]?.label?.toLowerCase();
   const zoneReason = {

@@ -23,6 +23,9 @@
 // with neither a small nor a medium stage fails, as does a staged cast that hides a player the drill scripts or names, or a
 // primary idea whose rules are not met at the answer, unless the scenario says why: "stages": { "note": "..." } (a
 // malformed "stages" block always fails). Each drill's line also says which idea the smaller games are held to.
+// Authored pass drills (kind 'pass') get the pass gates instead (checkPass: js/engine/passdrill.js checkPassDrill on the
+// drill and its mirror, a clear best, enough choices, a decoy, realistic speeds), plus: the drill's first idea is one
+// its scene teaches (passLessons), and a small or medium stage for the drill and its mirror unless "stages" says why.
 // Exits 1 if any scenario is invalid, fails a gate, or has a stage problem.
 //
 // checkScenario() is pure (Node and the browser): the file system is only touched in main().
@@ -35,6 +38,7 @@ import { computeGhost } from '../js/engine/ghost.js';
 import { evaluate, toleranceFor } from '../js/engine/score.js';
 import { dist } from '../js/engine/geometry.js';
 import { stagesOf, lessonOf } from '../js/engine/cast.js';
+import { checkPassDrill, mirrorPassDrill } from '../js/engine/passdrill.js';
 import { kidArea, kidStars, kidOutline } from '../js/engine/kidscore.js';
 import { renderAscii } from './lib/ascii.mjs';
 
@@ -96,8 +100,8 @@ export function checkScenario(raw, { principles, formations }) {
   const tol = toleranceFor(s.learner.role, s.answer.tol);
   const authored = s.answer.mode === 'authored';
   const centre = authored ? s.answer.ideal : base;
-  const ghost = computeGhost(ctx, { base: centre, tol });
-  const engineGhost = authored ? computeGhost(ctx, { base, tol }) : ghost;
+  const ghost = computeGhost(ctx, { base: centre, tol, field: false });
+  const engineGhost = authored ? computeGhost(ctx, { base, tol, field: false }) : ghost;
   const C = CHECK_DEFAULTS;
   let ideal = null;
   if (s.answer.ideal) {
@@ -193,6 +197,35 @@ export function checkStages(raw, { principles, formations }) {
   return { stages, mirror, why, lesson, keep: [...(own.full.keep ?? [])], note, kid, kidMirror, problems };
 }
 
+/**
+ * Check an authored pass drill (kind 'pass'): checkPassDrill (format, gates, speeds, the mirror), the first idea taught
+ * by the scene, and its progressive-field stages and its mirror's.
+ * @param {object} raw  the drill as authored
+ * @param {{ principles: object, formations: {us: object, them?: object} }} opts
+ * @returns {{ errors: string[] } | { errors: [], t: number, best: object, margin: number, choices: number, decoys: number,
+ *   lessons: string[], stages: { small: string|null, medium: string|null }, mirror: { small: string|null, medium: string|null },
+ *   note: string|null, problems: string[] }}  stages / mirror: each passing stage's cast label ("4 v 2"), null when it fails
+ */
+export function checkPass(raw, { principles, formations }) {
+  const c = checkPassDrill(raw, { formations, principles });
+  if (c.errors?.length) return { errors: c.errors };
+  const problems = [...c.problems];
+  const primary = raw.principles?.[0];
+  if (primary && !c.lessons.includes(primary)) problems.push(`the first idea ${primary} is not one this scene teaches (it teaches ${c.lessons.join(', ') || 'nothing'})`);
+  const labels = (r) => ({ small: r.small?.cast.label ?? null, medium: r.medium?.cast.label ?? null });
+  const stages = labels(stagesOf(raw, { formations, principles }));
+  const mirror = labels(stagesOf(mirrorPassDrill(raw, { formations }), { formations, principles }));
+  const stageErrors = stagesProblems(raw);
+  problems.push(...stageErrors);
+  const note = typeof raw.stages?.note === 'string' && raw.stages.note.trim() ? raw.stages.note.trim() : null;
+  if (!note) {
+    for (const [who, st] of [['the drill', stages], ['its mirror', mirror]]) {
+      if (!st.small && !st.medium) problems.push(`${who} has no small or medium stage (the full match only): say why in "stages": { "note": "..." }`);
+    }
+  }
+  return { errors: [], t: raw.timeline?.freezeAt ?? raw.timeline?.duration, best: c.best, margin: c.margin, choices: c.choices, decoys: c.decoys, lessons: c.lessons, stages, mirror, note, problems };
+}
+
 async function main() {
   const { readFile, readdir } = await import('node:fs/promises');
   const root = new URL('../', import.meta.url);
@@ -206,7 +239,7 @@ async function main() {
   const files = (await readdir(new URL('data/scenarios/', root))).filter((f) => f.endsWith('.json') && f !== 'index.json').sort();
   const pt = (p) => `(${p.x.toFixed(1)}, ${p.y.toFixed(1)})`;
 
-  let invalid = 0, failed = 0, checked = 0, unstaged = 0;
+  let invalid = 0, failed = 0, checked = 0, unstaged = 0, passes = 0;
   const tally = { n: 0, small: 0, medium: 0, mSmall: 0, mMedium: 0 };
   const kids = { reps: 0, best: 0, moving: 0, still: 0, greens: { small: [], medium: [], full: [] } }; // Player mode, every staged rep
   for (const file of files) {
@@ -214,6 +247,23 @@ async function main() {
     let raw;
     try { raw = await read(`data/scenarios/${file}`); } catch (err) { console.log(`✗ ${file}: not valid JSON (${err.message})`); invalid++; continue; }
     if (only.length && !only.includes(id) && !only.includes(raw.id)) continue;
+    if (raw?.kind === 'pass') {
+      const r = checkPass(raw, { principles, formations });
+      passes++;
+      if (r.errors.length) {
+        invalid++;
+        console.log(`✗ ${file} [${raw.id}] (pass drill)`);
+        for (const e of r.errors) console.log(`    - ${e}`);
+        continue;
+      }
+      if (r.problems.length) failed++;
+      const b = r.best;
+      console.log(`${r.problems.length ? '✗' : '✓'} ${file} [${raw.id}] ${raw.learner.role} pass drill at t = ${r.t} s: best ${b.id} (${b.score}, ${b.colour}), ${r.margin} points clear, ${r.choices} passes not cut out, ${r.decoys} decoy(s); the scene teaches ${r.lessons.join(', ')}`);
+      const say = (x) => ['small', 'medium'].map((k) => (x[k] ? `${k} ${x[k]}` : `${k} ✗`)).join(' · ');
+      console.log(`    stages: ${say(r.stages)} · full 11 v 11 (mirror: ${say(r.mirror)})${r.note ? `; note: ${r.note}` : ''}`);
+      for (const p of r.problems) console.log(`    ✗ ${p}`);
+      continue;
+    }
     checked++;
     const r = checkScenario(raw, { principles, formations });
     if (r.errors.length) {
@@ -253,7 +303,7 @@ async function main() {
     }
   }
 
-  console.log(`\n${checked} scenario(s) checked: ${invalid} invalid, ${failed} failing a drill-quality gate, ${unstaged} with a stage problem (no small or medium stage, a hidden player, an unmet primary idea, a malformed "stages").`);
+  console.log(`\n${checked} scenario(s) and ${passes} authored pass drill(s) checked: ${invalid} invalid, ${failed} failing a drill-quality gate, ${unstaged} with a stage problem (no small or medium stage, a hidden player, an unmet primary idea, a malformed "stages").`);
   console.log(`stages (drills / mirrors): small ${tally.small}/${tally.n} / ${tally.mSmall}/${tally.n}, medium ${tally.medium}/${tally.n} / ${tally.mMedium}/${tally.n}, full ${tally.n}/${tally.n}`);
   const median = (xs) => { const q = [...xs].sort((a, b) => a - b); return q.length ? q[Math.floor(q.length / 2)].toFixed(1) : '-'; };
   console.log(`player mode (js/engine/kidscore.js, drills and mirrors at every stage they play): the best spot 3★ in ${kids.best}/${kids.reps} reps, standing still 0★ in ${kids.still}/${kids.moving} (hold drills not judged); the green's mean radius, median: small ${median(kids.greens.small)} m, medium ${median(kids.greens.medium)} m, full ${median(kids.greens.full)} m`);

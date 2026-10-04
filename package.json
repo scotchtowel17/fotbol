@@ -7,11 +7,12 @@
   "license": "MIT",
   "scripts": {
     "test": "node --test \"tests/**/*.test.js\"",
-    "check": "node scripts/check-scenarios.mjs && node scripts/build-index.mjs --check",
+    "check": "node scripts/check-scenarios.mjs && node scripts/build-index.mjs --check && node scripts/build-offline.mjs --check",
     "index": "node scripts/build-index.mjs",
     "index:check": "node scripts/build-index.mjs --check",
     "sanity": "node scripts/sanity.mjs > docs/sanity-output.txt",
-    "serve": "python3 -m http.server 8080"
+    "serve": "python3 -m http.server 8080",
+    "offline": "node scripts/build-offline.mjs"
   },
   "engines": {
     "node": ">=22"

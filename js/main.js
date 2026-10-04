@@ -538,6 +538,17 @@ async function boot() {
   window.addEventListener('hashchange', route);
   await route();
   if (new URLSearchParams(location.search).has('debug')) window.fotbol = app; // console access while developing
+  registerOffline();
+}
+
+/**
+ * Offline play (sw.js): register the service worker once the app has started. Not on file:// (no service workers
+ * there) or with ?nosw (to debug without it). A failure only means no offline copy.
+ */
+export function registerOffline(nav = typeof navigator !== 'undefined' ? navigator : null, loc = typeof location !== 'undefined' ? location : null) {
+  if (!nav?.serviceWorker || !loc || loc.protocol === 'file:' || new URLSearchParams(loc.search).has('nosw')) return false;
+  nav.serviceWorker.register('sw.js').catch(() => {});
+  return true;
 }
 
 if (typeof document !== 'undefined' && document.getElementById('app')) boot();

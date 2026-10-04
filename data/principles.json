@@ -562,7 +562,9 @@
       ],
       "level": 2,
       "release": "v1",
-      "ruleIds": [],
+      "ruleIds": [
+        "flank-share"
+      ],
       "summary": {
         "standard": "The full-back and winger on one side should not stand in the same strip of pitch: if one holds the touchline, the other moves inside, and the other way round.",
         "kid": "Only one of you stays wide; the other comes inside."
@@ -788,7 +790,9 @@
       ],
       "level": 2,
       "release": "v1",
-      "ruleIds": [],
+      "ruleIds": [
+        "unity"
+      ],
       "summary": {
         "standard": "As your team moves the ball forward, the defenders move up too, so the team stays connected instead of stretching.",
         "kid": "When we attack, defenders move up too, so the team stays together."
@@ -824,7 +828,9 @@
       ],
       "level": 3,
       "release": "v1",
-      "ruleIds": [],
+      "ruleIds": [
+        "half-space"
+      ],
       "summary": {
         "standard": "With the ball in midfield or the final third, get a teammate into the ball-side half-space between their midfield and defence, where their full-back and centre-back can't agree who should mark you.",
         "kid": "Stand in the gap between the middle and the wing."
@@ -1381,7 +1387,10 @@
       ],
       "level": 2,
       "release": "v1",
-      "ruleIds": [],
+      "ruleIds": [
+        "press",
+        "drop-narrow"
+      ],
       "summary": {
         "standard": "If you can't win the ball back straight away, or you're outnumbered, back off toward your goal and squeeze toward the middle to slow the attack until help arrives.",
         "kid": "Can't win the ball? Back off and slow them down."
@@ -1421,7 +1430,9 @@
       ],
       "level": 1,
       "release": "v1",
-      "ruleIds": [],
+      "ruleIds": [
+        "recovery"
+      ],
       "summary": {
         "standard": "When the ball goes past you, sprint back toward your own goal, not toward the ball, until you're goal-side of both the ball and your opponent.",
         "kid": "Ball got past you? Sprint back toward your goal, not the ball."
@@ -1987,7 +1998,9 @@
       ],
       "level": 2,
       "release": "v1",
-      "ruleIds": [],
+      "ruleIds": [
+        "line-height"
+      ],
       "summary": {
         "standard": "The back line steps up when the ball goes backward or the carrier is pressed and facing away, holds while the ball is under pressure, and drops when the carrier is free to play forward.",
         "kid": "When the ball goes backward, your whole line steps forward."
@@ -2109,7 +2122,9 @@
       ],
       "level": 2,
       "release": "v1",
-      "ruleIds": [],
+      "ruleIds": [
+        "block-height"
+      ],
       "summary": {
         "standard": "A team defends in a high, mid or low block depending on where it sets its lines, and each block has its own heights for the defence and the front line.",
         "kid": "We defend high up, in the middle, or low near our box."
@@ -2152,7 +2167,9 @@
       ],
       "level": 1,
       "release": "v1",
-      "ruleIds": [],
+      "ruleIds": [
+        "concentration"
+      ],
       "summary": {
         "standard": "When the ball is in your defensive third, players away from the ball squeeze toward the centre, between the ball and goal, to protect the area where goals are scored.",
         "kid": "Ball near our goal? Everyone moves into the middle to guard it."
@@ -2195,7 +2212,9 @@
       ],
       "level": 1,
       "release": "v1",
-      "ruleIds": [],
+      "ruleIds": [
+        "cross-defence"
+      ],
       "summary": {
         "standard": "When the ball is wide near your box, someone pressures the crosser, the centre-backs protect the goal, the far full-back joins at the back post and a midfielder guards the cut-back.",
         "kid": "When they cross, guard the goal, the back post and the edge."
@@ -2233,7 +2252,12 @@
       ],
       "level": 1,
       "release": "v1",
-      "ruleIds": [],
+      "ruleIds": [
+        "level-line",
+        "cover",
+        "tuck",
+        "cross-defence"
+      ],
       "summary": {
         "standard": "The two centre-backs work as a pair: in possession they split wide to build, and out of possession one sets the line while the other covers, never too far apart.",
         "kid": "Centre-backs: one goes to the ball, the other backs them up."
@@ -2273,7 +2297,11 @@
       ],
       "level": 1,
       "release": "v1",
-      "ruleIds": [],
+      "ruleIds": [
+        "goal-side",
+        "press",
+        "tuck"
+      ],
       "summary": {
         "standard": "With the ball on your side, engage the winger and show them outside with your centre-back covering; with the ball on the far side, tuck in toward your centre-back and stay level.",
         "kid": "Ball on the far side? Come in beside your centre-back."
@@ -2350,7 +2378,10 @@
       ],
       "level": 1,
       "release": "v1",
-      "ruleIds": [],
+      "ruleIds": [
+        "width",
+        "recovery"
+      ],
       "summary": {
         "standard": "In possession, stay high and wide near the touchline unless the full-back is holding the width; out of possession, get goal-side of their full-back quickly.",
         "kid": "Attacking: stay wide and high. Defending: get back to their full-back."
@@ -2386,7 +2417,11 @@
       ],
       "level": 1,
       "release": "v1",
-      "ruleIds": [],
+      "ruleIds": [
+        "press",
+        "pin",
+        "box-fill"
+      ],
       "summary": {
         "standard": "In possession, play on the last defender's shoulder; when pressing, lead the press and block the pass between their centre-backs; on crosses, attack the near post or the penalty spot.",
         "kid": "Stay on their last defender, chase first, and attack crosses in the box."
@@ -2426,8 +2461,10 @@
         "GK"
       ],
       "level": 1,
-      "release": "v1.1",
-      "ruleIds": [],
+      "release": "v1",
+      "ruleIds": [
+        "gk-angle-depth"
+      ],
       "summary": {
         "standard": "Stand on the line that splits the angle between the ball and your two posts, and come further off your line the further away the ball is.",
         "kid": "Keeper: line up between the ball and the middle of your goal."

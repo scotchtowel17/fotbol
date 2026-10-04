@@ -172,11 +172,14 @@ test('createPlayback returns exactly what timeline.frameAt returns (fixed learne
   }
   // Going back in time reuses the decided states.
   sameFrame(pb.frameAt(3.3), frameAt(s, 3.3, { formations }), 'back to 3.3 s');
-  // The learner's base is the learner role's spot in the free playback.
+  // The learner's base is the learner role's spot in the free playback (with the shape speed limit off on both sides:
+  // with it on, learnerBaseAt judges the shape at rest while the playback's auto players are still shifting).
   const id = learnerIdOf(s);
+  const still = { runSpeed: 0 };
+  const settled = createPlayback(s, { formations, learnerId: null, params: still });
   for (const t of [4, 20, 40]) {
-    const me = free.frameAt(t).players.find((p) => p.id === id);
-    const base = learnerBaseAt(s, t, { formations });
+    const me = settled.frameAt(t).players.find((p) => p.id === id);
+    const base = learnerBaseAt(s, t, { formations, params: still });
     assert.ok(Math.hypot(me.x - base.x, me.y - base.y) < 1e-9, `base at ${t}`);
   }
   // Authored scenarios too (overrides, tags, an automatic carrier before the first key).

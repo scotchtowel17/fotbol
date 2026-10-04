@@ -196,6 +196,8 @@ export function relationship(ctx, spot, r, area, isLesson) {
       return r.critical ? K('offside', 'hard') : isLesson || offsideLesson(area, P) ? K('offside', 'lesson') : K('offside', 'soft');
     case 'keeps-onside':
       return r.critical ? K('kept-onside', 'hard') : null;
+    case 'recovery':
+      return r.critical || v.margin < -P.goalSideMargin ? K('wrong-side', 'hard') : null;
     case 'goal-side': {
       if (r.critical || v.margin < -P.goalSideMargin) return K('wrong-side', 'hard');
       const g = area.goalSide;

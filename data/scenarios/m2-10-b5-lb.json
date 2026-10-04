@@ -111,7 +111,7 @@
     ]
   },
   "answer": {
-    "mode": "authored",
+    "mode": "engine",
     "ideal": {
       "x": 33,
       "y": 5
@@ -161,5 +161,5 @@
     "author": "fotbol",
     "keyedBy": []
   },
-  "notes": "Authored answer: with the #6 dropped between the centre-backs, layer A keeps the full-back level with the back line (the build-up depth floor), so the engine's best spot (about (21, 8.5)) is still flat with the centre-backs and behind their first presser, and the start scored an A. The coach's answer is high and wide: past their winger (x 23), short of their midfield line (x 38) and off the #8s' line (x 29.7). The far full-back is keyed up the flank to x 33.5 at the freeze, never on the #8s' line, so the picture shows the right shape instead of a flat five. Difficulty 0 now that standing still scores F: the answer is a clear high-and-wide spot with a full-back's zone round it."
+  "notes": "Engine answer since 2026-10-03 (it was authored: with the #6 dropped between the centre-backs, layer A kept the full-back level with the back line, the build-up depth floor, so the engine's best spot (about (21, 8.5)) was flat with the centre-backs and behind their first presser). scene.js now pushes the full-backs high when the #6 has dropped between centre-backs who have split wide (salida, B9/B5): base (31.7, 8.5), the best spot (33.7, 8.5) scores 100, 3.5 m from the keyed ideal (33, 5); the start scores 19, flat with the back line 19, behind their winger 26, tucked in 17. The far full-back is keyed up the flank to x 33.5 at the freeze, never on the #8s' line, so the picture shows the right shape instead of a flat five."
 }

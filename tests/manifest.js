@@ -30,6 +30,7 @@ export const TEST_FILES = Object.freeze([
   'scenarios-content.test.js',
   'copy.test.js',
   'build-index.test.js',
+  'offline.test.js',
   // app plumbing and UI (pure parts)
   'store.test.js',
   'app.test.js',

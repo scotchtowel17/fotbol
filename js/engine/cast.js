@@ -322,7 +322,7 @@ function linesNeeded(frame, ids, byId, { learnerId, learnerAt, start }, P) {
 function decisiveIds(frame, { learnerId, base, centre, tol, start, skip, ghost, still }, P) {
   const judge = (players) => {
     const ctx = buildContext({ ...frame, players }, { learnerId, base });
-    return { spot: computeGhost(ctx, { base: centre, tol }).spot, still: evaluate(ctx, start, { center: centre, tol }).score };
+    return { spot: computeGhost(ctx, { base: centre, tol, field: false }).spot, still: evaluate(ctx, start, { center: centre, tol }).score };
   };
   const all = ghost && Number.isFinite(still) ? { spot: ghost, still } : judge(frame.players);
   const margin = Math.max(1, P.stillMax - all.still);
@@ -768,7 +768,7 @@ function prepareSpot(scenario, { formations, principles: catalogue, params } = {
   const ctx = buildContext(frame, { learnerId, base });
   const tol = toleranceFor(s.learner.role, s.answer?.tol);
   const centre = s.answer?.mode === 'authored' && s.answer.ideal ? { x: s.answer.ideal.x, y: s.answer.ideal.y } : base;
-  const ghost = computeGhost(ctx, { base: centre, tol });
+  const ghost = computeGhost(ctx, { base: centre, tol, field: false });
   const start = s.learner.start
     ? { x: s.learner.start.x, y: s.learner.start.y }
     : (({ x, y }) => ({ x, y }))(frameAt(s, 0, { formations }).players.find((p) => p.id === learnerId));
@@ -822,7 +822,7 @@ function spotGate(prep, ids, stage) {
     failed.push(`standing still scores ${out.startScore} (not below ${P.stillMax})`);
     return out;
   }
-  const ghost = computeGhost(ctx, { base: centre, tol });
+  const ghost = computeGhost(ctx, { base: centre, tol, field: false });
   out.ghost = ghost;
   out.ghostScore = ghost.score;
   out.sameAnswer = Math.round(dist(ghost.spot, prep.ghost.spot) * 100) / 100;

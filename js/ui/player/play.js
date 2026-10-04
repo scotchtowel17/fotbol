@@ -904,7 +904,7 @@ export function repScene(s, { formations, catalogue = null } = {}) {
   const base = learnerBaseAt(s, freezeAt, { formations });
   const ctx = buildContext({ ...freezeFrame, players: freezeFrame.players.map((p) => (p.id === learnerId ? { ...p, x: start.x, y: start.y } : p)) }, { learnerId, base });
   const authored = s.answer?.mode === 'authored' && s.answer.ideal;
-  const ghost = computeGhost(ctx, { base: authored ? s.answer.ideal : base, tol: toleranceFor(s.learner.role, s.answer?.tol) });
+  const ghost = computeGhost(ctx, { base: authored ? s.answer.ideal : base, tol: toleranceFor(s.learner.role, s.answer?.tol), field: false });
   const scene = { duration, freezeAt, learnerId, start, freezeFrame, base, ctx, ghost, lesson: lessonFor(s, ghost.result, catalogue), hold: s.answer?.hold === true };
   scene.area = repArea(s, scene);
   return scene;

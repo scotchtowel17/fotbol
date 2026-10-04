@@ -1,0 +1,13 @@
+{
+  "name": "fotbol: learn where to stand",
+  "short_name": "fotbol",
+  "description": "Learn soccer positioning by doing: take a role, watch play unfold, drag yourself to the right spot, and find out why.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b110e",
+  "theme_color": "#0e7440",
+  "icons": [
+    { "src": "assets/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

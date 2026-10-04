@@ -79,7 +79,7 @@
     ]
   },
   "answer": {
-    "mode": "authored",
+    "mode": "engine",
     "ideal": { "x": 59, "y": 59.5 },
     "tol": { "tx": 2.5, "ty": 4 }
   },
@@ -104,5 +104,5 @@
     "author": "fotbol",
     "keyedBy": []
   },
-  "notes": "Authored answer. The engine's own ghost (about 61.3, 58.8 in engine mode) agrees with this spot, but in engine mode a winger 3-7 m on the wrong side of their full-back still scores 81-85 (goal-side weighs 1.5 for wingers and the winger zone is 6 m deep along the pitch), far too kind for a recovery run. A 2.5 x 4 m zone centred about 4 m goal-side of the full-back grades the run properly: level with them scores about 82, 3 m on the wrong side about 32, 7 m on the wrong side about 15."
+  "notes": "Engine answer since 2026-10-03 (it was authored: in engine mode a winger 3-7 m on the wrong side of their full-back scored 81-85, because goal-side weighs 1.5 for wingers and the winger zone is 6 m deep). The recovery rule (T3, R4: rules/recovery.js) now judges the side while we are recovering, critically past 1 m, and the tighter tolerance (2.5 x 4 m) is kept: the best spot (61, 58) scores 100, 2.5 m from the keyed ideal; level with the full-back scores 84, 3 m on the wrong side 59 (critical) and 7 m 15."
 }

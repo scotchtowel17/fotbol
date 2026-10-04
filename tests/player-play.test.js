@@ -608,7 +608,7 @@ test('player play: praise knows its idea; "Best move" says what you did; a miss\
   assert.deepEqual(whyFor({ reasons: more, line: more[0].text, stars: 2 }).reasons, [], 'the line is the one fix');
   assert.deepEqual(whyFor({ reasons: more, line: PLAY.lineFix, stars: 2 }).reasons, [more[0].text], 'or one here');
   assert.deepEqual(whyFor({ reasons: [...more].reverse(), line: 'x', stars: 0, principles: ['D5'] }).reasons, [more[0].text, more[1].text], 'the drill\'s idea first');
-  assert.deepEqual(ideasOf({ ruleId: 'press', principleId: 'D1' }), ['D1', 'D2']);
+  assert.deepEqual(ideasOf({ ruleId: 'press', principleId: 'D1' }), ['D1', 'D2', 'T2', 'R2', 'R5']);
   assert.deepEqual(ideasOf({ ruleId: 'zone', principleId: 'F2' }), ['F2']);
 });
 

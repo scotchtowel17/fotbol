@@ -80,7 +80,46 @@ export const SHAPE_DEFAULTS = Object.freeze({
   buildUpTo: 60, // [D] ...and gone once it passes this x (the table's own attacking shape takes over)
   // [D] B10/B2: in build-up the lines stagger: full-backs, #6, #8s and #9 at least this far up (own frame)
   buildUpDepth: Object.freeze({ FB: 18, DM: 21, CM: 28, ST: 48 }),
+  // The keeper out of possession (G1): on the bisector of the ball-to-posts angle, this far off the goal line along
+  // it for the ball this far from the middle of the goal (linear in between); in possession the table's spot
+  keeper: true,
+  keeperDepth: Object.freeze([[0, 1], [16.5, 2.5], [30, 4], [52, 11], [88, 16.5]]), // [S] KS-D: 27-32 m gives 3-5 m, halfway about 11 m, their box 16.5 m; [D] below 30 m
 });
+
+/** The goal line's posts (own frame: our goal at x 0). */
+const POST_A = Object.freeze({ x: 0, y: MID_Y - 7.32 / 2 }), POST_B = Object.freeze({ x: 0, y: MID_Y + 7.32 / 2 });
+
+/**
+ * G1, the keeper's spot (own frame, our goal at x 0): on the line that bisects the angle between the ball and the two
+ * posts, `depth` metres out from where that line meets the goal line, depth interpolated in SHAPE_DEFAULTS.keeperDepth
+ * by the ball's distance from the middle of the goal. Shared by phaseShape (the auto keeper) and the gk-angle-depth
+ * rule, so the keeper's base and the rule agree. Continuous in the ball.
+ * @param {Vec} ball  own frame
+ * @returns {{ spot: Vec, on: Vec, dir: Vec, depth: number }}  on: where the bisector meets the goal line; dir: unit, from there toward the ball
+ */
+export function keeperSpot(ball, P = SHAPE_DEFAULTS) {
+  const b = { x: Math.max(ball.x, 0.5), y: ball.y };
+  const ua = unit({ x: POST_A.x - b.x, y: POST_A.y - b.y }), ub = unit({ x: POST_B.x - b.x, y: POST_B.y - b.y });
+  const bis = unit({ x: ua.x + ub.x, y: ua.y + ub.y }); // from the ball toward the goal
+  const k = bis.x < -1e-9 ? -b.x / bis.x : 0;
+  const on = { x: 0, y: clamp(b.y + bis.y * k, POST_A.y, POST_B.y) };
+  const dir = unit({ x: b.x - on.x, y: b.y - on.y });
+  const dBall = Math.hypot(b.x, b.y - MID_Y);
+  const table = P.keeperDepth;
+  let depth = table[table.length - 1][1];
+  for (let i = 1; i < table.length; i++) {
+    if (dBall <= table[i][0]) { const [x0, y0] = table[i - 1], [x1, y1] = table[i]; depth = y0 + ((y1 - y0) * (dBall - x0)) / (x1 - x0); break; }
+  }
+  depth = Math.min(depth, Math.hypot(b.x - on.x, b.y - on.y) - 0.5); // never past the ball
+  // A ball near the goal line out wide: the near post, never outside it.
+  const spot = { x: Math.max(on.x + dir.x * depth, 0.5), y: clamp(on.y + dir.y * depth, POST_A.y - 0.5, POST_B.y + 0.5) };
+  return { spot, on, dir, depth };
+}
+
+function unit(v) {
+  const l = Math.hypot(v.x, v.y) || 1;
+  return { x: v.x / l, y: v.y / l };
+}
 
 /**
  * P10 fade for one side's winger: 1 when the width duty holds, falling to 0 as the ball enters the
@@ -103,7 +142,7 @@ export function widthDuty(ball, side, P = SHAPE_DEFAULTS) {
  * Phase adjustments to one team's targets, in the team's own frame (attacking +x). Mutates and
  * returns `t`. Pure geometry of the team's own targets and the ball: continuous in the ball and
  * exactly left/right symmetric.
- *  - Out of possession: the back four level up (U4), then step up together if they are more than
+ *  - Out of possession: the keeper takes the G1 spot (keeperSpot: angle and depth); the back four level up (U4), then step up together if they are more than
  *    maxLineGap behind the midfield line (U1), never past maxLineHeight (a line above it drops to it,
  *    and the midfield drops back to the capped line instead); no midfielder more than maxLineGap
  *    ahead of the back line and no forward more than that ahead of the midfield line (U1, per
@@ -121,6 +160,7 @@ export function widthDuty(ball, side, P = SHAPE_DEFAULTS) {
 export function phaseShape(t, ball, { inPossession = false, params, recover = true } = {}) {
   const P = params ? { ...SHAPE_DEFAULTS, ...params } : SHAPE_DEFAULTS;
   const back = BACK_LINE.filter((r) => t[r]);
+  if (!inPossession && P.keeper && t.GK) t.GK = keeperSpot(ball, P).spot; // G1: angle and depth
   if (!inPossession) {
     if (!back.length) return t;
     const line = median(back.map((r) => t[r].x));

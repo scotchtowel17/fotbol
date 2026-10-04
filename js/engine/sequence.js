@@ -23,7 +23,7 @@ import { clamp, dist, pointSegmentDistance, projectionParam } from './geometry.j
 import { LENGTH, WIDTH, MID_Y } from './pitch.js';
 import { LEARNABLE_ROLES, playerId } from './roles.js';
 import { autoFrame, autoRoles } from './scene.js';
-import { TIMELINE_DEFAULTS, interpKeys, ballAt, meanBallAt, possessionAt, carrierAt, ballEvents, adjustCells, applyAdjustments, adjustmentOf, overridesAt, tagsAt } from './timeline.js';
+import { TIMELINE_DEFAULTS, interpKeys, ballAt, meanBallAt, runTargets, possessionAt, carrierAt, ballEvents, adjustCells, applyAdjustments, adjustmentOf, overridesAt, tagsAt } from './timeline.js';
 import { rateOptions, swapTeams } from './passing.js';
 
 export const SEQUENCE_DEFAULTS = Object.freeze({
@@ -141,18 +141,19 @@ export function generateSequence({ seed = 1, duration, role = 'DM', formations, 
   const partial = { timeline: { ball, possession, carrier } }; // what has been written so far (for ballAt / meanBallAt)
   const view = writingPlayback(partial, formations); // the free playback of what has been written: what the viewer sees
   const shapeAt = (t) => meanBallAt(partial, t - T.reactionLag - T.shapeWindow, t - T.reactionLag);
+  const runAt = (t, possession) => runTargets(partial, t, { formations, possession, params: T }); // where the auto players have run to
   const eligible = (p, team) => p.team === team && p.role !== 'GK' && p.id !== learner;
 
   /** The scene at a key time t (the last key written): everyone where autoFrame puts them. */
   const sceneAt = (t, pos, team, carrierId) => autoFrame({
-    formations, ball: pos, shapeBall: shapeAt(t), possession: team, carrierId, learnerId: learner, autoCarrier: false,
+    formations, ball: pos, shapeBall: shapeAt(t), targets: runAt(t, team), possession: team, carrierId, learnerId: learner, autoCarrier: false,
   });
   /** Where `id` stands at time ta with the ball in flight from `from` (key at t0) to `to`. */
   const inFlightSpot = (id, team, from, t0, to, ta) => {
     ball.push({ t: ta, x: to.x, y: to.y });
-    const shapeBall = shapeAt(ta);
+    const shapeBall = shapeAt(ta), targets = runAt(ta, team);
     ball.pop();
-    const f = autoFrame({ formations, ball: to, shapeBall, possession: team, carrierId: null, inFlight: true, learnerId: learner, autoCarrier: false });
+    const f = autoFrame({ formations, ball: to, shapeBall, targets, possession: team, carrierId: null, inFlight: true, learnerId: learner, autoCarrier: false });
     return f.players.find((p) => p.id === id);
   };
   const passSpeed = (d) => clamp(P.passSpeed[0] + (P.passSpeed[1] - P.passSpeed[0]) * clamp((d - 6) / 34, 0, 1) + rng.range(-1, 1), P.passSpeed[0] + 0.3, P.passSpeed[1] - 0.3);
@@ -315,7 +316,7 @@ export function generateSequence({ seed = 1, duration, role = 'DM', formations, 
     carrierKey(t0, null);
     ballKey(t1, loose);
     // Whoever of the winning side stands nearest the loose ball when it stops.
-    const f = autoFrame({ formations, ball: loose, shapeBall: shapeAt(t1), possession: 'none', learnerId: learner });
+    const f = autoFrame({ formations, ball: loose, shapeBall: shapeAt(t1), targets: runAt(t1, 'none'), possession: 'none', learnerId: learner });
     const id = nearestId(f.players.filter((p) => eligible(p, winner)), loose) ?? tackler.id;
     possessionKey(t1, winner);
     carrierKey(t1, id);
@@ -428,11 +429,15 @@ function writingPlayback(scenario, formations) {
   const decide = (t, players) => {
     const possession = possessionAt(scenario, t), c = carrierAt(scenario, t), inFlight = c === null;
     const rankFrom = players ? Object.fromEntries(players.map((p) => [p.id, { x: p.x, y: p.y }])) : undefined;
-    const roles = autoRoles({ ...sceneAt(t), possession, carrierId: c ?? null, inFlight, rankFrom, params: { ...P, pressHandover: 0 } });
+    const targets = runTargets(scenario, t, { formations, possession, params: P });
+    const roles = autoRoles({ ...sceneAt(t), targets, possession, carrierId: c ?? null, inFlight, rankFrom, params: { ...P, pressHandover: 0 } });
     const presserId = roles.presser && roles.presser.w >= P.pressCommit ? roles.presser.id : null;
     return { t, possession, inFlight, carrierId: roles.carrierId, presserId };
   };
-  const raw = (s, at, params) => autoFrame({ ...sceneAt(at), params, possession: s.possession, carrierId: s.carrierId, autoCarrier: false, inFlight: s.inFlight, presserId: s.presserId });
+  const raw = (s, at, params) => autoFrame({
+    ...sceneAt(at), targets: runTargets(scenario, at, { formations, possession: s.possession, params: P }),
+    params, possession: s.possession, carrierId: s.carrierId, autoCarrier: false, inFlight: s.inFlight, presserId: s.presserId,
+  });
   const segs = [];
   let last = 0; // key times up to this are decided
   const place = (s, at, params) => {
@@ -528,11 +533,15 @@ export function createPlayback(scenario, opts = {}) {
   const decide = (t, spot, players) => {
     const possession = possessionAt(scenario, t), c = carrierAt(scenario, t), inFlight = c === null;
     const rankFrom = players ? Object.fromEntries(players.map((p) => [p.id, { x: p.x, y: p.y }])) : undefined;
-    const roles = autoRoles({ ...sceneAt(t, spot), possession, carrierId: c ?? null, inFlight, rankFrom, params: { ...P, pressHandover: 0 } });
+    const targets = runTargets(scenario, t, { formations: opts.formations, possession, params: P });
+    const roles = autoRoles({ ...sceneAt(t, spot), targets, possession, carrierId: c ?? null, inFlight, rankFrom, params: { ...P, pressHandover: 0 } });
     const presserId = roles.presser && roles.presser.w >= P.pressCommit ? roles.presser.id : null;
     return { t, possession, inFlight, carrierId: roles.carrierId, presserId };
   };
-  const frameOf = (s, at, spot, params) => autoFrame({ ...sceneAt(at, spot), params, possession: s.possession, carrierId: s.carrierId, autoCarrier: false, inFlight: s.inFlight, presserId: s.presserId });
+  const frameOf = (s, at, spot, params) => autoFrame({
+    ...sceneAt(at, spot), targets: runTargets(scenario, at, { formations: opts.formations, possession: s.possession, params: P }),
+    params, possession: s.possession, carrierId: s.carrierId, autoCarrier: false, inFlight: s.inFlight, presserId: s.presserId,
+  });
   const raw = (s, at, spot) => frameOf(s, at, spot, bareP);
 
   const keyTimes = [...new Set([...(tl.ball ?? []), ...(tl.possession ?? []), ...(tl.carrier ?? [])].map((k) => k.t))]

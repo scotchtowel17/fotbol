@@ -11,11 +11,11 @@
 // it ramps in over `pressHandover` and fades over `pressFade`, so dragging the ball never makes a
 // presser jump. The timeline instead commits to autoRoles() decisions at key times (see timeline.js).
 
-import { dist, dot, sub, norm, clamp, lerp, nearest } from './geometry.js';
-import { OWN_GOAL, OPP_GOAL, HALF_X, LENGTH, MID_Y, clampToPitch } from './pitch.js';
+import { dist, dot, sub, norm, clamp, lerp, nearest, median } from './geometry.js';
+import { OWN_GOAL, OPP_GOAL, HALF_X, LENGTH, MID_Y, LANE_EDGES, clampToPitch } from './pitch.js';
 import { ROLES, ROLE_INFO, playerId } from './roles.js';
 import { teamTargets } from './formation.js';
-import { engageBias, pressLean } from './context.js';
+import { engageBias, pressLean, flankShare, wingDepth } from './context.js';
 
 export const SCENE_DEFAULTS = Object.freeze({
   carrierOffset: 0.8, // [D] carrier stands this far behind the ball, towards its own goal
@@ -45,6 +45,28 @@ export const SCENE_DEFAULTS = Object.freeze({
   autoPress: true,
   onsideClamp: true,
   settle: true, // the goal-side settle step (params only; false leaves #8s and wingers at their table spots)
+  // In possession the formation table knows nothing of who is on the ball or of an authored run, so two steps read them:
+  flankShare: true, // B6 (params only): a full-back in his winger's wing lane, level or overlapping, sends the winger inside...
+  shareReach: 12, // [D] ...with the full-back within this many metres of him along the pitch... (= CONTEXT_DEFAULTS.shareReach)
+  shareFade: 4, // [D] ...fading out over this many more... (= CONTEXT_DEFAULTS.shareFade)
+  shareBehind: 3, // [D] ...and no more than this far behind him (= CONTEXT_DEFAULTS.shareBehind)...
+  shareBehindFade: 6, // [D] ...fading out over this many metres more (= CONTEXT_DEFAULTS.shareBehindFade);
+  //                     the other way round, a winger in his wing lane ahead of his full-back sends the full-back inside...
+  fbShareReach: 9, // [D] ...in full with the winger within this many metres of him along the pitch (from 9 m ahead the winger's own step is gone)...
+  fbShareFade: 3, // [D] ...fading out over this many more: gone where the flank-share rule's weight is (FLANK_SHARE_DEFAULTS
+  //                  reach + fade, 12 m; tested equal), more gently than the rule, so the shape never jumps...
+  fbShareInside: 1.5, // [D] ...to this far inside the wing lane's edge (= FLANK_SHARE_DEFAULTS.inside: all the rule asks)
+  halfSpace: true, // P1 (params only): our ball-side full-back on the ball in a wing lane, from the middle third on, sends
+  //                  the ball-side #8 into the half-space between their lines (layer A puts him wide, behind the ball)
+  halfSpaceFrom: 35, // [D] ...from this far up the pitch (the team's own frame; fading in over 5 m)...
+  halfSpaceAhead: 3, // [D] ...at least this far ahead of the ball and short of their back line
+  wingFade: 3, // [D] a player or the ball counts as in the wing lane fully this far inside its edge, fading to 0 at the edge (= CONTEXT_DEFAULTS.wingFade)
+  salida: true, // B9/B5 (params only): the #6 dropped between centre-backs who have split wide sends the full-backs high...
+  salidaSplit: 18, // [D] ...centre-backs at least this far apart (fading in over salidaFade)...
+  salidaFade: 4, // [D]
+  salidaLevel: 2, // [D] ...the #6 no more than this ahead of the deeper centre-back (fading out over 2 m more), between them...
+  salidaPush: 14, // [D] ...and each full-back at least this far ahead of the deeper centre-back (m2-10: past their winger, short of their midfield)
+  halfSpaceInset: 4, // [D] B6/P1: the half-space spot is this far inside the wing lane's edge (y 17.84 / 50.16)
 });
 
 const EPS = 1e-9;
@@ -76,6 +98,9 @@ const depth = (p) => DEPTH[ROLE_INFO[p.role]?.family] ?? 3;
  *   The automatic press then ranks each defender from here on `ball` (not his formation spot on the shape ball), plus
  *   pressZoneWeight per metre his formation spot ranks beyond pressZoneFree, so a defender the play has left behind is
  *   never sent to press past a teammate who is already goal-side, and one far out of his zone hands over.
+ * @param {{us?: Object<string,{x:number,y:number}>, them?: Object<string,{x:number,y:number}>}} [opts.targets]  formation targets
+ *   per team and role, used instead of teamTargets() on the shape ball (the timeline passes where the players have run
+ *   to: timeline.js runTargets); everything after them (overrides, carrier, settle, press, onside, separation) is the same
  * @param {object} [opts.params]           overrides for SCENE_DEFAULTS; params.shape (an object) overrides SHAPE_DEFAULTS
  *   of the phase shape (formation.js) for both teams
  * @returns {import('./types.js').Frame}   t = 0, tags = {}
@@ -194,7 +219,7 @@ function setup(opts) {
     const formation = team === 'us' ? formations.us : formations.them ?? formations.us;
     // A loose ball: no possession offset, but both teams take their out-of-possession shape (the
     // rules judge a loose ball as defending).
-    const targets = teamTargets(formation, team, shapeBall, { inPossession: possession === team, offset: !!attacking, shape: P.shape ?? true });
+    const targets = opts.targets?.[team] ?? teamTargets(formation, team, shapeBall, { inPossession: possession === team, offset: !!attacking, shape: P.shape ?? true });
     for (const role of ROLES) {
       const id = playerId(team, role);
       const p = overrides[id] ?? targets[role];
@@ -220,6 +245,13 @@ function setup(opts) {
       Object.assign(carrier, clampToPitch({ x: ball.x + back, y: ball.y }));
     }
     mobility.set(carrier.id, 0);
+  }
+
+  // 2a. Flank sharing and the half-space (B6, P1) for the team in possession: the formation table knows nothing of
+  // an authored overlap or of the full-back on the ball. Part of every auto player's spot (the learner's too).
+  if (attacking) {
+    if (P.salida) salida(players, attacking, byId, overridden, carrier, P); // first: it moves the full-backs up the wing
+    shareFlanks(players, attacking, byId, overridden, carrier, ball, P);
   }
 
   // 2b. Goal-side settle (D5, R4): the formation table knows nothing of the opponents, so out of
@@ -262,6 +294,94 @@ function settle(players, teams, overridden, carrier, P) {
     if (back > 0) moves.push([p, sign * back]);
   }
   for (const [p, dx] of moves) p.x = clamp(p.x - dx, 0, LENGTH);
+}
+
+/** The half-space spot's y on a side: halfSpaceInset inside the wing lane's edge. */
+const halfSpaceY = (side, P) => (side === 'R' ? LANE_EDGES[4] - P.halfSpaceInset : LANE_EDGES[1] + P.halfSpaceInset);
+
+/**
+ * In possession (team `team`): B6, a full-back in his winger's wing lane, level with him or overlapping and within
+ * shareReach, sends an auto-placed winger in from the wing lane to the half-space spot; P1, with the ball-side
+ * full-back on the ball in a wing lane from halfSpaceFrom on, the ball-side #8 takes the half-space spot, between
+ * their midfield and back lines, at least halfSpaceAhead ahead of the ball. Every weight fades (lane edges, reach,
+ * the ball's height), so the placement stays continuous. Overrides and the carrier never move. Mutates players.
+ */
+const FLANK_IDS = Object.freeze({
+  us: Object.freeze({ L: ['us-LB', 'us-LW', 'us-LCM'], R: ['us-RB', 'us-RW', 'us-RCM'] }),
+  them: Object.freeze({ L: ['them-LB', 'them-LW', 'them-LCM'], R: ['them-RB', 'them-RW', 'them-RCM'] }),
+});
+
+function shareFlanks(players, team, byId, overridden, carrier, ball, P) {
+  const fixed = (p) => !p || overridden.has(p.id) || p === carrier;
+  for (const side of ['L', 'R']) {
+    const [fbId, wId, cmId] = FLANK_IDS[team][side];
+    const fb = byId.get(fbId), w = byId.get(wId);
+    if (!fb || (wingDepth(fb, side, P) === 0 && carrier !== fb)) continue; // nothing on this flank for either step
+    const hs = halfSpaceY(side, P);
+    // B6: the winger comes inside when his full-back holds the wing (context.js flankShare, which buildContext also reads);
+    // the other way round, with the winger on the touchline ahead of him (not level: flankShare's level fades out), the
+    // full-back comes inside, just inside the wing lane (RESEARCH B6: "if the winger hugs the touchline, the FB goes
+    // inside"; the flank-share rule's reach and edge, so a full-back's base is where that rule wants it).
+    if (P.flankShare && fb && w && !fixed(fb)) {
+      const sign = team === 'us' ? 1 : -1;
+      const reach = clamp((P.fbShareReach + P.fbShareFade - Math.abs(fb.x - w.x)) / P.fbShareFade, 0, 1);
+      const level = clamp((P.shareBehind + P.shareBehindFade - sign * (w.x - fb.x)) / P.shareBehindFade, 0, 1);
+      const k = wingDepth(w, side, P) * reach * (1 - level);
+      const inY = side === 'R' ? LANE_EDGES[4] - P.fbShareInside : LANE_EDGES[1] + P.fbShareInside;
+      const wider = side === 'R' ? fb.y > inY : fb.y < inY;
+      if (k > 0 && wider) fb.y = lerp(fb.y, inY, k);
+    }
+    if (P.flankShare && fb && !fixed(w)) {
+      const k = flankShare(team, fb, w, side, P);
+      const wider = side === 'R' ? w.y > hs : w.y < hs;
+      if (k > 0 && wider) w.y = lerp(w.y, hs, k);
+    }
+    // P1: the ball-side #8 takes the half-space while his full-back has the ball out wide.
+    const cm = byId.get(cmId);
+    if (P.halfSpace && fb && carrier === fb && !fixed(cm)) {
+      const up = team === 'us' ? ball.x : LENGTH - ball.x;
+      const k = wingDepth(ball, side, P) * clamp((up - P.halfSpaceFrom) / 5, 0, 1);
+      if (k > 0) {
+        const opp = players.filter((q) => q.team !== team);
+        const lineX = (roles) => median(opp.filter((q) => roles.includes(q.role)).map((q) => q.x));
+        const mid = lineX(['DM', 'LCM', 'RCM']), back = lineX(['LB', 'LCB', 'RCB', 'RB']);
+        // In the team's own frame (up the pitch): between their lines, at least halfSpaceAhead past the ball.
+        const own = (x) => (team === 'us' ? x : LENGTH - x);
+        const lo = up + P.halfSpaceAhead, hi = Math.max(lo, own(back) - 2);
+        const want = clamp((own(mid) + own(back)) / 2, lo, hi);
+        cm.x = lerp(cm.x, own(want), k);
+        cm.y = lerp(cm.y, hs, k);
+      }
+    }
+  }
+}
+
+/**
+ * B9/B5 in build-up (team `team` in possession): when the #6 has dropped between centre-backs who have split wide (at
+ * least salidaSplit apart, the #6 between them and no more than salidaLevel ahead of the deeper one), a back three
+ * holds the ball and the auto-placed full-backs push up, at least salidaPush ahead of the deeper centre-back, keeping
+ * their width (a centre-back carrying the ball out past the #6 is not a back three). Layer A keeps them flat with the centre-backs (its build-up depth floor). Every weight fades. Mutates players.
+ */
+function salida(players, team, byId, overridden, carrier, P) {
+  const ids = team === 'us' ? ['us-LCB', 'us-RCB', 'us-DM', 'us-LB', 'us-RB'] : ['them-LCB', 'them-RCB', 'them-DM', 'them-LB', 'them-RB'];
+  const [l, r, dm] = ids.slice(0, 3).map((id) => byId.get(id));
+  if (!l || !r || !dm) return;
+  const own = (x) => (team === 'us' ? x : LENGTH - x); // up the pitch, in the team's own frame
+  const lo = Math.min(l.y, r.y), hi = Math.max(l.y, r.y);
+  const split = clamp((hi - lo - P.salidaSplit) / P.salidaFade + 1, 0, 1);
+  // Level with the deeper centre-back: a centre-back carrying the ball out past the #6 is not a back three.
+  const deep = Math.min(own(l.x), own(r.x));
+  const level = clamp((deep + P.salidaLevel + 2 - own(dm.x)) / 2, 0, 1);
+  const between = clamp((Math.min(dm.y - lo, hi - dm.y)) / 2, 0, 1);
+  const k = split * level * between;
+  if (!(k > 0)) return;
+  const want = deep + P.salidaPush;
+  for (const id of ids.slice(3)) {
+    const fb = byId.get(id);
+    if (!fb || overridden.has(id) || fb === carrier || own(fb.x) >= want) continue;
+    const x = lerp(own(fb.x), want, k);
+    fb.x = team === 'us' ? x : LENGTH - x;
+  }
 }
 
 /**
@@ -333,7 +453,7 @@ function decidePress({ P, ball, shapeBall, players, pinned, carrier, defending, 
  */
 function separate(players, mobility, P, constrain) {
   const n = players.length;
-  const min = P.minSeparation;
+  const min = P.minSeparation, min2 = min * min;
   const ox = players.map((p) => p.x), oy = players.map((p) => p.y);
   const pairs = new Map(); // i * n + j → { ux, uy, gap }, fixed when the pair first overlaps
   const pairOf = (i, j) => {
@@ -358,6 +478,8 @@ function separate(players, mobility, P, constrain) {
         const mi = mobility[i], mj = mobility[j];
         if (mi <= 0 && mj <= 0) continue;
         const a = players[i], b = players[j];
+        const ex = b.x - a.x, ey = b.y - a.y;
+        if (ex * ex + ey * ey >= min2) continue; // far enough apart: no square root for the 200-odd pairs that are
         const d = dist(a, b);
         if (d >= min) continue;
         let q = pairs.get(i * n + j);

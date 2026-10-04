@@ -1,6 +1,6 @@
 import { test, assert, approx, loadJSON } from './harness.js';
 import {
-  frameAt, learnerBaseAt, ballAt, meanBallAt, possessionAt, carrierAt, ballEvents, timing, inGrace, sampleTimes, interpKeys, adjustCells,
+  frameAt, learnerBaseAt, ballAt, meanBallAt, runTargets, possessionAt, nextEventAfter, carrierAt, ballEvents, timing, inGrace, sampleTimes, interpKeys, adjustCells,
   TIMELINE_DEFAULTS,
 } from '../js/engine/timeline.js';
 import { SCENE_DEFAULTS } from '../js/engine/scene.js';
@@ -54,11 +54,12 @@ test('possession, carrier and tags are step functions', () => {
   assert.equal(frameAt(S, 3.5, { formations }).carrierId, 'us-RB');
   assert.equal(carrierAt({ timeline: { carrier: [{ t: 1, id: 'them-ST' }] } }, 0.5), undefined, 'automatic before the first key');
 
-  assert.deepEqual(frameAt(S, 1, { formations }).tags, { carrierFacing: 'forward' });
-  assert.deepEqual(frameAt(S, 2.5, { formations }).tags, { carrierFacing: 'forward', event: 'pass' });
-  assert.deepEqual(frameAt(S, 3.5, { formations }).tags, { carrierFacing: 'backward', event: 'pass' });
+  assert.deepEqual(frameAt(S, 0.5, { formations }).tags, { carrierFacing: 'forward', lesson: 'D1' });
+  assert.deepEqual(frameAt(S, 1, { formations }).tags, { carrierFacing: 'forward', lesson: 'D1', nextEvent: 'pass', nextEventIn: 1 }, 'the pass is 1 s away');
+  assert.deepEqual(frameAt(S, 2.5, { formations }).tags, { carrierFacing: 'forward', event: 'pass', lesson: 'D1' });
+  assert.deepEqual(frameAt(S, 3.5, { formations }).tags, { carrierFacing: 'backward', event: 'pass', lesson: 'D1' }, 'the lesson is the first principle');
   const constant = { ...S, phase: 'mid_block', timeline: { ...S.timeline, tags: { pressureOnBall: true } } };
-  assert.deepEqual(frameAt(constant, 1, { formations }).tags, { pressureOnBall: true, phase: 'mid_block' });
+  assert.deepEqual(frameAt(constant, 0.5, { formations }).tags, { pressureOnBall: true, phase: 'mid_block', lesson: 'D1' });
 });
 
 test('overrides interpolate linearly and win; the explicit carrier is placed at the ball', () => {
@@ -85,13 +86,13 @@ test('learnerSpot pins the learner for the whole playback', () => {
 });
 
 test('auto players react to the lagged, averaged ball; scenario.params pass through', () => {
-  const quiet = { ...S, params: { autoPress: false } };
+  const quiet = { ...S, params: { autoPress: false, runSpeed: 0 } }; // the speed limit has its own test
   const gk = (t, ball, inPossession) => teamTargets(F, 'us', ball, { inPossession }).GK;
   // Defaults: mean ball over [t - lag - window, t - lag].
   const L = TIMELINE_DEFAULTS.reactionLag, W = TIMELINE_DEFAULTS.shapeWindow;
   assert.deepEqual(pos(frameAt(quiet, 1.5, { formations }), 'us-GK'), gk(1.5, meanBallAt(S, 1.5 - L - W, 1.5 - L), false));
   // Scenario params: no window → the ball at t - lag.
-  const lagOnly = { ...quiet, params: { autoPress: false, shapeWindow: 0 } };
+  const lagOnly = { ...quiet, params: { autoPress: false, shapeWindow: 0, runSpeed: 0 } };
   assert.deepEqual(pos(frameAt(lagOnly, 1.5, { formations }), 'us-GK'), gk(1.5, ballAt(S, 1.5 - L), false));
   // Caller params win over scenario params.
   assert.deepEqual(pos(frameAt(lagOnly, 1.5, { formations, params: { reactionLag: 0 } }), 'us-GK'), gk(1.5, ballAt(S, 1.5), false));
@@ -268,6 +269,29 @@ test('timing, sampleTimes and a derived ballMovingBack tag', () => {
   assert.equal(frameAt(authored, 1, { formations }).tags.ballMovingBack, false, 'an authored tag wins');
 });
 
+test('tags.nextEvent: the next event by the team on the ball within eventAhead s (offside judges a pass about to be played)', () => {
+  const cross = {
+    ...S,
+    timeline: {
+      ...S.timeline,
+      ball: [{ t: 0, x: 80, y: 60, event: 'carry' }, { t: 2, x: 90, y: 60, event: 'cross' }, { t: 3, x: 97, y: 30 }],
+      possession: [{ t: 0, team: 'us' }, { t: 2.5, team: 'them' }],
+      carrier: [{ t: 0, id: 'us-RW' }, { t: 2, id: null }],
+      tags: [],
+    },
+  };
+  assert.equal(frameAt(cross, 0.5, { formations }).tags.nextEvent, undefined, 'too far ahead');
+  const soon = frameAt(cross, 1.4, { formations }).tags;
+  assert.equal(soon.nextEvent, 'cross');
+  assert.equal(soon.nextEventIn, 0.6);
+  assert.equal(frameAt(cross, 2, { formations }).tags.nextEvent, undefined, 'strictly after t');
+  assert.equal(nextEventAfter(cross, 1.4, 'them'), null, 'the cross is ours, not theirs');
+  const lost = { ...cross, timeline: { ...cross.timeline, possession: [{ t: 0, team: 'us' }, { t: 1.8, team: 'them' }] } };
+  assert.equal(frameAt(lost, 1.4, { formations }).tags.nextEvent, undefined, 'a turnover first: the event is not ours');
+  const authored = { ...cross, timeline: { ...cross.timeline, tags: [{ t: 0, nextEvent: 'pass', nextEventIn: 0.2 }] } };
+  assert.equal(frameAt(authored, 1.4, { formations }).tags.nextEvent, 'pass', 'an authored tag wins');
+});
+
 test('learnerBaseAt: the learner role as an auto player would stand (formation spot or press), never the dragged spot', () => {
   // t = 1: their #8 carries at (40, 34); our LCB is an ordinary third defender.
   const base = learnerBaseAt(S, 1, { formations });
@@ -284,10 +308,49 @@ test('learnerBaseAt: the learner role as an auto player would stand (formation s
   assert.throws(() => learnerBaseAt({ ...S, learner: undefined }, 1, { formations }), TypeError);
 });
 
+test('runTargets: every auto player runs to his formation target at no more than runSpeed m/s, a pure function of t', () => {
+  // A 30 m pass in 1 s: the averaged ball moves at up to 30 m/s, and the formation targets with it.
+  const pass = { ...S, timeline: { ...S.timeline, ball: [{ t: 0, x: 70, y: 34 }, { t: 1, x: 70, y: 34, event: 'pass' }, { t: 2, x: 40, y: 34 }, { t: 6, x: 40, y: 34 }], possession: [{ t: 0, team: 'them' }], carrier: [], overrides: [] } };
+  const P = TIMELINE_DEFAULTS, dt = 0.05, opts = { formations, possession: 'them' };
+  const target = (t) => teamTargets(F, 'us', meanBallAt(pass, t - P.reactionLag - P.shapeWindow, t - P.reactionLag), { inPossession: false, offset: true });
+  let fastest = 0, fastestTarget = 0, prev = runTargets(pass, 0, opts), prevT = target(0);
+  for (let t = dt; t <= 6 + 1e-9; t += dt) {
+    const r = runTargets(pass, t, opts), q = target(t);
+    for (const role of Object.keys(q)) {
+      fastest = Math.max(fastest, dist(r.us[role], prev.us[role]) / dt);
+      fastestTarget = Math.max(fastestTarget, dist(q[role], prevT[role]) / dt);
+    }
+    prev = r; prevT = q;
+  }
+  assert.ok(fastestTarget > 12, `the targets themselves fly (${fastestTarget.toFixed(1)} m/s)`);
+  assert.ok(fastest <= P.runSpeed + 1e-6, `fastest ${fastest}`);
+  const lag = Math.max(...Object.keys(target(2.3)).map((role) => dist(runTargets(pass, 2.3, opts).us[role], target(2.3)[role])));
+  assert.ok(lag > 2, 'someone is still on the way after the pass...');
+  for (const role of Object.keys(target(6))) assert.ok(dist(runTargets(pass, 6, opts).us[role], target(6)[role]) < 1e-9, '...and everyone is there once the ball is still');
+  // A pure function of t: the same at any time whatever was asked before, and the run can be switched off.
+  const fresh = { ...pass, timeline: { ...pass.timeline, ball: pass.timeline.ball.map((k) => ({ ...k })) } };
+  assert.deepEqual(runTargets(fresh, 2.71, opts), runTargets(pass, 2.71, opts));
+  assert.equal(runTargets(pass, 2.3, { ...opts, params: { ...P, runSpeed: 0 } }), undefined);
+  // A key written later (as sequence.js writes a run) is seen; samples before it are kept.
+  const growing = { timeline: { ball: [{ t: 0, x: 50, y: 34 }, { t: 1, x: 50, y: 34 }] } };
+  const before = runTargets(growing, 1.2, opts);
+  growing.timeline.ball.push({ t: 2, x: 20, y: 34 });
+  assert.deepEqual(runTargets(growing, 1.2, opts), before, 'the new key is after the window at 1.2 s');
+  assert.notDeepEqual(runTargets(growing, 3, opts), before, 'the new key moves the targets later');
+  growing.timeline.ball.pop();
+  assert.deepEqual(runTargets(growing, 3, opts), before, 'taken back');
+  // The learner's base is judged on the targets themselves; the frame's auto players are still running.
+  const id = 'us-LCB';
+  const settled = pos(frameAt(pass, 2.3, { formations, learnerId: null, params: { runSpeed: 0 } }), id);
+  assert.ok(dist(learnerBaseAt(pass, 2.3, { formations, learnerId: id }), settled) < 1e-9);
+  const running = pass.timeline.ball.length && Object.keys(target(2.3)).filter((role) => dist(runTargets(pass, 2.3, opts).us[role], target(2.3)[role]) > 1);
+  assert.ok(running.length > 0, `some auto players are still on the way: ${running}`);
+});
+
 test('learnerBaseAt: right after a state change the base is where the new state wants the role, not the blended auto player', () => {
   // t = 3.2: our RB has just intercepted (possession change at t = 3), so every auto player is still blending.
   const t = 3.2;
-  const unblended = { possessionBlend: 0, carrierBlend: 0, maxBlend: 0 };
+  const unblended = { possessionBlend: 0, carrierBlend: 0, maxBlend: 0, runSpeed: 0 };
   for (const role of ['LCB', 'DM', 'ST']) {
     const id = `us-${role}`;
     const want = pos(frameAt(S, t, { formations, learnerId: null, params: unblended }), id);

@@ -249,7 +249,7 @@ export async function mount(root, app) {
     const frame = run.held.frameAt(t, spot);
     const base = baseAt(run, t);
     const ctx = buildContext(frame, { learnerId: run.learnerId, base });
-    const ghost = computeGhost(ctx, { base, tol: run.tol });
+    const ghost = computeGhost(ctx, { base, tol: run.tol, field: false });
     return { frame, ctx, ghost, judgement: judgeSpot({ ctx, ghost }, spot, { wording: 'kid', principles }) };
   }
 

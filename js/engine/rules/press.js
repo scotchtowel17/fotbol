@@ -4,11 +4,14 @@
 // inside of a carrier off the middle (a curved run that shuts the pass inside and shows them
 // wide: D2, R5, the D9 idea). That lean is context.js pressLean(), which scene.js also uses to
 // place the automatic presser, so the learner's base and the ghost stand where the rule wants.
+// Delay (T2): while we recover (just lost the ball, or a recovery phase: _util.js recovering) and they have as many
+// attackers as we have defenders between the ball and our goal or more (context.js outnumbered), the first defender
+// does not dive in: he backs off to 3-5 m to slow the carrier while the team gets back.
 
 import { band, lerp } from '../geometry.js';
 import { OWN_GOAL, MID_Y } from '../pitch.js';
-import { pressLean } from '../context.js';
-import { perContext, paramsFor, notApplicable, defending, nameOf, kidNameOf, signedAngle, whole } from './_util.js';
+import { pressLean, outnumbered } from '../context.js';
+import { perContext, paramsFor, notApplicable, defending, recovering, nameOf, kidNameOf, signedAngle, whole } from './_util.js';
 
 export const PRESS_DEFAULTS = Object.freeze({
   weight: 3, // [S] RESEARCH 5.6: press 3 when it is the learner's duty
@@ -27,6 +30,9 @@ export const PRESS_DEFAULTS = Object.freeze({
   leanTo: 55, // [D] ...to here: in our own half the press stays on the line to goal (D1) (SCENE_DEFAULTS.pressLeanTo)
   leanWording: 0.5, // [D] from this much lean on, a miss on the angle is worded as the curved run (D2), not the line (D1)
   angleSoft: 30, // [D] degrees outside the band where credit reaches 0
+  delayMin: 3, // [D] T2: outnumbered while we recover, the first defender holds 3-5 m off the carrier...
+  delayMax: 5, // [D]
+  delayWording: 0.5, // [D] ...and from this much delay on, the feedback says "delay" (T2), not "close down" (D1)
 });
 
 const prep = perContext((ctx) => {
@@ -46,9 +52,12 @@ const prep = perContext((ctx) => {
   const aimDeg = wing ? D.wingAim : lean * D.centralAim;
   const aim = (aimDeg * insideSign * Math.PI) / 180;
   const dx = ux * Math.cos(aim) - uy * Math.sin(aim), dy = ux * Math.sin(aim) + uy * Math.cos(aim);
-  const dPref = (D.distMin + D.distMax) / 2;
+  const delay = recovering(ctx) ? outnumbered('us', ref, [...ctx.usAtBase, ...ctx.opponents], ctx.carrier?.id ?? null, ctx.params) : 0;
+  const dMin = lerp(D.distMin, D.delayMin, delay), dMax = lerp(D.distMax, D.delayMax, delay);
+  const dPref = (dMin + dMax) / 2;
   return {
     D, w: D.weight, px: ref.x, py: ref.y, ux, uy, wing, insideSign, lo, hi, curved: wing || lean >= D.leanWording,
+    dMin, dMax, delaying: delay >= D.delayWording,
     tx: ref.x + dx * dPref, ty: ref.y + dy * dPref,
     who: nameOf(ctx.carrier, ctx), whoKid: kidNameOf(ctx.carrier, ctx),
   };
@@ -56,7 +65,7 @@ const prep = perContext((ctx) => {
 
 export default {
   id: 'press',
-  principles: ['D1', 'D2'],
+  principles: ['D1', 'D2', 'T2', 'R2', 'R5'], // R2: the full-back engages; R5: the #9 leads the press
   critical: false,
   weight: (ctx) => prep(ctx)?.w ?? 0,
   evaluate(ctx, spot) {
@@ -65,7 +74,7 @@ export default {
     const D = p.D;
     const vx = spot.x - p.px, vy = spot.y - p.py;
     const d = Math.hypot(vx, vy);
-    const sd = band(d, D.distMin, D.distMax, D.distSoft);
+    const sd = band(d, p.dMin, p.dMax, D.distSoft);
     const ang = d < 1e-6 ? 0 : signedAngle(p.ux, p.uy, vx, vy) * p.insideSign; // + = inside the line
     const sa0 = band(ang, p.lo, p.hi, D.angleSoft);
     // The angle means little on top of the carrier: fade it in over distMin so there is no cliff there.
@@ -74,24 +83,31 @@ export default {
     let issue = 'ok';
     if (s < 0.999) {
       if (Math.abs(ang) > 90 && d > 0.5) issue = 'wrong-side';
-      else if (sd <= sa) issue = d > D.distMax ? 'far' : 'close';
+      else if (sd <= sa) issue = d > p.dMax ? 'far' : 'close';
       else if (!p.curved) issue = 'line';
       else if (ang > p.hi) issue = 'too-round';
       else issue = p.wing ? 'show-inside' : 'inside';
     }
     // D1 is the pressure itself (distance, goal side); D2 the angle that shows the carrier away from goal.
-    const principle = issue === 'show-inside' || issue === 'inside' || issue === 'too-round' ? 'D2' : 'D1';
+    // T2 is the distance while delaying.
+    const principle = issue === 'show-inside' || issue === 'inside' || issue === 'too-round' ? 'D2' : p.delaying && issue !== 'wrong-side' ? 'T2' : 'D1';
     // along (unrounded): m from the ball toward our goal (< 0: past the ball, the wrong side); kidscore.js reads it
     const along = vx * p.ux + vy * p.uy;
-    return { s, target: { x: p.tx, y: p.ty }, vars: { who: p.who, whoKid: p.whoKid, dist: whole(d), issue, principle, along } };
+    return { s, target: { x: p.tx, y: p.ty }, vars: { who: p.who, whoKid: p.whoKid, dist: whole(d), issue, principle, along, delay: p.delaying } };
   },
   text: {
     standard: {
       name: 'Press the ball',
-      ok: (v) => `You close ${v.who} down from the goal side, so they have to slow down.`,
+      ok: (v) => (v.delay
+        ? `You hold ${v.who} up from the goal side without diving in, so your team has time to get back.`
+        : `You close ${v.who} down from the goal side, so they have to slow down.`),
       fail: (v) => ({
-        far: `Close ${v.who} down to about 2 m, because from ${v.dist} m away they have time to pick a pass.`,
-        close: `Stop about 2 m off ${v.who} so one touch can't take them past you.`,
+        far: v.delay
+          ? `Get goal-side of ${v.who} about 4 m off, so you slow them down while your team gets back.`
+          : `Close ${v.who} down to about 2 m, because from ${v.dist} m away they have time to pick a pass.`,
+        close: v.delay
+          ? `Back off to about 4 m from ${v.who}: they have runners with them, so slow them down instead of diving in.`
+          : `Stop about 2 m off ${v.who} so one touch can't take them past you.`,
         'wrong-side': `Get goal-side of ${v.who} before you press, so they can't run straight at our goal.`,
         line: `Press from between ${v.who} and the middle of our goal to shut the direct route.`,
         'show-inside': `Press from the inside of ${v.who} so you show them down the touchline, away from the middle.`,
@@ -102,10 +118,10 @@ export default {
     },
     kid: {
       name: 'Go to the ball',
-      ok: () => 'Good, you are close and blocking the way to our goal.',
+      ok: (v) => (v.delay ? 'Good, you slow them down and wait for help.' : 'Good, you are close and blocking the way to our goal.'),
       fail: (v) => ({
-        far: `Get closer to ${v.whoKid}, about two steps away.`,
-        close: "Stop about two steps away so they can't dribble past you.",
+        far: v.delay ? `Get between ${v.whoKid} and our goal, a few steps away.` : `Get closer to ${v.whoKid}, about two steps away.`,
+        close: v.delay ? "Back off a few steps and slow them down, don't dive in." : "Stop about two steps away so they can't dribble past you.",
         'wrong-side': `Get between ${v.whoKid} and our goal first.`,
         line: `Stand between ${v.whoKid} and the middle of our goal.`,
         'show-inside': 'Stand on the inside so they have to go toward the sideline.',

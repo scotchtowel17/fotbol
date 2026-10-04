@@ -3,7 +3,7 @@ import { test, assert, approx } from './harness.js';
 import { makeFrame, posOf } from './fixtures.js';
 import { buildContext } from '../js/engine/context.js';
 import {
-  TOLERANCE, SCORE_WEIGHTS, CRITICAL_CAP, RULES_GATE, zoneScore, toleranceFor, gradeOf,
+  TOLERANCE, SCORE_WEIGHTS, CRITICAL_CAP, LESSON_CAP, RULES_GATE, zoneScore, toleranceFor, gradeOf,
   rulesGate, evaluateRules, evaluate, createScorer,
 } from '../js/engine/score.js';
 
@@ -174,4 +174,27 @@ test('score is always an integer in 0..100', () => {
       assert.ok(Number.isInteger(score) && score >= 0 && score <= 100, `(${x}, ${y}) -> ${score}`);
     }
   }
+});
+
+test('lesson cap: a drill\'s own lesson rule clearly missed holds the spot to a C; other rules and static scenes are not capped', () => {
+  const rules = [fake('lane', 2, (spot) => (spot.x > 40 ? 1 : 0.2)), fake('width', 3, 1), fake('spacing', 1, 0)]; // principles LANE, WIDTH, SPACING
+  const id = 'us-LW';
+  const base = posOf('ipBuildUp', id);
+  const withLesson = (lesson) => buildContext(makeFrame('ipBuildUp', { tags: { lesson } }), { learnerId: id, base });
+  const spot = at(base.x - 1, base.y); // close to the base: a high score but for the lesson
+  const missedSpot = at(39, base.y);
+  const ctx = withLesson('LANE');
+  const ok = evaluate(ctx, spot, { rules, center: at(39.5, base.y) });
+  const missed = evaluate(ctx, missedSpot, { rules, center: at(39.5, base.y) });
+  assert.equal(ok.lessonMissed, false);
+  assert.equal(missed.lessonMissed, true);
+  assert.ok(missed.raw <= LESSON_CAP.cap + 1e-9, `capped: ${missed.raw}`);
+  assert.equal(missed.rules.find((r) => r.id === 'lane').lesson, true, 'the result says which rule was the lesson missed');
+  // The same spot without the lesson tag (Explore, Live) is not capped; nor when the failing rule is too light.
+  const free = evaluate(withLesson(undefined), missedSpot, { rules, center: at(39.5, base.y) });
+  assert.equal(free.lessonMissed, false);
+  assert.ok(free.raw > LESSON_CAP.cap, `uncapped: ${free.raw}`);
+  assert.equal(evaluate(withLesson('SPACING'), missedSpot, { rules, center: at(39.5, base.y) }).lessonMissed, false, 'spacing weighs 1');
+  // The fast scorer agrees with evaluate().
+  approx(createScorer(ctx, { rules, center: at(39.5, base.y) })(missedSpot), missed.raw, 1e-9);
 });

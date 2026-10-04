@@ -1,0 +1,124 @@
+{
+  "id": "pa8-lb-01",
+  "kind": "pass",
+  "title": "Play it in behind the full-back",
+  "titleKid": "Lead the Runner",
+  "brief": "The ball comes back to you near the touchline. Their full-back has stepped in front of your winger.",
+  "briefKid": "The ball is coming to you. Look where your winger can run.",
+  "question": "Where does your pass go?",
+  "questionKid": "Where do you pass?",
+  "takeaway": {
+    "standard": "When a defender steps in front of your winger, pass into the space behind the defender, so your winger runs onto it.",
+    "kid": "Pass into the space behind the defender, so your winger runs onto it."
+  },
+  "module": "pass",
+  "moment": "in_possession",
+  "phase": "progression",
+  "principles": [
+    "PA8",
+    "PA4"
+  ],
+  "learner": {
+    "role": "LB"
+  },
+  "carrierId": "us-LB",
+  "carrier": "us-LB",
+  "timeline": {
+    "duration": 2.636,
+    "freezeAt": 2.636,
+    "ball": [
+      {
+        "t": 0,
+        "x": 56.29,
+        "y": 27.34
+      },
+      {
+        "t": 0.793,
+        "x": 56.29,
+        "y": 27.34,
+        "event": "pass"
+      },
+      {
+        "t": 2.04,
+        "x": 48.5,
+        "y": 10
+      }
+    ],
+    "possession": [
+      {
+        "t": 0,
+        "team": "us"
+      }
+    ],
+    "carrier": [
+      {
+        "t": 0,
+        "id": "us-ST"
+      },
+      {
+        "t": 0.793,
+        "id": null
+      },
+      {
+        "t": 2.04,
+        "id": "us-LB"
+      }
+    ],
+    "players": {
+      "auto": true,
+      "overrides": [
+        {
+          "id": "them-RW",
+          "keys": [
+            {
+              "t": 0,
+              "x": 52.03,
+              "y": 10
+            },
+            {
+              "t": 2.636,
+              "x": 45.72,
+              "y": 13.79
+            }
+          ]
+        },
+        {
+          "id": "them-RB",
+          "keys": [
+            {
+              "t": 0,
+              "x": 69.85,
+              "y": 14.84
+            },
+            {
+              "t": 2.636,
+              "x": 63.31,
+              "y": 4.68
+            }
+          ]
+        }
+      ]
+    },
+    "tags": []
+  },
+  "answer": {
+    "mode": "pass",
+    "best": "us-LW@space",
+    "accept": []
+  },
+  "misconceptions": [],
+  "difficulty": 0,
+  "params": {
+    "runSpeed": 0,
+    "halfSpace": false,
+    "salida": false
+  },
+  "notes": "A full-back's ball into space (PA8), which the pass generator never makes for full-backs (PASS_YIELD). Their full-back stands 3 m in front of our winger, so the pass to the winger's feet is blocked (PA4), and the space behind is ours: the winger is already facing forward and wins the race. Their winger presses our near centre-back, so the short pass back is cut out too.",
+  "source": {
+    "kind": "handmade",
+    "license": "MIT",
+    "author": "fotbol",
+    "keyedBy": [],
+    "from": "generatePassDrill seed 4 for LB, then their defenders moved by hand (tests: scripts/check-scenarios.mjs)"
+  }
+}

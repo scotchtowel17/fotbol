@@ -245,7 +245,13 @@ test('cast: an authored "stages": { "keep": [...] } is always shown, mirrored wi
   assert.ok(st.small || st.medium, 'fixture: a smaller game');
   for (const k of ['small', 'medium']) if (st[k]) assert.ok(st[k].cast.ids.includes('us-RB'), `${k}: ${st[k].cast.ids.join(' ')}`);
   const m = stagesOf(mirrorScenario(normalizeScenario(kept)), { formations, principles: catalogue });
-  for (const k of ['small', 'medium']) if (m[k]) assert.ok(m[k].cast.ids.includes('us-LB') && !m[k].cast.ids.includes('us-RB'), `mirrored ${k}: ${m[k].cast.ids.join(' ')}`);
+  // Mirrored, the kept player is the left-back; the right-back is shown only if the mirrored drill shows him anyway.
+  const plain = stagesOf(mirrorScenario(normalizeScenario(raw)), { formations, principles: catalogue });
+  for (const k of ['small', 'medium']) {
+    if (!m[k]) continue;
+    const ids = m[k].cast.ids, anyway = !!plain[k]?.cast.ids.includes('us-RB');
+    assert.ok(ids.includes('us-LB') && (anyway || !ids.includes('us-RB')), `mirrored ${k}: ${ids.join(' ')}`);
+  }
   assert.deepEqual(keepIdsOf(kept, st.full.frame).authored, ['us-RB']);
 });
 

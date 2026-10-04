@@ -305,8 +305,10 @@ test('speed: five accepted drills in well under 300 ms of CPU, and a varied set 
     const ms = cpuTimed(() => five(role), { warmup: 0, runs: 3 }).median;
     assert.ok(ms < 300 * PERF_SLACK, `${role}: ${ms.toFixed(0)} ms of CPU for 5 drills`);
   }
-  // A set keeps its bests varied (no receiver more than twice, no two alike), so it tries more scenes: 100-900 ms.
-  const ms = cpuTimed(() => generatePassSet({ seed: 101, count: 5, role: 'LB', formations, catalogue }), { warmup: 0, runs: 1 }).median;
+  // A set keeps its bests varied (no receiver more than twice, no two alike), so it tries more scenes: about 0.5-1 s of
+  // CPU on a laptop once the engine is compiled. Warmed up and the median of 3, like the timings above: a single cold run
+  // also times the JIT compiling the engine (2-2.5 s on CI and in containers), which the app pays once, not per set.
+  const ms = cpuTimed(() => generatePassSet({ seed: 101, count: 5, role: 'LB', formations, catalogue }), { warmup: 1, runs: 3 }).median;
   assert.ok(ms < 2000 * PERF_SLACK, `${ms.toFixed(0)} ms of CPU for a set of 5`);
 });
 
