@@ -100,8 +100,8 @@ export function checkScenario(raw, { principles, formations }) {
   const tol = toleranceFor(s.learner.role, s.answer.tol);
   const authored = s.answer.mode === 'authored';
   const centre = authored ? s.answer.ideal : base;
-  const ghost = computeGhost(ctx, { base: centre, tol });
-  const engineGhost = authored ? computeGhost(ctx, { base, tol }) : ghost;
+  const ghost = computeGhost(ctx, { base: centre, tol, field: false });
+  const engineGhost = authored ? computeGhost(ctx, { base, tol, field: false }) : ghost;
   const C = CHECK_DEFAULTS;
   let ideal = null;
   if (s.answer.ideal) {

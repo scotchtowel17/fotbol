@@ -169,7 +169,8 @@ export function evaluate(ctx, spot, { center, tol, rules = RULES } = {}) {
  * rule weights are resolved once and no per-rule result objects are kept.
  * @param {object} ctx
  * @param {{ center?: {x:number,y:number}, tol?: {tx:number,ty:number}, rules?: object[] }} [opts]
- * @returns {(spot: {x:number,y:number}) => number} unrounded score 0..100 (critical cap applied)
+ * @returns {((spot: {x:number,y:number}) => number) & { upper: (spot) => number }} unrounded score 0..100 (critical cap
+ *   applied); `upper(spot)` is the most that spot could score whatever the rules say (the zone term with every rule met)
  */
 export function createScorer(ctx, { center, tol, rules = RULES } = {}) {
   const c = center ?? ctx.learner.base;
@@ -177,7 +178,7 @@ export function createScorer(ctx, { center, tol, rules = RULES } = {}) {
   const active = applicable(ctx, rules);
   let sw = 0;
   for (const a of active) sw += a.w;
-  return (spot) => {
+  const scoreAt = (spot) => {
     let sws = 0, critical = false, lessonMissed = false;
     for (const { rule, w, lesson } of active) {
       const r = rule.evaluate(ctx, spot);
@@ -188,4 +189,8 @@ export function createScorer(ctx, { center, tol, rules = RULES } = {}) {
     }
     return combine(zoneScore(spot, c, t), sw > 0 ? sws / sw : 1, critical, lessonMissed);
   };
+  // The most a spot could score (every rule met, no cap): the zone alone bounds it, so a search can skip the rules
+  // where even this cannot beat what it has found (ghost.js with field: false).
+  scoreAt.upper = (spot) => combine(zoneScore(spot, c, t), 1, false, false);
+  return scoreAt;
 }

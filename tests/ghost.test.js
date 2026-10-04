@@ -151,6 +151,32 @@ test('mirror symmetry: a left/right mirrored scene gives a mirrored ghost', () =
   }
 });
 
+test('field: false finds the same ghost without the heatmap, skipping cells the zone alone rules out', () => {
+  // Every role in the fixture scenes, each possession, and off-centre bases: the same spot, score and result.
+  const scenes = ['oopMidBlock', 'ipBuildUp'];
+  let n = 0;
+  for (const scene of scenes) {
+    for (const role of IN_POSSESSION) {
+      const ctx = ctxOf(makeFrame(scene), scene, `us-${role}`);
+      for (const base of [undefined, { x: ctx.learner.base.x + 4, y: ctx.learner.base.y - 3 }]) {
+        const full = computeGhost(ctx, { base });
+        const fast = computeGhost(ctx, { base, field: false });
+        assert.deepEqual(fast.spot, full.spot, `${scene} ${role}`);
+        assert.equal(fast.score, full.score);
+        assert.equal(fast.result.raw, full.result.raw);
+        assert.equal(fast.field, null, 'no heatmap');
+        n++;
+      }
+    }
+  }
+  assert.equal(n, 40);
+  // It skips most of the disc: never slower than the full search, and usually several times faster.
+  const ctx = ctxOf(makeFrame('ipBuildUp'), 'ipBuildUp', 'us-LCM');
+  const tFull = timed(() => computeGhost(ctx), { warmup: 1, runs: 5 }).median;
+  const tFast = timed(() => computeGhost(ctx, { field: false }), { warmup: 1, runs: 5 }).median;
+  assert.ok(tFast < tFull, `${tFast.toFixed(2)} ms against ${tFull.toFixed(2)} ms`);
+});
+
 test('performance: a full search stays under 30 ms with 16 applicable rules', () => {
   // Every attacking rule twice, all forced to apply: an upper bound on the v1 rule load.
   const heavy = [...ATTACKING, ...ATTACKING].map((r) => ({ ...r, weight: () => 1 }));

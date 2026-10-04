@@ -236,7 +236,7 @@ export function checkSpotDrill(scenario, { formations, principles, want, params,
   problems.push(...speedProblems(s, S));
   if (quick && problems.length) return { errors: [], t, frame, base, ctx, ghost: null, start: null, moved: 0, startScore: null, kidStart: null, kidBest: null, taught: [], problems };
   const tol = toleranceFor(s.learner.role, s.answer.tol);
-  const ghost = computeGhost(ctx, { base, tol });
+  const ghost = computeGhost(ctx, { base, tol, field: false });
   const start = s.learner.start ?? (() => { const p = frameAt(s, 0, { formations }).players.find((q) => q.id === me); return { x: p.x, y: p.y }; })();
   const atStart = evaluate(ctx, start, { center: base, tol });
   const moved = dist(ghost.spot, start);

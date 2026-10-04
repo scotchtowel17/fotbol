@@ -511,7 +511,8 @@ export function evaluateRules(ctx, spot, rules = RULES) → { sRules, results: R
 export function evaluate(ctx, spot, { center, tol, rules } = {}) → EvalResult
 //   EvalResult = { score /*0..100 int*/, grade, sZone, sRules, gate, critical, lessonMissed, rules: RuleResult[], distance /*m to center*/,
 //                  center, tol, raw /*unrounded, capped*/, spot };   center defaults to ctx.learner.base
-export function createScorer(ctx, { center, tol, rules }) → (spot) => raw score   // fast path for the ghost and live mode
+export function createScorer(ctx, { center, tol, rules }) → (spot) => raw score   // fast path for the ghost and live mode;
+//   its .upper(spot) is the most that spot could score whatever the rules say
 export function gradeOf(score) → 'S'|'A'|'B'|'C'|'D'|'F'   // S ≥ 90, A ≥ 80, B ≥ 70, C ≥ 60, D ≥ 50, F < 50
 export function toleranceFor(role, override) → {tx, ty}
 
@@ -521,7 +522,10 @@ export const GHOST_DEFAULTS = { radius: 15, step: 1, tieEps: 1e-9 };      // [D]
  *  the field covers the whole square. Ranked on the unrounded score; ties → nearest the base, then more central, then deeper.
  *  @returns { spot, score, field: { x0, y0, step, cols, rows, values: Float32Array /*unrounded 0..100, row-major, row = y*/ },
  *             result /*evaluate() at the ghost*/ } */
-export function computeGhost(ctx, { base, tol, radius, step, rules })
+export function computeGhost(ctx, { base, tol, radius, step, rules, field = true })
+//   field false (no heatmap: cast.js, spotdrill.js, npm run check, Player mode's play.js and matchday.js): only the disc is
+//   searched, the base first, and a cell whose upper bound (createScorer's `upper`: the zone term with every rule met) is
+//   below the best so far is not scored; the same ghost (checked on 2,440 scenes), about 6x faster; `field` is null
 
 // explain.js
 export const EXPLAIN_DEFAULTS = { failBelow: 0.9, praiseAt: 0.9, maxPraise: 2, maxReasons: { standard: 2, kid: 1 }, minMove: 1, centreBand: 1, zoneFailBelow: 0.6,
