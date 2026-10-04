@@ -7,7 +7,9 @@
 // Colours: the kit comes from CSS custom properties on the figure (--fig-shirt, --fig-edge, --fig-ink, --fig-shorts,
 // --fig-socks; css/figures.css maps them to the board's --kit-us* / --kit-them* per team, so the kid's kit palette
 // applies live), or from explicit colours a caller passes (the card, the kit locker). Skin and hair are the player's
-// own (figureLook): deterministic per player id, 5 skin tones x 5 hair colours x 4 hair styles.
+// own (figureLook): deterministic per player id, 5 skin tones x 5 hair colours x 4 hair styles. Every player is a boy
+// (a boys' team, 2026-10-04): the four styles are boys' cuts (short, curly, fringe, spiky), and nothing else on the
+// faceless figure says who they are.
 //
 // Pure DOM helper: no engine imports, and nothing touches document or window at import time (Node imports it).
 // figureSpec() is the pure part (a tree of plain shape specs, tested under node --test); drawFigure() builds it.
@@ -30,7 +32,7 @@ export const FIGURE = Object.freeze({
  * round the shapes drawn.
  */
 export const FIGURE_BOXES = Object.freeze({
-  head: Object.freeze({ x0: -0.45, x1: 0.45, y0: -2.55, y1: -1.7 }), // (a ponytail's tail reaches past it, behind the head)
+  head: Object.freeze({ x0: -0.45, x1: 0.45, y0: -2.55, y1: -1.7 }), // every hair style stays inside it
   number: Object.freeze({ x0: -0.47, x1: 0.47, y0: -1.64, y1: -1.08 }),
   torso: Object.freeze({ x0: -0.72, x1: 0.72, y0: -1.86, y1: -0.62 }),
   legs: Object.freeze({ x0: -0.46, x1: 0.46, y0: -0.74, y1: 0.02 }),
@@ -40,8 +42,8 @@ export const FIGURE_BOXES = Object.freeze({
 export const SKIN_TONES = Object.freeze(['#f5d6bf', '#e2b48a', '#c38a5c', '#8e5a3a', '#5b3824']);
 /** Hair colours: black, dark brown, brown, auburn, blond. */
 export const HAIR_COLOURS = Object.freeze(['#18130f', '#3a2517', '#6b4428', '#9a4a1f', '#d6ad58']);
-/** Hair styles. */
-export const HAIR_STYLES = Object.freeze(['short', 'curly', 'ponytail', 'spiky']);
+/** Hair styles: boys' cuts. (The third was a ponytail until 2026-10-04; the index is kept, so every look but that one is unchanged.) */
+export const HAIR_STYLES = Object.freeze(['short', 'curly', 'fringe', 'spiky']);
 
 export const FIGURE_DEFAULTS = Object.freeze({
   salt: 15, // [M] hash salt: with it the 22 standard player ids get 22 different looks, each team all 5 skin tones and all 4 styles, and the two teams all 5 hair colours (tests/figures.test.js)
@@ -176,9 +178,11 @@ function hairPath(style) {
       for (let i = 1; i < pts.length; i++) d += `A0.1 0.1 0 0 0 ${pt(pts[i])}`;
       return d + inner(pts[0]);
     }
-    case 'ponytail': { // a cap, and a tail tied at the back
-      const tail = `M${pt([x - 0.27, y - 0.13])}Q${pt([x - 0.66, y - 0.06])} ${pt([x - 0.5, y + 0.34])}Q${pt([x - 0.38, y + 0.12])} ${pt([x - 0.25, y + 0.03])}Z`;
-      return cap(32, 232, r + 0.03) + tail;
+    case 'fringe': { // a short cut swept forward: the fringe hangs over the forehead in a ragged edge
+      const ro = r + 0.04;
+      const tip = onHead(-8, ro), top = onHead(40, ro), e = onHead(230, ro);
+      const z1 = onHead(26, ro - 0.09), z2 = onHead(8, ro - 0.11); // the fringe's lower edge, in from the hairline
+      return `M${pt(tip)}A${r3(ro)} ${r3(ro)} 0 1 0 ${pt(e)}Q${pt([x - 0.05, y + 0.01])} ${pt(top)}L${pt(z1)}L${pt(z2)}Z`;
     }
     case 'spiky': { // a short cut with a few spikes on top
       const pts = [];
@@ -274,7 +278,7 @@ function build(doc, spec, parent) {
  * Draw a tabletop figure into an SVG `parent` (feet at the parent's origin).
  * @param {Element} parent
  * @param {{ shirt?: string, edge?: string, ink?: string, shorts?: string, socks?: string, number?: string|number|null,
- *   skin?: string, hair?: string, hairStyle?: 'short'|'curly'|'ponytail'|'spiky', gk?: boolean, facing?: 1|-1,
+ *   skin?: string, hair?: string, hairStyle?: 'short'|'curly'|'fringe'|'spiky', gk?: boolean, facing?: 1|-1,
  *   size?: number, base?: boolean, run?: boolean }} [opts]
  *   kit colours: CSS colours (or var(--x)); left out, the figure takes css/figures.css's (the board's team kits)
  *   size: the base disc's radius in the parent's units (the figure is 2.4 of them tall)

@@ -681,7 +681,7 @@ export function drawFigure(parent, { shirt, edge, ink, shorts, socks, number, sk
 //   a shirt with the number in the ink colour, shorts, socks, boots, arms; goalkeepers (gk) long sleeves and gloves; run: also the two
 //   running poses. Kit colours are CSS colours or var(--x) (dropped if not); left out, css/figures.css gives the team's kit
 //   (--fig-shirt ← --kit-us* / --kit-them*, the keepers' --kit-*-gk), so the kid's kit palette applies live
-export function figureLook(playerId, team) → { skin, hair, hairStyle }   // deterministic per id: SKIN_TONES ×5, HAIR_COLOURS ×5, HAIR_STYLES ×4
+export function figureLook(playerId, team) → { skin, hair, hairStyle }   // deterministic per id: SKIN_TONES ×5, HAIR_COLOURS ×5, HAIR_STYLES ×4 (boys' cuts: short, curly, fringe, spiky)
 //   also figureSpec(opts) (the same figure as plain shape specs, pure), setFacing(fig, ±1), runDelay(id), isKeeperId(id), numberFontSize(text), FIGURE,
 //   FIGURE_BOXES ({ head, number, torso, legs }: a standing figure's parts as boxes round its feet in base radii, either way it faces; tested
 //   round the shapes drawn): what says who a player is (head, number) and what hides whatever stands behind (head, torso, legs)
