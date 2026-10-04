@@ -453,7 +453,7 @@ function decidePress({ P, ball, shapeBall, players, pinned, carrier, defending, 
  */
 function separate(players, mobility, P, constrain) {
   const n = players.length;
-  const min = P.minSeparation;
+  const min = P.minSeparation, min2 = min * min;
   const ox = players.map((p) => p.x), oy = players.map((p) => p.y);
   const pairs = new Map(); // i * n + j → { ux, uy, gap }, fixed when the pair first overlaps
   const pairOf = (i, j) => {
@@ -478,6 +478,8 @@ function separate(players, mobility, P, constrain) {
         const mi = mobility[i], mj = mobility[j];
         if (mi <= 0 && mj <= 0) continue;
         const a = players[i], b = players[j];
+        const ex = b.x - a.x, ey = b.y - a.y;
+        if (ex * ex + ey * ey >= min2) continue; // far enough apart: no square root for the 200-odd pairs that are
         const d = dist(a, b);
         if (d >= min) continue;
         let q = pairs.get(i * n + j);

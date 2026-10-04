@@ -63,9 +63,11 @@ keying and a real phone still wait (Next 1, 2 and 9). What changed:
   same ghost on all 2,440 scenes checked and is about 6x faster. Staging, the generator, `npm run check` and Player mode
   use it: five reps now take about 110 ms.
 - **Measured and left as is.** A full-back switch (PA6) cannot be generated or authored as one decision: every far-side
-  receiver is 36-66 m away and the pass is rated too long; the real switch goes back through a centre-back first. The
-  passing speed test "a set of 5 under 2 s" has failed now and then in a slow container (on the code before these
-  changes too); `FOTBOL_PERF_SLACK=1.5 npm test` passes there.
+  receiver is 36-66 m away and the pass is rated too long; the real switch goes back through a centre-back first.
+- **Two speed tests made robust.** The separation step no longer takes a square root for the 200-odd pairs of players
+  already far enough apart (the same placement, byte for byte in the sanity report), which makes a left-back's pass set
+  about 35 % faster (1.65 to 1.05 s of CPU, warm). The "set of 5 under 2 s" test timed one cold run, compiling the
+  engine included (2-2.5 s on CI, on `main` too); it now warms up and takes the median of 3, like the timings beside it.
 
 ## 2026-10-01: the independent audit, implemented
 
