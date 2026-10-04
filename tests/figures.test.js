@@ -41,7 +41,7 @@ test('figures: a player\'s look is deterministic, and differs between players', 
 test('figures: the variety covers every skin tone, hair colour and hair style (each team: every tone and style)', () => {
   assert.equal(SKIN_TONES.length, 5);
   assert.equal(HAIR_COLOURS.length, 5);
-  assert.equal(HAIR_STYLES.length, 4);
+  assert.deepEqual([...HAIR_STYLES], ['short', 'curly', 'fringe', 'spiky'], 'boys\' cuts only: every player is a boy');
   for (const team of ['us', 'them']) {
     const looks = ROLES.map((r) => figureLook(`${team}-${r}`));
     assert.equal(new Set(looks.map((l) => l.skin)).size, 5, `${team}: all 5 skin tones`);
@@ -246,12 +246,12 @@ test('figures: FIGURE_BOXES hold the parts drawn (head and hair, the two-digit n
     for (const cls of ['fig-shirt', 'fig-shorts', 'fig-collar']) at(byClass(spec, cls)[0].attrs.d, B.torso, cls);
     at(byClass(stand, 'fig-arms')[0].attrs.d, B.torso, 'arms');
     for (const cls of ['fig-legs', 'fig-socks', 'fig-boots']) at(byClass(stand, cls)[0].attrs.d, B.legs, cls);
-    // The head and every hair style but a ponytail's tail (behind the head): the head's circle grown by the hair.
+    // The head and every hair style: the head's circle grown by the hair.
     const { x, y, r } = FIGURE.head;
     for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) within(B.head, facing * (x + dx * (r + 0.1)), y + dy * (r + (dy < 0 ? 0.16 : 0)), 'head and hair');
     for (const style of HAIR_STYLES) {
       const d = byClass(figureSpec({ hairStyle: style, facing }), 'fig-hair')[0].attrs.d;
-      for (const [px, py] of pairs(d)) if (style !== 'ponytail' || px > x - 0.3) within(B.head, facing * px, py, `${style} hair`);
+      for (const [px, py] of pairs(d)) within(B.head, facing * px, py, `${style} hair`);
     }
   }
   // Two heavy digits (at most 0.66 em wide and 0.72 em tall each) and one: inside the number's box.
