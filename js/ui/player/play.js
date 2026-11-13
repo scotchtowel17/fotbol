@@ -71,7 +71,7 @@ import { buildContext } from '../../engine/context.js';
 import { computeGhost } from '../../engine/ghost.js';
 import { toleranceFor } from '../../engine/score.js';
 import { judgeSpot } from '../../engine/analyse.js';
-import { explain, EXPLAIN_DEFAULTS, ZONE_REASON } from '../../engine/explain.js';
+import { explain, sizeWords, EXPLAIN_DEFAULTS, ZONE_REASON } from '../../engine/explain.js';
 import { RULES_BY_ID } from '../../engine/rules/index.js';
 import { update as eloUpdate, mastery } from '../../engine/elo.js';
 import { familyOf } from '../../engine/roles.js';
@@ -98,6 +98,7 @@ export const PLAY_DEFAULTS = Object.freeze({
   maxFrameDt: 1, // [D] s of play per animation frame at most: slow or throttled frames keep real time (a tab coming back
   //               from hidden restarts the clock instead, so it never jumps to the freeze)
   minContinuation: 0.5, // [D] s: a shorter continuation replays the lead-up instead
+  stillBallMoved: 10, // [D] metres: a ball that went this far one way in the clip is named in the stood-still line (stillLine)
   replayLead: 3, // [D] s of lead-up replayed then
   replayHoldMs: 700, // [D] the last replay frame holds this long before the answer comes back
   focusStep: 0.5, // [D] s between the frames sampled for the pitch length a rep keeps in view on a phone
@@ -168,6 +169,12 @@ export const STRINGS = Object.freeze({
   lineNear: 'One more step into the green.', // 2 stars
   lineClose: 'The green shows where to be.', // 0-1 star
   lineStill: 'You stayed where you started. Move with the play.', // locked in at your start (0 stars)
+  // ...after the ball went far one way in the clip (stillLine: the play, not the same line every time)
+  lineStillBall: Object.freeze({
+    across: 'You stayed put. The ball went across the pitch, so move with it.',
+    theirGoal: 'You stayed put. The ball went toward their goal, so move with it.',
+    ourGoal: 'You stayed put. The ball came toward our goal, so move with it.',
+  }),
   bestSpot: SHARED.bestSpot,
   // A player named by their shirt number when the game shows more than one of their group ("their number 7")
   theirNumber: (n) => `their number ${n}`,
@@ -277,27 +284,47 @@ export function praiseOf(result, P = EXPLAIN_DEFAULTS) {
  * them comes before one about any other rule. `key` is the fix of the key the spot broke (a side, an order or a line
  * no distance forgives: offside, the wrong side of your man, the lesson clearly failed: kidStars' reason), said first.
  *   3 stars   praise only, for what you got right ("You found the right area." when none fits)
- *   still     you locked in where you started: "You stayed where you started. Move with the play."
+ *   still     you locked in where you started: `stillText` (stillLine: where the ball went), else "You stayed where
+ *             you started. Move with the play."
  *   2 stars   one fix: the key's, else the top reason about the drill's ideas, else any other ("One more step into the
  *             green." when none fits)
  *   0-1 star  the key's fix, else the drill's note on the mistake you made (its misconception), else the top reason
  *             about the drill's ideas, else the drill's own lesson (its takeaway), else any other reason ("The green
  *             shows where to be." when none fits)
  * @param {{ feedback?: object, reasons?: object[], praise?: (string|object)[], misconception?: string|null, stars: number,
- *   principles?: string[], takeaway?: string, key?: string|null, still?: boolean }} m  feedback: judgeSpot's, in kid
+ *   principles?: string[], takeaway?: string, key?: string|null, still?: boolean, stillText?: string }} m  feedback: judgeSpot's, in kid
  *   wording; reasons (default feedback.reasons): explain.js reasons, more than the one kid feedback keeps; praise
  *   (default feedback.praise): praiseOf, so a line can be matched to its idea
  */
-export function pickLine({ feedback = null, reasons, praise, misconception = null, stars = 0, principles: own = [], takeaway = '', key = null, still = false } = {}) {
+export function pickLine({ feedback = null, reasons, praise, misconception = null, stars = 0, principles: own = [], takeaway = '', key = null, still = false, stillText = STRINGS.lineStill } = {}) {
   const ok = (s) => usableText(s, PLAY_DEFAULTS.lineMaxWords);
   const ideas = Array.isArray(own) ? own : [];
   if (stars >= 3) return drillFirst(praise ?? feedback?.praise ?? [], ideas).map(textOf).find(ok) ?? STRINGS.lineInGreen;
-  if (still) return STRINGS.lineStill;
+  if (still) return ok(stillText) ? stillText : STRINGS.lineStill;
   const list = drillFirst(reasons ?? feedback?.reasons ?? [], ideas);
   const about = list.filter((r) => ideas.length && ideasOf(r).some((id) => ideas.includes(id))).map(textOf);
   const rest = list.map(textOf).filter((t) => !about.includes(t));
   const candidates = stars <= 1 ? [key, misconception, ...about, takeaway, ...rest] : [key, ...about, ...rest];
   return candidates.find(ok) ?? (stars >= 2 ? STRINGS.lineNear : STRINGS.lineClose);
+}
+
+/**
+ * The line for a spot locked in where YOU started (pure): where the ball went in the clip, when it went at least
+ * stillBallMoved one way ("You stayed put. The ball went across the pitch, so move with it."), else STRINGS.lineStill.
+ * Across when it went at least as far across as along; along, toward their goal or ours (x is up the pitch for us).
+ * @param {object} s  the scenario (its timeline's ball keys: where the clip starts)
+ * @param {{ freezeFrame?: { ball?: {x:number,y:number} } }} scene  where the ball is at the freeze
+ * @returns {string}
+ */
+export function stillLine(s, scene, P = PLAY_DEFAULTS) {
+  const keys = (s?.timeline?.ball ?? []).filter((k) => Number.isFinite(k?.x) && Number.isFinite(k?.y));
+  const from = keys.reduce((a, k) => (!a || (k.t ?? 0) < (a.t ?? 0) ? k : a), null);
+  const to = scene?.freezeFrame?.ball;
+  if (!from || !Number.isFinite(to?.x) || !Number.isFinite(to?.y)) return STRINGS.lineStill;
+  const dx = to.x - from.x, dy = to.y - from.y;
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < P.stillBallMoved) return STRINGS.lineStill;
+  if (Math.abs(dy) >= Math.abs(dx)) return STRINGS.lineStillBall.across;
+  return dx > 0 ? STRINGS.lineStillBall.theirGoal : STRINGS.lineStillBall.ourGoal;
 }
 
 /**
@@ -504,6 +531,46 @@ export function groupMembers(players, team, word, learnerId = null) {
   return (players ?? []).filter((p) => p && p.id !== learnerId && p.team === team && (fams === null || fams?.includes(familyOf(p.role))));
 }
 
+// A position group in the plural ("their midfielders", "your other defenders"; not "teammates": "between your
+// teammates" means the team, however many are drawn), and the word after it (a verb that may need to agree).
+const PLURAL_GROUP = /\b(their|your)\s+(other\s+)?(defender|midfielder|winger|striker|keeper|goalkeeper)s\b(?![-\w])(\s+[A-Za-z']+)?/gi;
+// Words before a plural that need it to stay plural ("between their midfielders", "one of your defenders").
+const KEEP_PLURAL = /\b(?:between|among|amongst|(?:one|each|all|both|any|none|two|three|some|most|either|neither)\s+of)\s+$/i;
+// A plural that starts a clause is the subject of what follows: these verbs agree with one player; modals and the past
+// need nothing; any other verb keeps the plural (we cannot conjugate it safely).
+const AGREE = Object.freeze({ are: 'is', were: 'was', have: 'has', do: 'does', "aren't": "isn't", "weren't": "wasn't", "haven't": "hasn't", "don't": "doesn't" });
+const NO_AGREEMENT = /^(?:can|could|will|would|should|must|may|might|had|did|ran|went|got|came|\w+ed|and|or|too)$/i; // (or no verb)
+const CLAUSE_START = /(?:^|[.!?;:,]\s*|\b(?:and|but|so|because|while|when|if|as)\s+)$/i;
+
+/**
+ * A plural group the picture shows only once said in the singular (pure), as "Who's open?" says it (pass.js
+ * passSpeaker): "Move forward, past their midfielders." with one of their midfielders drawn says "past their
+ * midfielder"; a "Their midfielders" cue line says "Their midfielder". A group drawn twice or more, or not at all,
+ * keeps its words, and so does a plural the sentence needs ("between their midfielders", "one of your defenders") or
+ * whose verb would not agree ("Their defenders run back" stays; "are", "were", "have" and "do" turn singular).
+ * @param {string} text
+ * @param {{ players?: object[], learnerId?: string|null }} who  players: the frame as drawn
+ * @returns {string}
+ */
+export function singularOnShow(text, { players = [], learnerId = null } = {}) {
+  if (typeof text !== 'string' || !text) return text;
+  return text.replace(PLURAL_GROUP, (m, whose, other, word, after = '', at, all) => {
+    const team = whose.toLowerCase() === 'their' ? 'them' : 'us';
+    if (groupMembers(players, team, word, learnerId).length !== 1) return m;
+    const before = all.slice(0, at);
+    if (KEEP_PLURAL.test(before)) return m;
+    const group = m.slice(0, m.length - after.length);
+    const one = group.slice(0, -1); // "their midfielders" → "their midfielder"
+    // An object ("past their midfielders"), a label ("Their midfielders") or a clause that ends with the group: no verb
+    // to agree with it.
+    if (!after || !CLAUSE_START.test(before)) return one + after;
+    const verb = after.trim();
+    const agreed = AGREE[verb.toLowerCase()];
+    if (agreed) return `${one}${after.slice(0, after.length - verb.length)}${verb === verb.toLowerCase() ? agreed : agreed[0].toUpperCase() + agreed.slice(1)}`;
+    return NO_AGREEMENT.test(verb) ? one + after : m;
+  });
+}
+
 /**
  * A sentence with the player it is about named by shirt number wherever the picture shows more than one of their
  * group (pure): "Get closer to their winger" with both wingers on show says "Get closer to their number 7"; a group
@@ -597,7 +664,7 @@ export function repSpeaker(s, scene, { youNumber = null } = {}) {
   const clip = carriersOf(s);
   const scripted = [...new Set((s?.timeline?.players?.overrides ?? []).map((o) => o?.id).filter((id) => typeof id === 'string'))];
   const say = (text, who) => {
-    const out = nameSpecific(text, { players, learnerId, youNumber, ...who });
+    const out = nameSpecific(singularOnShow(text, { players, learnerId }), { players, learnerId, youNumber, ...who });
     return out.ok ? out.text : null;
   };
   const atFreeze = [holder, ...[...clip].reverse()].filter(Boolean);
@@ -955,7 +1022,7 @@ export function revealFor(s, scene, spot, { principles = {}, youNumber = null } 
   const keyRule = stars < 3 && RULES_BY_ID[kid.reason] ? kid.reason : null;
   const keyName = keyRule ? kid.keys?.[kid.broken?.indexOf(keyRule)] ?? null : null;
   const key = keyRule ? keyFix(keyRule, { reasons, rules, who, spot, vars: angleVars(keyName, keyRule, { ctx: scene.ctx, spot, area, rules }) }) : null;
-  const line = pickLine({ reasons, praise, misconception: misText, stars, principles: own, takeaway, key: key?.text ?? null, still });
+  const line = pickLine({ reasons, praise, misconception: misText, stars, principles: own, takeaway, key: key?.text ?? null, still, stillText: still ? stillLine(s, scene) : undefined });
   const source = reasons.find((r) => r.text === line) ?? (key?.text === line ? key : undefined);
   const drillIdea = principles[own[0]];
   const idea = principles[source?.principleId] ?? drillIdea;
@@ -1003,10 +1070,11 @@ export function keyFix(ruleId, { reasons = [], rules = [], who = null, spot = nu
   const r = vars ? null : reasons.find((x) => x.ruleId === ruleId);
   if (r?.text) return r;
   const rule = RULES_BY_ID[ruleId];
-  const v = vars ?? (rules ?? []).find((x) => x.id === ruleId)?.vars ?? {};
+  const at = (rules ?? []).find((x) => x.id === ruleId);
+  const v = vars ?? at?.vars ?? {};
   let t = '';
   try { t = rule?.text?.kid?.fail?.(v) ?? ''; } catch { t = ''; }
-  t = typeof t === 'string' ? t.trim() : '';
+  t = typeof t === 'string' ? (vars ? t : sizeWords(t, spot, at?.target)).trim() : ''; // (at an angle: which side, not how far)
   if (!t) return vars ? keyFix(ruleId, { reasons, rules, who, spot }) : null;
   t = t[0].toUpperCase() + t.slice(1) + (/[.!?…]$/.test(t) ? '' : '.');
   const said = who ? who.rule(t, ruleId, rules, spot) : t;

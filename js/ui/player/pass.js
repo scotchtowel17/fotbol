@@ -61,7 +61,7 @@ import * as castMod from '../../engine/cast.js';
 import * as boardMod from '../board.js';
 import * as roadMod from './road.js';
 import { createPlayerReveal } from './reveal.js';
-import { showFullTime } from './fulltime.js';
+import { showFullTime, addPlayTime } from './fulltime.js';
 
 const { STRINGS: SHARED, starWord, roleCard } = SharedWords;
 
@@ -1776,17 +1776,33 @@ export async function mount(root, app, params = []) {
 
   // ---- full time
   let ftCleanup = null;
+  let over = false; // Full time has shown, or the set was left and kept (keepPartial): record nothing twice
+  /** The stars of the plays chosen so far (first tries; the demo's warm-up is practice). */
+  const playedStars = () => set.results.filter((r) => r && !r.warmup).map((r) => r.stars);
+  /** Put the set on the Road (road.recordSet), on a Road node only. */
+  function recordOnRoad(repStars) {
+    if (!node || !repStars.length || typeof roadMod?.recordSet !== 'function') return null;
+    try { return roadMod.recordSet(app, node.id, repStars); } catch (err) { console.warn('[fotbol] pass: could not record the set', err); return null; }
+  }
+
+  /** Leaving before Full time keeps what was played, as "Find your spot" does (R37): the plays chosen so far go on the
+   *  Road as a shorter set, and the play time counts toward the break nudge (R22). Nothing asks "are you sure?". */
+  function keepPartial() {
+    if (over) return;
+    over = true;
+    recordOnRoad(playedStars());
+    try { addPlayTime(app, performance.now() - set.startedAt); } catch { /* the nudge waits for the next set */ }
+  }
+
   async function finish() {
     stopAnim();
     clearTargets();
+    over = true;
     const results = set.results.filter(Boolean);
-    const repStars = results.filter((r) => !r.warmup).map((r) => r.stars);
+    const repStars = playedStars();
     // The set's first tries as a rewards session: a star on every play is "Perfect set" (a skill, never for finishing).
     if (repStars.length) set.gained = mergeGains(set.gained, award(app, { type: 'session', stars: repStars }, { celebrate: false }));
-    let nodeStars = null;
-    if (node && typeof roadMod?.recordSet === 'function') {
-      try { nodeStars = roadMod.recordSet(app, node.id, repStars); } catch (err) { console.warn('[fotbol] pass: could not record the set', err); }
-    }
+    const nodeStars = recordOnRoad(repStars);
     const again = node ? `#/pass/${encodeURIComponent(node.id)}` : '#/pass';
     const opts = {
       node, reps: results.map((r) => ({ stars: r.stars, title: r.title })), xpBefore: set.xpBefore, xpAfter: loadRewards(app).xp ?? 0,
@@ -1822,6 +1838,7 @@ export async function mount(root, app, params = []) {
 
   return () => {
     alive = false;
+    try { keepPartial(); } catch (err) { console.warn('[fotbol] pass: could not keep the set', err); }
     offKeys();
     stopAnim();
     try { ftCleanup?.(); } catch { /* gone */ }

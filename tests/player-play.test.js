@@ -6,11 +6,11 @@
 import { test, assert, approx, loadJSON, isNode } from './harness.js';
 import { STRINGS as SHARED, STAR_WORDS, ROLE_NAMES, roleName, starWord, roleCard } from '../js/ui/player/strings.js';
 import {
-  STRINGS as PLAY, PLAY_DEFAULTS, usableText, starsForScore, wordForStars, questionFor, briefFor, takeawayFor, pickLine, whyFor,
+  STRINGS as PLAY, PLAY_DEFAULTS, usableText, starsForScore, wordForStars, questionFor, briefFor, takeawayFor, pickLine, whyFor, stillLine,
   keyPlayers, firstSetStep, setStep, createTally, tallyTry, tallyStars, missNote, repTitle, seedFor, recordIdOf, recordPolicy,
   repCard, ideasOf, praiseOf, bestMoveOf, cueMarker, repScene, revealFor, bestSpotMarker, lockAction, redirectTo,
   wantedStage, stagedScene, watchFrame, cameraRect, stageCamera, answerCamera, cardSpot,
-  nameSpecific, ruleRefs, repSpeaker, repWords, mentionsSideline, touchlineBy, bestSpotPlace,
+  nameSpecific, singularOnShow, ruleRefs, repSpeaker, repWords, mentionsSideline, touchlineBy, bestSpotPlace,
   kidScore, recordOf, repArea, areaOf, zoneOf, zoneMarker, insideOutline, nearestOnOutline, zoneArrowEnd, levelAt, revealNote, keyFix, keyCue, angleVars,
 } from '../js/ui/player/play.js';
 import { kidStars, KID_LEVELS, KID_DEFAULTS } from '../js/engine/kidscore.js';
@@ -155,7 +155,9 @@ test('player play: the reveal line is the top fix after a miss, the praise on a 
   assert.equal(pickLine({ feedback, stars: 1, key: 'Step back 3 m.' }), 'Get between their striker and our goal.', 'a key with metres is skipped');
   // Locked in where you started: say so (the arrow and the green show where to go; Why? has the fixes).
   assert.equal(pickLine({ feedback, stars: 0, still: true, key }), PLAY.lineStill);
-  for (const s of [PLAY.lineInGreen, PLAY.lineNear, PLAY.lineClose, PLAY.lineStill, PLAY.greenIsRight, PLAY.missNote]) assert.ok(words(s) <= 14 && usableText(s), s);
+  assert.equal(pickLine({ feedback, stars: 0, still: true, key, stillText: PLAY.lineStillBall.across }), PLAY.lineStillBall.across, 'where the ball went (stillLine)');
+  assert.equal(pickLine({ feedback, stars: 0, still: true, stillText: 'Move 4 m toward the ball.' }), PLAY.lineStill, 'a still line with metres: the plain one');
+  for (const s of [PLAY.lineInGreen, PLAY.lineNear, PLAY.lineClose, PLAY.lineStill, ...Object.values(PLAY.lineStillBall), PLAY.greenIsRight, PLAY.missNote]) assert.ok(words(s) <= 14 && usableText(s), s);
 });
 
 test('player play: the Why? sheet: the idea, its summary, its because line, 2 more reasons at most, what you did right, 90 words at most', () => {
@@ -526,7 +528,7 @@ test('player play: the reveal\'s words match the stars: praise only at 3 stars, 
       } else {
         seen.low++;
         // Locked in where you started: it says so (Why? has the fixes, the drill's own idea first).
-        if (r.still) { seen.still++; assert.equal(r.line, PLAY.lineStill, where); continue; }
+        if (r.still) { seen.still++; assert.equal(r.line, stillLine(s, scene), where); continue; }
         // A key the spot broke (a side, an order, a line) says its fix first, when it can be said.
         if (r.keyRule) {
           seen.key++;
@@ -559,7 +561,7 @@ test('player play: the reveal\'s words match the stars: praise only at 3 stars, 
   const at = (s, spot) => revealFor(s, repScene(s, { formations, catalogue }), spot, { principles: byId });
   const still = at(m104, repScene(m104, { formations }).start);
   assert.equal(still.stars, 0, 'standing still is never right');
-  assert.equal(still.line, PLAY.lineStill);
+  assert.equal(still.line, PLAY.lineStillBall.ourGoal, 'm1-04: their pass came 22 m toward our goal (20 m across)');
   assert.equal(still.why.reasons[0], 'Get between their striker and our goal.', 'm1-04 from the start: Why? says goal-side (D5) first, not the line of defenders');
   const m106 = authored.find((s) => s.id === 'm1-06-t3-rw');
   const g106 = repScene(m106, { formations }).ghost.spot;
@@ -877,7 +879,7 @@ test('player play: every staged rep\'s right area: the best spot is 3 stars, sta
       if (!s.answer?.hold) {
         const still = revealFor(s, scene, scene.start, { principles: byId });
         assert.equal(still.stars, 0, `${tag}: standing still`);
-        assert.equal(still.line, PLAY.lineStill, `${tag}: it says so`);
+        assert.equal(still.line, stillLine(s, scene), `${tag}: it says so`);
         assert.equal(levelAt(scene, scene.area, scene.start), 'cold', `${tag}: the glow is cold at the start`);
       }
       const G = scene.ghost.spot;
@@ -1072,6 +1074,52 @@ test('player play: a group on show more than once is named by shirt number, from
   assert.equal(PLAY.yourNumber(4), 'your number 4');
 });
 
+test('player play: the stood-still line says where the ball went, so it is not the same line every time', () => {
+  const s = (from) => ({ timeline: { ball: [{ t: 2, x: 99, y: 99 }, { t: 0, ...from }] } });
+  const at = (x, y) => ({ freezeFrame: { ball: { x, y } } });
+  assert.equal(stillLine(s({ x: 50, y: 10 }), at(55, 40)), PLAY.lineStillBall.across);
+  assert.equal(stillLine(s({ x: 50, y: 30 }), at(70, 34)), PLAY.lineStillBall.theirGoal, 'up the pitch for us');
+  assert.equal(stillLine(s({ x: 50, y: 30 }), at(30, 20)), PLAY.lineStillBall.ourGoal);
+  assert.equal(stillLine(s({ x: 50, y: 30 }), at(56, 36)), PLAY.lineStill, 'under stillBallMoved: the plain line');
+  assert.equal(stillLine(s({ x: 50, y: 30 }), at(50, 30 + PLAY_DEFAULTS.stillBallMoved)), PLAY.lineStillBall.across, 'at stillBallMoved');
+  assert.equal(stillLine({}, at(50, 30)), PLAY.lineStill, 'no ball keys');
+  assert.equal(stillLine(s({ x: 50, y: 30 }), {}), PLAY.lineStill, 'no freeze');
+  // The authored drills say all four, and a drill and its mirror say the same.
+  const said = new Map();
+  for (const d of authored) {
+    const line = stillLine(d, repScene(d, { formations }));
+    said.set(line, (said.get(line) ?? 0) + 1);
+    const m = mirrorScenario(d);
+    assert.equal(stillLine(m, repScene(m, { formations })), line, `${d.id}: its mirror`);
+  }
+  for (const line of [PLAY.lineStill, ...Object.values(PLAY.lineStillBall)]) assert.ok(said.get(line) >= 2, `"${line}" ${said.get(line) ?? 0} drills`);
+});
+
+test('player play: a plural group the picture shows once is said in the singular, where the sentence allows it', () => {
+  // The 2026-09-29 re-check: "Move forward, past their midfielders." with one of their midfielders drawn.
+  const players = [
+    { id: 'us-LB', team: 'us', role: 'LB' }, { id: 'us-DM', team: 'us', role: 'DM' }, { id: 'them-LCM', team: 'them', role: 'LCM' },
+    { id: 'them-ST', team: 'them', role: 'ST' }, { id: 'them-LCB', team: 'them', role: 'LCB' }, { id: 'them-RCB', team: 'them', role: 'RCB' },
+  ];
+  const w = { players, learnerId: 'us-LB' };
+  const one = (t) => singularOnShow(t, w);
+  assert.equal(one('Move forward, past their midfielders.'), 'Move forward, past their midfielder.');
+  assert.equal(one('Their midfielders'), 'Their midfielder', 'a cue line');
+  assert.equal(one('Your midfielders'), 'Your midfielder');
+  assert.equal(one('Close to their defenders.'), 'Close to their defenders.', 'two drawn: a group');
+  assert.equal(one('Stay in line with your other defenders.'), 'Stay in line with your other defenders.', 'none drawn but YOU: kept (the cast gate keeps such words out)');
+  // A subject's verb agrees, or the plural stays.
+  assert.equal(one('Their midfielders are pushing up.'), 'Their midfielder is pushing up.');
+  assert.equal(one('Their midfielders must drop.'), 'Their midfielder must drop.');
+  assert.equal(one('Their midfielders run back.'), 'Their midfielders run back.', 'a verb we cannot conjugate safely');
+  assert.equal(one('Their midfielders and their striker.'), 'Their midfielder and their striker.');
+  // Words that need the plural.
+  assert.equal(one('Get between their midfielders and their defenders.'), 'Get between their midfielders and their defenders.');
+  assert.equal(one('One of their midfielders is free.'), 'One of their midfielders is free.');
+  assert.equal(one('Stand between your teammates.'), 'Stand between your teammates.', 'teammates: the team');
+  assert.equal(one(''), '');
+});
+
 test('player play: whatever a rep says (the question, the line, Why?, the cue), a group it names is one player on show, or is named by number', () => {
   // The verifier's finish: "Get closer to their winger" with both wingers on show, "Their defender has the ball" with
   // two defenders in a 2 v 2. Every authored drill and its mirror, at every stage it can be played at, spots all round
@@ -1084,6 +1132,13 @@ test('player play: whatever a rep says (the question, the line, Why?, the cue), 
     return ids.filter((id) => id !== me && id.startsWith(`${team}-`) && (!fs || fs.includes(fam(id)))).length > 1;
   }).map((m) => m[0]);
   const NUM = /\b(their|your) number (\d+)\b/gi;
+  // A plural group with one of it on show is said in the singular (singularOnShow), unless the sentence needs it.
+  const PLURAL = /\b(their|your)\s+(?:other\s+)?(defender|midfielder|winger|striker|keeper)s\b(?![-\w])/gi;
+  const lone = (t, ids, me) => [...String(t).matchAll(PLURAL)].filter((m) => {
+    if (/\b(?:between|among|of)\s+$/i.test(String(t).slice(0, m.index))) return false;
+    const team = m[1].toLowerCase() === 'their' ? 'them' : 'us', fs = FAMS[m[2].toLowerCase()];
+    return ids.filter((id) => id !== me && id.startsWith(`${team}-`) && fs.includes(fam(id))).length === 1;
+  }).map((m) => m[0]);
   let reps = 0, named = 0, questions = 0, fallbacks = 0;
   for (const s of authored.flatMap((d) => [d, mirrorScenario(d)])) {
     for (const stage of STAGES) {
@@ -1109,6 +1164,7 @@ test('player play: whatever a rep says (the question, the line, Why?, the cue), 
       }
       for (const t of texts.filter((x) => typeof x === 'string')) {
         assert.deepEqual(many(t, ids, scene.learnerId), [], `${s.id} ${stage} (${st.cast?.label ?? '11 v 11'}): "${t}" names a group the game shows more than once`);
+        assert.deepEqual(lone(t, ids, scene.learnerId), [], `${s.id} ${stage} (${st.cast?.label ?? '11 v 11'}): "${t}" says a plural where the game shows one`);
         // A number named is a player on show, of that team.
         for (const m of t.matchAll(NUM)) {
           named++;
