@@ -22,7 +22,28 @@ export const EXPLAIN_DEFAULTS = Object.freeze({
   tradeoffMargin: 0.1, // [D] a rule the best spot also fails is a trade-off, not a reason, unless you score this much lower on it
   bestEps: 0.5, // [D] points: a spot scoring within this of the best spot (or more) gets no reasons (nothing left to fix)
   zoneGap: 5, // [D] points: with no other reason left, a zone costing at least this much is the reason (F2)
+  littleMax: 3, // [D] metres: a fix says "a little" (closer, further, wider...) only when the rule's target is this near
 });
+
+// "a little" sizing a move ("Move a little closer", "Give him a little more room", "Move forward a little"); not "a little
+// past him" or "leaning a little toward the ball", which say where to end up, not how far to go.
+const LITTLE_BEFORE = /\ba little (?=(?:further|farther|more|closer|nearer|away|wider|deeper|higher)\b)/gi;
+const LITTLE_AFTER = /\b(forward|back|up|across|inside|in|out|wider|deeper) a little\b/gi;
+
+/**
+ * A fix's words sized to the move it asks (pure): a rule's words say "a little" only when its target is within
+ * littleMax of the spot; farther away they drop it ("Move a little closer to your teammate." 7 m off says "Move closer
+ * to your teammate."). Words with no target, or with no "a little" that sizes a move, are unchanged.
+ * @param {string} text
+ * @param {{x:number,y:number}|null} spot
+ * @param {{x:number,y:number}|null|undefined} target  the rule's target (its evaluation's `target`)
+ * @returns {string}
+ */
+export function sizeWords(text, spot, target, P = EXPLAIN_DEFAULTS) {
+  if (typeof text !== 'string' || !spot || !Number.isFinite(target?.x) || !Number.isFinite(target?.y)) return text;
+  if (dist(spot, target) <= P.littleMax) return text;
+  return text.replace(LITTLE_BEFORE, '').replace(LITTLE_AFTER, '$1');
+}
 
 /**
  * The zone term as a reason (F2: shift with the ball as a unit). A spot can break no rule and still
@@ -142,7 +163,7 @@ export function explain(evalResult, ctx, spot, opts = {}) {
     if (reasons.length >= max) break;
     const rule = r.zone ? ZONE_REASON : byId[r.id];
     const pr = principleOf(rule, r, principles, wording);
-    const text = sentence(say(rule, wording, 'fail', r.vars)) || sentence(`${pr.name}: not quite there yet`);
+    const text = sentence(sizeWords(say(rule, wording, 'fail', r.vars), spot, r.target)) || sentence(`${pr.name}: not quite there yet`);
     const severity = r.critical ? 1 : Math.round((1 - r.s) * 1000) / 1000;
     reasons.push({ ruleId: r.id, principleId: pr.id, name: pr.name, text, severity, critical: r.critical });
   }

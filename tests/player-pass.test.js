@@ -1292,7 +1292,7 @@ const drawnOffset = (id) => {
  * The quick set is dealt from the clock: Date.now is held still, so it is the same set every run. `expected`: the set
  * mount deals, worked out beforehand with the same builders, and each rep's cast as cast.js bestStage stages it.
  */
-async function playPassSet({ params = [], profile }) {
+async function playPassSet({ params = [], profile, leaveAfter = null }) {
   const page = fakePage();
   const realNow = Date.now;
   Date.now = () => 1767225600000;
@@ -1390,6 +1390,13 @@ async function playPassSet({ params = [], profile }) {
         if (pending.practice) t.retry = res; else t.first = res;
         pending = null;
       }
+      // Leaving early (`leaveAfter` first tries): the page goes (the X, Back, anything) before Full time.
+      if (leaveAfter !== null && [...tries.values()].filter((x) => x.first).length >= leaveAfter) {
+        const u = unmount;
+        unmount = null;
+        u();
+        return { tries, store, warnings, navigated, profile: store.get('player'), left: true };
+      }
       if (!t.retried && root.querySelector('.pr-retry')) { t.retried = true; root.querySelector('.pr-retry').click(); await page.clock.step(); continue; }
       root.querySelector('.pr-next').click();
       await page.clock.step();
@@ -1404,6 +1411,20 @@ async function playPassSet({ params = [], profile }) {
     Date.now = realNow;
   }
 }
+
+test('pass: mounted, a Road pass set left early goes on the Road as a shorter set, and its play time counts', async () => {
+  if (!isNode) return;
+  // "Find your spot" kept a set left early (play.js keepPartial); "Who's open?" dropped it from the Road until 2026-11-13.
+  const played = await playPassSet({ params: ['free-player'], leaveAfter: 2, profile: { version: 1, group: 'WING', role: 'LW', onboarded: true, road: { 'close-down': { stars: 1, plays: 1 }, 'free-player': { stars: 1, plays: 1 } } } });
+  assert.ok(played.left, 'left before Full time');
+  const history = played.store.get('history') ?? [];
+  assert.equal(history.length, 2, 'the two first tries are kept');
+  assert.ok(history.every((h) => h.nodeId === 'free-player'));
+  assert.equal(played.profile.road['free-player']?.plays, 2, 'the shorter set is on the Road once');
+  assert.ok(played.profile.road['free-player']?.stars >= 1, 'its best stars kept');
+  assert.ok((played.store.get('player:today')?.ms ?? 0) > 0, 'the play time counts toward the break nudge');
+  assert.deepEqual(played.warnings.filter((w) => /could not/.test(w)), [], 'nothing failed');
+});
 
 const STAGE_RANK = { small: 0, medium: 1, full: 2 };
 

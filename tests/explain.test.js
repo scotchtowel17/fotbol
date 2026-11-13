@@ -1,10 +1,10 @@
 // explain.js: headline, ranked reasons, praise, fix phrasing and the beat-1 cue.
 import { test, assert } from './harness.js';
-import { makeFrame, posOf } from './fixtures.js';
+import { makeFrame, posOf, SCENES } from './fixtures.js';
 import { buildContext } from '../js/engine/context.js';
 import { evaluate } from '../js/engine/score.js';
 import { computeGhost } from '../js/engine/ghost.js';
-import { explain, phraseMove, HEADLINES, EXPLAIN_DEFAULTS, ZONE_REASON } from '../js/engine/explain.js';
+import { explain, phraseMove, sizeWords, HEADLINES, EXPLAIN_DEFAULTS, ZONE_REASON } from '../js/engine/explain.js';
 
 const at = (x, y) => ({ x, y });
 const ctxFor = (scene, id, changes = {}) => buildContext(makeFrame(scene, changes), { learnerId: id, base: posOf(scene, id) });
@@ -251,4 +251,50 @@ test('phraseMove never uses screen directions', () => {
       }
     }
   }
+});
+
+test('sizeWords: "a little" only for a short move to the rule\'s target', () => {
+  const spot = at(40, 30);
+  const near = at(42, 30), far = at(47, 30);
+  assert.equal(EXPLAIN_DEFAULTS.littleMax, 3);
+  assert.equal(sizeWords('Move a little closer to your teammate.', spot, near), 'Move a little closer to your teammate.');
+  assert.equal(sizeWords('Move a little closer to your teammate.', spot, far), 'Move closer to your teammate.');
+  assert.equal(sizeWords('Move forward a little, you are too close to your defenders.', spot, far), 'Move forward, you are too close to your defenders.');
+  assert.equal(sizeWords('Give your number 4 a little more room.', spot, far), 'Give your number 4 more room.');
+  assert.equal(sizeWords('Stay a little further behind your midfielders.', spot, far), 'Stay further behind your midfielders.');
+  assert.equal(sizeWords('Stay a little wider, so there is no big gap beside you.', spot, far), 'Stay wider, so there is no big gap beside you.');
+  // Where to end up, not how far to go: kept.
+  assert.equal(sizeWords('Keep running back, a little past their defender.', spot, far), 'Keep running back, a little past their defender.');
+  assert.equal(sizeWords('Get onto the line between him and our goal, leaning a little toward the ball.', spot, far), 'Get onto the line between him and our goal, leaning a little toward the ball.');
+  // No target, no change.
+  assert.equal(sizeWords('Move a little closer to your teammate.', spot, undefined), 'Move a little closer to your teammate.');
+  assert.equal(sizeWords('', spot, far), '');
+});
+
+test('explain: no reason sizes a move as "a little" when its rule\'s target is more than littleMax away', () => {
+  const SIZED = /\ba little (?:further|farther|more|closer|nearer|away|wider|deeper|higher)\b|\b(?:forward|back|up|across|inside|in|out|wider|deeper) a little\b/i;
+  let reasons = 0, near = 0;
+  for (const scene of Object.keys(SCENES)) {
+    for (const id of ['us-LB', 'us-LCB', 'us-DM', 'us-RCM', 'us-RW', 'us-ST']) {
+      const ctx = ctxFor(scene, id);
+      const ghost = computeGhost(ctx, { field: false });
+      for (const r of [2, 5, 9, 14]) {
+        for (let a = 0; a < 8; a++) {
+          const spot = at(Math.max(1, Math.min(104, ghost.spot.x + r * Math.cos(a * Math.PI / 4))), Math.max(1, Math.min(67, ghost.spot.y + r * Math.sin(a * Math.PI / 4))));
+          const ev = evaluate(ctx, spot);
+          for (const wording of ['kid', 'standard']) {
+            for (const x of explain(ev, ctx, spot, { wording, max: 3, ghost }).reasons) {
+              reasons++;
+              const t = ev.rules.find((q) => q.id === x.ruleId)?.target;
+              if (!SIZED.test(x.text)) continue;
+              assert.ok(t && Math.hypot(t.x - spot.x, t.y - spot.y) <= EXPLAIN_DEFAULTS.littleMax + 1e-9, `${scene} ${id} at ${spot.x.toFixed(1)}, ${spot.y.toFixed(1)}: "${x.text}"`);
+              near++;
+            }
+          }
+        }
+      }
+    }
+  }
+  assert.ok(reasons >= 300, `${reasons} reasons`);
+  assert.ok(near >= 1, `${near} short moves still say "a little"`);
 });
